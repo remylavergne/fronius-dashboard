@@ -58,6 +58,21 @@ func New(baseURL string, doer fronius.Doer, timeout time.Duration, log *slog.Log
 
 // GetPowerFlowRealtimeData interroge l'endpoint unique de la phase 1.
 func (c *Client) GetPowerFlowRealtimeData(ctx context.Context) (PowerFlowEnvelope, error) {
+	return c.getPowerFlow(ctx, nil)
+}
+
+// GetPowerFlowRealtimeDataAt interroge l'endpoint en demandant la courbe à un
+// instant passé, via le paramètre « at ».
+//
+// Cette variante est une EXTENSION DU SIMULATEUR (cmd/fronius-sim) : le
+// paramètre « at » n'appartient pas à la Solar API et un onduleur réel
+// l'ignorera. Elle ne sert qu'au remplissage d'historique de développement,
+// jamais à l'acquisition courante.
+func (c *Client) GetPowerFlowRealtimeDataAt(ctx context.Context, at time.Time) (PowerFlowEnvelope, error) {
+	return c.getPowerFlow(ctx, &at)
+}
+
+func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnvelope, error) {
 	var out PowerFlowEnvelope
 
 	if c.timeout > 0 {
@@ -67,6 +82,11 @@ func (c *Client) GetPowerFlowRealtimeData(ctx context.Context) (PowerFlowEnvelop
 	}
 
 	endpoint := c.base.JoinPath(PowerFlowPath)
+	if at != nil {
+		q := url.Values{}
+		q.Set("at", at.Format(time.RFC3339))
+		endpoint.RawQuery = q.Encode()
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {

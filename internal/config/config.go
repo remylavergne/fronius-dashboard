@@ -194,7 +194,7 @@ func (c Config) CheckListenAddress() error {
 	if err != nil {
 		return fmt.Errorf("%s=%q : %w", httpAddrEnvVar, c.HTTPAddr, err)
 	}
-	if isLoopbackHost(host) {
+	if IsLoopbackHost(host) {
 		return nil
 	}
 	return fmt.Errorf(
@@ -202,7 +202,9 @@ func (c Config) CheckListenAddress() error {
 		c.HTTPAddr, allowRemoteEnvVar, authADRPath)
 }
 
-func isLoopbackHost(host string) bool {
+// IsLoopbackHost indique si un hôte désigne la machine locale : « localhost »
+// ou toute adresse de bouclage (127.0.0.0/8, ::1).
+func IsLoopbackHost(host string) bool {
 	if strings.EqualFold(strings.TrimSpace(host), "localhost") {
 		return true
 	}

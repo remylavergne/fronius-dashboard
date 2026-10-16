@@ -68,15 +68,15 @@
 - [x] Gérer fuseaux et changement d’heure Europe/Brussels
 - [ ] Définir rétention et purge programmée
 - [ ] Implémenter sauvegarde/restauration testée
-- [ ] Implémenter `/api/v1/health` et `/api/v1/system`
-- [ ] Implémenter `/api/v1/live` et `/api/v1/timeseries`
-- [ ] Implémenter `/api/v1/energy/daily` et `/api/v1/events`
-- [ ] Implémenter `/api/v1/capabilities` et paramètres non sensibles
-- [ ] Implémenter SSE ou polling selon ADR
-- [ ] Valider paramètres de plage/date/granularité
-- [ ] Paginer et borner requêtes volumineuses
+- [x] Implémenter `/api/v1/health` et `/api/v1/system`
+- [x] Implémenter `/api/v1/live` et `/api/v1/timeseries`
+- [x] Implémenter `/api/v1/energy/daily` et `/api/v1/events`
+- [x] Implémenter `/api/v1/capabilities` et paramètres non sensibles
+- [x] Implémenter SSE ou polling selon ADR
+- [x] Valider paramètres de plage/date/granularité
+- [x] Paginer et borner requêtes volumineuses
 - [ ] Générer OpenAPI et clients TS typés
-- [ ] Ajouter tests intégration API+SQLite
+- [x] Ajouter tests intégration API+SQLite
 
 ## 5 — UI React/shadcn
 
@@ -191,3 +191,14 @@
   `Sample.TS` ; un échec de persistance (`InsertSample`) n'écrit ni cycle ni événement de
   panne, car ce n'est pas une panne de l'appareil. « Logs expurgés » est satisfait par
   construction en phase 1 : le backend ne détient aucun identifiant Fronius.
+- 2026-10-16 — Étape 9 : `internal/api` et `cmd/froniusd`. Écart assumé : `/api/v1/health`
+  respecte l'enveloppe `{data, meta}` comme les six autres routes, alors que le point 11 de
+  vérification du plan lit `.collector.last_error` à la racine ; la lecture correcte est
+  `.data.collector.last_error`. Décisions : `/api/v1/live` renvoie 200 avec `data:null` et
+  `error.code=no_data` sur base vide (un état vide n'est pas une panne, et le client doit
+  pouvoir lire `no_data`) ; les erreurs ne portent pas de champ `data` ; une fenêtre UTC sur
+  `/energy/daily` peut inclure une journée locale partiellement couverte, comportement
+  documenté dans le handler. Chaîne complète vérifiée en direct : 34 560 points de backfill en
+  8 s, +1 point toutes les ~5 s, `stale` bascule après 30 s, arrêt du simulateur → 5 cycles en
+  échec sans aucune mesure inventée, `last_error` renseigné, `status: degraded`, redémarrage du
+  simulateur → reprise automatique avec événement `collector_recovered` sans redémarrer `froniusd`.

@@ -64,3 +64,15 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   (`collector_runs`), état du collecteur (`last_success_utc`, `last_error`),
   événements `collector_error` (anti-duplication par message) et
   `collector_recovered`. Aucun échantillon n'est inséré sur un cycle en échec.
+- 2026-10-16 — API REST (`internal/api`) : enveloppe `{data, meta}`, erreurs
+  `{error:{code,message}}`, routes `health`, `system`, `live`, `timeseries`,
+  `energy/daily`, `events`, `capabilities` ; 404/405 JSON ; `meta.sampled_at` /
+  `stale` / `stale_after_s` sur les endpoints de mesure ; validation de `from`,
+  `to`, `step` (dont `auto` borné à 1500 points), plage ≤ 366 j, `limit` ≤ 500 ;
+  service statique optionnel avec repli SPA sur `index.html`.
+- 2026-10-16 — Binaire `froniusd` (`cmd/froniusd`) : garde d'écoute non locale,
+  rétention appliquée au démarrage si `FRONTIUS_RETENTION_DAYS` est fixée,
+  remplissage d'historique (`--backfill-days`, refusé hors boucle locale sans
+  `--force-backfill`), collecteur en goroutine, API REST, arrêt propre sur
+  SIGINT/SIGTERM. Variante de client `GetPowerFlowRealtimeDataAt` (extension
+  simulateur `?at=`) réservée au remplissage d'historique.
