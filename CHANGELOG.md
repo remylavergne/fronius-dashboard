@@ -20,5 +20,10 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 - 2026-10-16 — Configuration (`internal/config`) : lecture exclusive par
   variables d'environnement `FRONIUS_*`, validation exhaustive (durées, entier,
   booléen, fuseau, URL, adresse d'écoute, niveau et format de log) avec
-  accumulation de toutes les erreurs, et garde `CheckListenAddress` qui refuse
+  accumulant toutes les erreurs, et garde `CheckListenAddress` qui refuse
   une écoute non locale sans `FRONIUS_ALLOW_REMOTE=1`.
+- 2026-10-16 — Erreurs typées (`internal/fronius/froniuserr`) : natures
+  `not_found`, `unauthorized`, `server`, `decode`, `timeout`, `transport`,
+  `device_status`, `readonly_violation` ; `errors.Is`/`errors.As` et `KindOf`.
+  Garde lecture seule (`internal/fronius/readonly.go`) : `ReadOnly` refuse
+  toute méthode autre que GET avant d'atteindre le transport.

@@ -149,3 +149,8 @@
   (« objectifs MVP vs phase 2 », « registre des inconnues ») dépendent respectivement de
   l'ADR 0004 (étape 6) et de `docs/UNKNOWNS.md` (étape 13) : elles seront cochées à ces
   étapes, pas ici.
+- 2026-10-16 — Étape 4 : `internal/fronius/froniuserr` (erreurs typées, `KindOf`,
+  `errors.Is` par nature) et `internal/fronius/readonly.go` (`ReadOnly` : refus structurel
+  de POST/PUT/PATCH/DELETE/HEAD, y compris requête nulle et transport nul). La garde sera
+  instanciée dans `froniusd` et `fronius-probe` ; un appel non-GET n'atteint jamais le
+  réseau.
