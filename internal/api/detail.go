@@ -52,6 +52,13 @@ type detailFamilyDTO struct {
 }
 
 type detailDTO struct {
+	// Source is the device the collector read from.
+	//
+	// It is published with the families because a reason is only actionable next
+	// to the source it came from: a page of `404` is a wrong source far more
+	// often than five missing endpoints, and the development default points at
+	// the simulator.
+	Source string `json:"source"`
 	// ReadAt is the most recent family read: the snapshot's age.
 	ReadAt   *string           `json:"read_at,omitempty"`
 	Families []detailFamilyDTO `json:"families"`
@@ -83,7 +90,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := detailDTO{Families: make([]detailFamilyDTO, 0, len(details))}
+	out := detailDTO{Source: s.cfg.SolarAPIURL, Families: make([]detailFamilyDTO, 0, len(details))}
 	var newest string
 	for _, d := range details {
 		family := detailFamilyDTO{

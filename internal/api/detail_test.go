@@ -17,6 +17,7 @@ import (
 
 type detailPayload struct {
 	Data struct {
+		Source   string  `json:"source"`
 		ReadAt   *string `json:"read_at"`
 		Families []struct {
 			Family    string          `json:"family"`
@@ -42,6 +43,11 @@ func TestDetailPublishesWhatWasRead(t *testing.T) {
 	}
 	if len(empty.Data.Families) != 0 {
 		t.Errorf("families = %d before any read, want none", len(empty.Data.Families))
+	}
+	// The source travels with the reasons: a page of 404s is only actionable
+	// next to the device the collector read from.
+	if empty.Data.Source == "" {
+		t.Error("the payload does not name the source the families were read from")
 	}
 	if empty.Data.ReadAt != nil {
 		t.Errorf("read_at = %v before any read, want absent", *empty.Data.ReadAt)

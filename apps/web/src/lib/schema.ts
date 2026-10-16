@@ -471,7 +471,8 @@ export const detailFamilySchema = z.object({
 export type DetailFamily = z.infer<typeof detailFamilySchema>
 
 export const detailSchema = z.object({
-  /** Absent when the collector has never read the detail at all. */
+
+  source: z.string().nullish(),  /** Absent when the collector has never read the detail at all. */
   read_at: timestamp.optional(),
   /** `null` and an absent key both mean "nothing was read" (nil slice). */
   families: z.array(detailFamilySchema).nullish(),

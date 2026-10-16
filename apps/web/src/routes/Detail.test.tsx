@@ -158,6 +158,7 @@ const cacheFamily: DetailFamily = {
 
 function fullPayload(): Detail {
   return {
+    source: 'http://192.0.2.10',
     read_at: READ_AT,
     families: [inverterFamily, systemFamily, networkFamily, devicesFamily, emrsFamily, cacheFamily],
   }
@@ -751,5 +752,48 @@ describe('detailEnvelopeSchema tolerance', () => {
 
     expect(detailEnvelopeSchema.safeParse({ data: { families: [family] }, meta: META }).success).toBe(true)
     expect(parseDetailFamilyData(family, detailCacheDataSchema)).toBeNull()
+  })
+})
+
+describe('DetailPage source', () => {
+  // The source is what makes a page of reasons actionable: a whole page of 404s
+  // is a wrong source far more often than five missing endpoints, and the
+  // development default is the simulator.
+  it('names the device the collector read from', () => {
+    mockDetail({ ...fullPayload(), source: 'http://192.0.2.10' })
+
+    render(<DetailPage />)
+
+    expect(screen.getByText(/Read from/)).toBeInTheDocument()
+    expect(screen.getByText('http://192.0.2.10')).toBeInTheDocument()
+  })
+
+  it('names a loopback source as the simulator it is', () => {
+    mockDetail({ ...fullPayload(), source: 'http://127.0.0.1:8081' })
+
+    render(<DetailPage />)
+
+    expect(screen.getByText('http://127.0.0.1:8081')).toBeInTheDocument()
+    expect(screen.getByText(/development simulator/)).toBeInTheDocument()
+    expect(screen.getByText(/make dev-device/)).toBeInTheDocument()
+  })
+
+  it('says nothing about a simulator when the source is a device', () => {
+    mockDetail({ ...fullPayload(), source: 'http://192.0.2.10' })
+
+    render(<DetailPage />)
+
+    expect(screen.queryByText(/development simulator/)).not.toBeInTheDocument()
+  })
+
+  it('renders without a source at all', () => {
+    const payload = fullPayload()
+    delete payload.source
+    mockDetail(payload)
+
+    render(<DetailPage />)
+
+    expect(screen.queryByText(/Read from/)).not.toBeInTheDocument()
+    expect(screen.getByText('Inverter')).toBeInTheDocument()
   })
 })

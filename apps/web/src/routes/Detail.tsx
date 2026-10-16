@@ -134,6 +134,21 @@ function SubSection({ label, children }: { label: string; children: ReactNode })
 }
 
 /**
+ * isLoopback says whether a source URL points at this machine.
+ *
+ * It only classifies the host the daemon was configured with: the simulator
+ * listens on the loopback interface, an inverter does not.
+ */
+function isLoopback(source: string): boolean {
+  try {
+    const host = new URL(source).hostname
+    return host === 'localhost' || host === '::1' || host.startsWith('127.')
+  } catch {
+    return false
+  }
+}
+
+/**
  * One family block.
  *
  * Three states, rendered distinctly: the body when the family is available, its
@@ -634,6 +649,19 @@ export function DetailPage() {
       <div className="space-y-2">
         <h1 className="text-lg font-semibold">{t('detail.title')}</h1>
         <p className="max-w-3xl text-sm text-muted-foreground">{t('detail.intro')}</p>
+        {/* The source travels with the reasons: a page of 404s is actionable
+            only next to the device the collector read from. A loopback source is
+            the development simulator — the cause of exactly that page of 404s —
+            so it is named as such instead of being left to be discovered. */}
+        {payload?.source ? (
+          <p className="text-xs text-muted-foreground">
+            {`${t('detail.source')}: `}
+            <span className="font-mono">{payload.source}</span>
+          </p>
+        ) : null}
+        {payload?.source && isLoopback(payload.source) ? (
+          <p className="max-w-3xl text-xs text-muted-foreground">{t('detail.loopbackHint')}</p>
+        ) : null}
         {detail.data && payload?.read_at ? (
           <p className="text-xs text-muted-foreground">
             {`${t('detail.readAt')}: ${formatDateTime(payload.read_at)}`}

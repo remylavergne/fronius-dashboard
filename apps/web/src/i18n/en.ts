@@ -229,6 +229,9 @@ export const en = {
   'detail.intro':
     'The collector reads these values from the device itself, on a slow cycle: they are recent, not live, and each block says when its family was read. A dash means the device reported no value for that field — never a zero. A family that was never read says so instead of showing empty tables.',
   'detail.readAt': 'Last read',
+  'detail.source': 'Read from',
+  'detail.loopbackHint':
+    'This is a local address: the collector is reading the development simulator, which does not serve these paths. Point FRONIUS_SOLARAPI_URL at the inverter — make dev-device DEVICE=http://<inverter> — then restart.',
   'detail.neverRead': 'Never read',
   'detail.neverReadHint':
     'The collector has not read the device detail yet: nothing here has been observed, and each family below says what is missing.',
