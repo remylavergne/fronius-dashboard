@@ -349,39 +349,49 @@ func TestComponentPresentRejectsNonCgiPath(t *testing.T) {
 }
 
 func TestPowerFlowDecodesTheInternalShape(t *testing.T) {
-	// Keys as the vendor client reads them (bundle l. 129034, 129043-129063); a
-	// real capture is still missing, so the values below are illustrative.
-	const body = `{
-	  "site": {"P_PV": 228.35, "P_Grid": null, "P_Load": null, "P_Akku": null,
-	           "E_Day": 4123.4, "E_Year": 4215488.4, "E_Total": 15089488.9},
-	  "inverters": {"1": {"DT": 1, "P": 185.58, "SOC": null}},
-	  "Smartloads": {"Ohmpilots": {}}
-	}`
+	// Keys as the vendor client reads them (bundle l. 129034, 129043-129063). The
+	// reference device sends `inverters` as an ARRAY (observed 2026-10-16: it
+	// answered 200 with an array, which a map-shaped DTO rejected); the object
+	// form is also accepted, since the vendor client cannot tell the two apart.
+	const siteOnly = `{"site": {"P_PV": 228.35, "P_Grid": null, "P_Load": null,
+	           "P_Akku": null, "E_Day": 4123.4, "E_Year": 4215488.4, "E_Total": 15089488.9}}`
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, body)
-	}))
-	defer srv.Close()
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "inverters as an array, as the device sends it",
+			body: `{"site": {"E_Day": 4123.4, "E_Year": 4215488.4, "P_Grid": null},
+			        "inverters": [{"DT": 1, "P": 185.58, "SOC": null}],
+			        "Smartloads": {"Ohmpilots": {}}}`},
+		{name: "inverters as an index-keyed object",
+			body: `{"site": {"E_Day": 4123.4, "E_Year": 4215488.4, "P_Grid": null},
+			        "inverters": {"1": {"DT": 1, "P": 185.58}}}`},
+		{name: "site alone, without any inverters member", body: siteOnly},
+	}
 
-	pf, err := newClient(t, srv.URL, &http.Client{}).PowerFlow(context.Background())
-	if err != nil {
-		t.Fatalf("PowerFlow: %v", err)
-	}
-	if pf.Site.E_Day == nil || *pf.Site.E_Day != 4123.4 {
-		t.Fatalf("site.E_Day = %v", pf.Site.E_Day)
-	}
-	if pf.Site.E_Year == nil || *pf.Site.E_Year != 4215488.4 {
-		t.Fatalf("site.E_Year = %v", pf.Site.E_Year)
-	}
-	// A null stays nil: no invented zero.
-	if pf.Site.P_Grid != nil || pf.Site.P_Akku != nil {
-		t.Fatalf("null powers must stay nil: %+v", pf.Site)
-	}
-	if len(pf.Inverters) != 1 || pf.Inverters["1"].P == nil || *pf.Inverters["1"].P != 185.58 {
-		t.Fatalf("inverters = %+v", pf.Inverters)
-	}
-	if pf.Inverters["1"].SOC != nil {
-		t.Fatalf("SOC must stay nil: %v", pf.Inverters["1"].SOC)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			pf, err := newClient(t, srv.URL, &http.Client{}).PowerFlow(context.Background())
+			if err != nil {
+				t.Fatalf("PowerFlow: %v", err)
+			}
+			if pf.Site.E_Day == nil || *pf.Site.E_Day != 4123.4 {
+				t.Fatalf("site.E_Day = %v", pf.Site.E_Day)
+			}
+			if pf.Site.E_Year == nil || *pf.Site.E_Year != 4215488.4 {
+				t.Fatalf("site.E_Year = %v", pf.Site.E_Year)
+			}
+			// A null stays nil: no invented zero.
+			if pf.Site.P_Grid != nil || pf.Site.P_Akku != nil {
+				t.Fatalf("null powers must stay nil: %+v", pf.Site)
+			}
+		})
 	}
 }
 

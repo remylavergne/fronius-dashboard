@@ -30,7 +30,7 @@ Solar API client (one path). `cmd/fronius-probe` accepts nothing else
 | `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (registry, interval 10 000 ms) + l. 183060 (variant `?sync=true`, without header); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. Fields read: see the extraction table |
 | `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76035 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
 | `/components/BatteryManagementSystem/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76032 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
-| `/status/powerflow` | GET | READ | `Default` | `[SOURCE-JS]` l. 76036 (`aYRN` registry, interval 5 000 ms) + l. 129034, 129049-129063 (consumed fields); **called** by the application as a **fallback** for the day and year energies that the Solar API returns as `null` on 1.19.7-1 (unknown #13). The Digest flag `true` describes the *official client* (`callGet$`), not this device: the capture of 2026-10-16 proved firmware 1.19.7-1 answers everything without a challenge. `[VERIFIED]` on the simulator (which does **not** reproduce the `null` case); **not captured on hardware yet** ⇒ the field values are `[HYPOTHESIS]`, captured by `--endpoint /status/powerflow` |
+| `/status/powerflow` | GET | READ | `Default` | `[SOURCE-JS]` l. 76036 (`aYRN` registry, interval 5 000 ms) + l. 129034, 129049-129063 (consumed fields); **called** by the application as a **fallback** for the day and year energies that the Solar API returns as `null` on 1.19.7-1 (unknown #13). The Digest flag `true` describes the *official client* (`callGet$`), not this device: the capture of 2026-10-16 proved firmware 1.19.7-1 answers everything without a challenge. `[VERIFIED]` on the simulator (which does **not** reproduce the `null` case); **partially observed on hardware** 2026-10-16 (firmware 1.19.7-1: `200`, 372 bytes, `inverters` is an **array** — a member the application does not read, kept as raw JSON); the field **values** are still `[HYPOTHESIS]`, promoted by `--endpoint /status/powerflow --save` |
 
 Note: in the official client, **two paths** exist — with an `Authorization`
 header (module `aYRN`, polled registry) and without (module `yTJA`, status
@@ -44,8 +44,10 @@ On the reference device, however, **neither route challenges**: on firmware
 answered `200` without an
 `Authorization` header, so the with/without-header distinction is a bundle fact
 only and is not observable on this installation. The sixth entry,
-`/status/powerflow`, added later, has not been captured on hardware yet: it is
-served by the simulator but its shape remains `[HYPOTHESIS]`.
+`/status/powerflow`, added later, has been observed on hardware but not captured in
+full: the device answers `200` with `inverters` as an array, and the day and year
+energies are the only members the application reads. The fixture values stay
+`[HYPOTHESIS]` until a probe run saves the body.
 
 ## Paths explicitly set aside
 
@@ -393,7 +395,7 @@ replayed on the hardware.
 | `/status/activeEvents` | `GET` (imposed by the guard) | none | same | same | none: event read |
 | `/components/PowerMeter/readable` | `GET` (imposed by the guard) | none | same | same | none: state read |
 | `/components/BatteryManagementSystem/readable` | `GET` (imposed by the guard) | none | same | same | none: state read |
-| `/status/powerflow` | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: 200 with and without header (mirrors its own Solar API numbers); **hardware**: not yet captured | none: read; **fallback** for the day and year energies the Solar API returns as `null` (unknown #13) |
+| `/status/powerflow` | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: 200 with and without header (mirrors its own Solar API numbers); **hardware**: 200 observed 2026-10-16 (372 bytes, `inverters` an array); body not saved | none: read; **fallback** for the day and year energies the Solar API returns as `null` (unknown #13) |
 | **`READ` paths now extracted**: `/status/*` (17 lines), `/components/*/readable` (5), `/commands/*` reads (10), `/config/*` reads (24) | `GET`, except `POST` for `/commands/ConnectedPowermeter` and for the `/config/*` write | per path: see "Method, arguments and DTO per path" | Angular display roles `[SOURCE-JS]`, unproven at this stage; `user: "customer"` declared on `/commands/GetUTCTime` alone | **none** | none expected (read); `[OBSERVED-CONVERSATION]`: `GET` 200 on the four `/config/*` paths already tried |
 | `/config/*` writes (24 paths) | `POST` observed (l. 161428) | per path: see the extraction table | logged-in account (`fallback`, l. 161428) — server role unknown | **none** | configuration change; `DANGEROUS` for `gridcode`, `pcc`, `powerlimits`, `modbus`, `setup/*` |
 | `/commands/*` mutations (17 paths: `ActivatePasswords`, `ConfirmEvent`, `CreateSDPFile`, `LicenseExchange`, `Login`, `Logout`, `ScanAvailableWlan`, `SetPassword`, `SetUTCTime`, `SetWPSActive`, `StandbyRequestState`, `VerifyVCode`, …) | `GET`/`POST` depending on the command `[SOURCE-JS]` | variable | variable depending on the command | **none** | state, session, file or preference modification |

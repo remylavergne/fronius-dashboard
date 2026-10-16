@@ -173,6 +173,20 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-16 — **`/status/powerflow`: `inverters` is an array on the device, not an
+  index-keyed object** (`internal/fronius/internalapi`). The bundle could not
+  settle the question — the vendor client reads that member through
+  `Object.keys`/`Object.values`, which accept both an array and a map — and the DTO
+  had modelled a map, so the fallback failed on hardware with
+  `json: cannot unmarshal array into ... PowerFlow.inverters` and the day and year
+  energies stayed empty. Only `site` is modelled now, since only those two energies
+  are consumed; `inverters` is kept as raw JSON, so no shape is presumed for a
+  member the application does not read. The fixture and the simulator both use the
+  array form observed on the device, and the client test accepts both.
+  The registers (`docs/ENDPOINTS.md`, `docs/PROBE-READONLY.md`, `docs/SOURCES.md`,
+  `docs/UNKNOWNS.md` #2/#13) now say "observed on hardware, body not saved"
+  instead of "not captured".
+
 - 2026-10-16 — **A refusal received after a Digest challenge is no longer reported
   as an absent endpoint** (`internal/fronius/digest`, `internal/detect`). When the
   device answers `401` with a challenge and then refuses the *authenticated*

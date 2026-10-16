@@ -106,7 +106,7 @@ var whitelist = []endpoint{
 		path:           internalapi.PowerFlowPath,
 		classification: "READ",
 		digest:         true,
-		note:           "Internal flow measurement: day and year energy (site.E_Day, site.E_Year), which the Solar API nulls on firmware 1.19.7-1. Shape NOT captured yet: this is the expected capture",
+		note:           "Internal flow measurement: day and year energy (site.E_Day, site.E_Year), which the Solar API nulls on firmware 1.19.7-1. Observed on hardware (200, inverters an array) but never saved: this is the expected capture",
 	},
 }
 

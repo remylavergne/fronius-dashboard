@@ -65,9 +65,10 @@ answered
 false` for each); no `401` was issued, so the Digest path was never exercised.
 `FRONIUS_DEVICE_USER`/`FRONIUS_DEVICE_PASSWORD` are not needed here. A sixth
 path, `/status/powerflow` (the day/year energy fallback, #13), was added to the
-allowlist later and is **not captured yet**, but the capture proved that this
-firmware answers every path without a challenge (`digest_required: false`), so
-the same is expected of it.
+allowlist later: it was **observed** on hardware on 2026-10-16 (`200`, without any
+challenge, `inverters` an array), though its body was not saved. The capture also
+proved that this firmware answers every path without a challenge
+(`digest_required: false`), so the same is expected of it.
 
 **Decision.** The Digest transport stays composed in front of both clients and
 always sends the **bare** request first. It remains implemented and tested, but

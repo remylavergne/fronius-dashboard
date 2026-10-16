@@ -157,7 +157,10 @@ type powerFlowJSON struct {
 		PLoad  *float64 `json:"P_Load"`
 		PPV    *float64 `json:"P_PV"`
 	} `json:"site"`
-	Inverters map[string]struct {
+	// Inverters is an ARRAY, as the reference device sends it (observed
+	// 2026-10-16); the bundle could not tell, its client reading this member with
+	// Object.keys/Object.values.
+	Inverters []struct {
 		DT  int      `json:"DT"`
 		P   *float64 `json:"P"`
 		SOC *float64 `json:"SOC"`
@@ -182,11 +185,11 @@ func (s *simulator) powerFlowBody() powerFlowJSON {
 		out.Site.PLoad = new(load)
 		out.Site.PGrid = new(round1(snap.PowerW - load))
 	}
-	out.Inverters = map[string]struct {
+	out.Inverters = []struct {
 		DT  int      `json:"DT"`
 		P   *float64 `json:"P"`
 		SOC *float64 `json:"SOC"`
-	}{"1": {DT: 1, P: new(snap.PowerW)}}
+	}{{DT: 1, P: new(snap.PowerW)}}
 	out.Smartloads.Ohmpilots = map[string]any{}
 	return out
 }

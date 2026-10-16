@@ -234,7 +234,7 @@ nor the method, nor the permissions.
 | Path | Method | Auth | Proof status |
 |---|---|---|---|
 | `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16): `200 OK`, no `Authorization`, schema captured (§ Shape of the Solar API v1 response); **absent from the bundle** |
-| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **called** by the application as a **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13). Shape still `[HYPOTHESIS]`: served by `cmd/fronius-sim`, not yet captured on hardware |
+| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **called** by the application as a **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13). Served by `cmd/fronius-sim`; **observed** on hardware 2026-10-16 (`200`, 372 bytes, `inverters` an **array** — the bundle could not tell, its client reading that member through `Object.keys`/`Object.values`) but **not saved**, so the fixture values stay `[HYPOTHESIS]` |
 | `/status/version` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 183050 (`yTJA` route, without a header — **this path is not in the `aYRN` registry**); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`). Provides `serialNumber`, `numberOfPhases`, `devicegroup`, `swrevisions` |
 | `/status/activeEvents` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76030 (10,000 ms interval); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, root array). Fields read listed in `docs/ENDPOINTS.md` |
 | `/components/PowerMeter/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76035 (envelope `Cgi`); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no meter**). Presence deduced from `Body.Data` |
@@ -252,7 +252,7 @@ captures):
   allowlisted at that time answered `200` with no `Authorization` header and no `401`, so the Digest
   "after 401" machinery is never exercised by this device (`docs/UNKNOWNS.md` #2
   resolved). The sixth path, `/status/powerflow`, was added later and is not
-  captured yet.
+  captured in full yet.
 - Real names of the **model** and the **firmware** in `/status/version` → **captured**:
   `swrevisions.GEN24` = `1.19.7-1` (the key read by the application), `numberOfPhases`
   = `1`, `devicegroup` = `P6RW`; **no model key exists**, so `Model` stays empty and

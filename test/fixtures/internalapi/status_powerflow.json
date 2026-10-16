@@ -10,13 +10,13 @@
     "rel_Autonomy": null,
     "rel_SelfConsumption": null
   },
-  "inverters": {
-    "1": {
+  "inverters": [
+    {
       "DT": 1,
       "P": 185.58811950683594,
       "SOC": null
     }
-  },
+  ],
   "Smartloads": {
     "Ohmpilots": {}
   },
@@ -24,6 +24,6 @@
     "synthetic": true,
     "source": "hand-written from the bundle extraction (docs/ENDPOINTS.md)",
     "confidence": "HYPOTHESIS",
-    "note": "Shape taken from the keys the vendor interface reads on /status/powerflow (bundle l. 129034 and l. 129043-129063): site.P_PV/P_Grid/P_Load/P_Akku/E_Day/E_Year/E_Total, inverters.<id>.SOC, Smartloads.Ohmpilots.<id>.P_AC_Total. The VALUES are illustrative and not captured: promote this fixture with one more probe run (docs/PROBE-READONLY.md § 8) before treating it as contractual."
+    "note": "Shape taken from the keys the vendor interface reads on /status/powerflow (bundle l. 129034 and l. 129043-129063): site.P_PV/P_Grid/P_Load/P_Akku/E_Day/E_Year/E_Total, inverters, Smartloads.Ohmpilots. The reference device was observed on 2026-10-16 answering with `inverters` as an ARRAY (the bundle could not tell: the vendor client uses Object.keys/Object.values, which accept arrays and objects alike), and this fixture follows the observation. The VALUES remain illustrative: promote the fixture with a probe run (docs/PROBE-READONLY.md § 8) before treating it as contractual."
   }
 }

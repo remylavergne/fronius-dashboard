@@ -41,7 +41,7 @@ The probe can only emit the requests of its allowlist, frozen in the binary
 | `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
 | `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
-| `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); shape still `[HYPOTHESIS]` — not captured yet |
+| `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); observed on hardware on 2026-10-16 (200, `inverters` an array) but the body was not saved — the fixture values stay `[HYPOTHESIS]` until this capture is taken |
 
 **Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
 of the allowlist at that time answered `200` on the **bare** request — no
@@ -53,7 +53,8 @@ and residual points: `docs/UNKNOWNS.md`, `docs/SOURCES.md`.
 
 Since then, the allowlist has a sixth entry, `/status/powerflow` (fallback for
 the day and year energies the Solar API returns as `null`, unknown #13), added
-later and **not yet captured** on hardware. The simulator now also serves that
+later and **not yet captured in full** on hardware: the device answers `200`, but no
+body has been saved yet, so its fixture values stay `[HYPOTHESIS]`. The simulator now also serves that
 path — mirroring its own Solar API numbers, it does **not** reproduce the `null`
 case (the captured fixture does) — so a probe rehearsal against the simulator
 answers **six** paths with `200`.
@@ -78,7 +79,8 @@ kept as the record of what each capture had to settle:
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
 in § 8), exactly one further path has been added to the allowlist —
 `/status/powerflow`, the fallback for the day and year energies the Solar API
-returns as `null` (#13) — and it is not captured yet. The rule for adding
+returns as `null` (#13) — and its body is not captured yet (the device answers `200`,
+but nothing has been saved). The rule for adding
 remains a metric that the Solar API does not provide, and a metric is not chosen
 from an inventory (ADR 0008).
 

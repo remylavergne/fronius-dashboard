@@ -285,15 +285,19 @@ func (c *Client) ActiveEvents(ctx context.Context) ([]json.RawMessage, error) {
 
 // PowerFlow is the internal flow measurement of /status/powerflow.
 //
-// Shape provenance: the vendor interface reads exactly these keys to draw its
-// flow view (bundle l. 129034, 129043-129063), but this path has NOT been
-// captured on hardware yet, so every field is a pointer and the DTO stays
-// deliberately small: only what the application consumes is modelled, and an
-// unknown key is ignored. Field names follow the protocol (`P_PV`, `E_Day`) so
-// that a tag divergence stands out on rereading.
+// Shape provenance: the vendor interface reads these keys to draw its flow view
+// (bundle l. 129034, 129043-129063), and the reference device answered on
+// 2026-10-16 with `inverters` as an ARRAY — the bundle could not settle that,
+// since the vendor client reads it through Object.keys/Object.values, which
+// accept both an array and an index-keyed object. Only `site` is modelled here,
+// because only the day and year energies are consumed; `inverters` is kept as raw
+// JSON, so no shape is presumed for a member the application does not read.
+//
+// Field names follow the protocol (`P_PV`, `E_Day`) so that a tag divergence
+// stands out on rereading, and every value is a pointer: absent stays nil.
 type PowerFlow struct {
-	Site      PowerFlowSite                `json:"site"`
-	Inverters map[string]PowerFlowInverter `json:"inverters"`
+	Site      PowerFlowSite   `json:"site"`
+	Inverters json.RawMessage `json:"inverters"`
 }
 
 // PowerFlowSite is the site measurement point of the internal flow view.
@@ -307,12 +311,7 @@ type PowerFlowSite struct {
 	E_Total *float64 `json:"E_Total"`
 }
 
-// PowerFlowInverter is one inverter of the internal flow view.
-type PowerFlowInverter struct {
-	P   *float64 `json:"P"`
-	SOC *float64 `json:"SOC"`
-}
-
+// powerFlowHasContent reports whether the payload carries any expected key.
 // PowerFlow reads /status/powerflow (Default envelope: the body is the payload).
 //
 // A body that carries none of the expected keys is a decode error, not an empty
@@ -331,8 +330,7 @@ func (c *Client) PowerFlow(ctx context.Context) (PowerFlow, error) {
 	if err := json.Unmarshal(body, &pf); err != nil {
 		return PowerFlow{}, jsonDecodeError(ep.Path, err)
 	}
-	if pf.Site.P_PV == nil && pf.Site.E_Day == nil && pf.Site.E_Year == nil &&
-		pf.Site.E_Total == nil && len(pf.Inverters) == 0 {
+	if !powerFlowHasContent(pf) {
 		return PowerFlow{}, &froniuserr.Error{
 			Kind:     froniuserr.KindDecode,
 			Endpoint: ep.Path,
@@ -340,6 +338,12 @@ func (c *Client) PowerFlow(ctx context.Context) (PowerFlow, error) {
 		}
 	}
 	return pf, nil
+}
+
+func powerFlowHasContent(pf PowerFlow) bool {
+	return pf.Site.P_PV != nil || pf.Site.P_Grid != nil || pf.Site.P_Load != nil ||
+		pf.Site.P_Akku != nil || pf.Site.E_Day != nil || pf.Site.E_Year != nil ||
+		pf.Site.E_Total != nil || len(pf.Inverters) > 0
 }
 
 // ---------------------------------------------------------------------------
