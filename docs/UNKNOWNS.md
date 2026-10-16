@@ -9,14 +9,14 @@ dans `docs/SOURCES.md`.
 |---|---|---|---|
 | 1 | Forme du JSON de `GetPowerFlowRealtimeData` | `[HYPOTHÈSE]` encodée dans `dto.go`, décodage tolérant, fixtures marquées synthétiques | une capture réelle par `cmd/fronius-probe` et la promotion des fixtures |
 | 2 | Authentification **de la Solar API** sur le firmware 1.19.7-1 | `[À-TESTER]` : le client n'en envoie aucune ; les chemins internes, eux, sont authentifiés après un 401 | une réponse 401/403 de la sonde sur le chemin Solar API |
-| 3 | **Source partielle** de l'identité de l'onduleur | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur : `/status/version` est la source nommée, et l'extraction établit les champs **lus** (`serialNumber`, `numberOfPhases`, `devicegroup`, `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID` — voir `docs/ENDPOINTS.md`) ; l'application n'en consomme que trois, `modelName`/`firmwareVersion` restant des **candidats** non observés dans le bundle. `device: null` tant qu'aucune lecture n'a abouti ; `device.identity` indisponible avec motif sinon | une capture réelle : confirmer les noms des clés de modèle et de firmware, puis les placer en tête des listes candidates |
+| 3 | **Source partielle** de l'identité de l'onduleur | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur : `/status/version` est la source nommée. **Résolu par l'extraction** : la version logicielle se lit sur le chemin prouvé `swrevisions.GEN24` (l. 128882, 135137), que le client officiel affiche comme version courante — l'application l'utilise désormais (`firmwareOf`). Champs prouvés : `serialNumber`, `numberOfPhases`, `devicegroup`, `hwrevisions.FAMILYID`, et `hardwareId`/`devicename`/`articleNumber` (lus, non exposés). **Reste ouvert** : aucune clé de **modèle** n'est observée ⇒ `Model` reste `nil` (le groupe d'appareil n'est plus employé comme repli), et les trois champs extraits ne sont pas exposés jusqu'à l'écran — les brancher coûte 14 fichiers dont une migration SQL, décision reportée faute de consommateur (ADR 0008) | une capture réelle de `/status/version` : confirmer la version, trancher sur l'existence d'une clé de modèle |
 | 4 | Présence d'un Fronius Smart Meter | détectée par l'enveloppe `Cgi` de `/components/PowerMeter/readable` : `Body.Data` non vide ⇒ présent, vide ⇒ absent, illisible ⇒ **non déterminé** (jamais « absent »). La détection ne dépend d'aucun champ nommé ; l'extraction relève en revanche les champs utilisables ensuite (`channels` : 23 signaux `SMARTMETER_*`, `attributes.addr`, `attributes["[ENABLE]"]` — `docs/ENDPOINTS.md`) | une capture réelle de `/components/PowerMeter/readable` |
 | 5 | Présence d'une batterie et état de charge | présence : même règle que #4 sur `/components/BatteryManagementSystem/readable` ; `battery.soc` reste **indisponible** dans l'application — décision de périmètre inchangée. Nuance apportée par l'extraction : le client officiel **lit bien** un état de charge relatif, `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` en `%`, dans `channels` de ce chemin (l. 128986), et aussi `inverters[<id>].SOC` dans `/status/powerflow` (l. 129053) : la preuve d'existence d'une mesure existe donc côté API interne, sans qu'aucune lecture n'ait été faite sur l'appareil | une capture réelle, puis une décision explicite (justification par une métrique indisponible en Solar API) avant toute lecture de l'état de charge |
 | 6 | Matrice de permissions par endpoint et par rôle | l'extraction (voir `docs/ENDPOINTS.md`) établit le **rôle déclaré par le client** — condition d'affichage, jamais une autorisation : `_isUserAllowed` (l. 75972-75984) accorde `customer` à `customer \| technician \| support`, et `technician`/`support` à `technician \| support` ; **une seule** entrée du registre déclare `user: "customer"` (`/commands/GetUTCTime`, l. 76039). Elle établit aussi le **compte envoyé** (`_getUserAndPass`, l. 46807-46813 : compte du groupe de requêtes, sauf `Login` en `passwordUser`) — **aucune permission serveur n'est prouvable depuis un bundle**. Décision inchangée : la **liste blanche du code** (`internal/fronius/internalapi/allowlist.go`) est la seule autorisation exécutable : quatre chemins internes, `READ`, GET ; les 79 autres sont inventoriés pour être évités | un compte de test et des captures HTTP par rôle (401 / 403 / 200) ; voir `docs/ENDPOINTS.md` |
 | 7 | Récupération d'un accès Technician | aucun secret ni moyen autonome confirmé ; **aucune tentative** | procédure officielle du fabricant, documentation de l'installateur |
 | 8 | En-tête de défi non standard `x-www-authenticate` | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur **et** client tiers : un seul retry sur 401, défi lu d'abord dans l'en-tête non standard, `www-authenticate` en repli | l'appareil réel, pour confirmer qu'il utilise bien l'en-tête non standard |
 | 9 | Détection dynamique du matériel | **implémentée** : `internal/detect` interroge les quatre chemins, la détection est persistée puis injectée dans `model.Capabilities(detection)` | la levée de #3, #4 et #5 par capture matérielle |
-| 11 | Forme de `/status/activeEvents` | l'extraction établit les champs **lus** par le client : `severity`, `viewer`, `uuid`, `timestamp`, `activeUntil`, `category`, `confirmable`, `label`, `sourceID`, `prefix`, `eventID` (l. 135689-135701, 164699 ; charge utile = tableau, `for (const n of t)` l. 135689). Les clés employées par **l'application** (`code`, `state`, `severity`, `level`, `message`, `text`) restent des **candidats**, dont seul `severity` recoupe le client. Le JSON brut est conservé (borné à 2 048 octets) et la déduplication repose sur `code`, puis `state`, puis l'empreinte SHA-256 du JSON — donc aucune information n'est perdue | une capture réelle : elle indiquera les clés de message et de sévérité et permettra d'aligner la liste candidate sur les champs observés |
+| 11 | Forme de `/status/activeEvents` | **Résolu par l'extraction et appliqué** : charge utile = tableau d'objets ; `severity` est un **entier** (1 erreur, 2 avertissement, 3 information, l. 135728-135733) — avant correction, seules des chaînes étaient reconnues et tout événement matériel était classé « information » ; l'identité d'instance est `uuid`, sinon `prefix`-`eventID` (l. 135693, 164699) — dédupliquer sur `code` seul faisait perdre un second événement de même type ; le texte affiché est `label` (l. 135654). Les clés `code`, `state`, `level`, `message`, `text`, `description` restent des **candidats de secours**, et `viewer`, `category`, `confirmable`, `activeUntil`, `sourceID`, `timestamp` sont conservés dans `Detail` (JSON brut borné à 2 048 octets) sans être interprétés | une capture réelle : confirmer noms et types, la sémantique de `viewer` (le client y voit un niveau d'audience, l. 135709-135717) et le fait que `label` porte bien un texte lisible |
 | 12 | Signature du défi Digest (`cnonce="NaN"`) | non reproduite : le client officiel émet `NaN` par un bug de conversion ; nous émettons un `cnonce` aléatoire de 16 caractères hexadécimaux | si l'appareil refuse malgré tout, remplacer par la constante `"NaN"` (repli documenté dans `CHANGELOG.md`) |
 | 10 | Valeurs aberrantes de l'appareil | **aucun filtrage** : une valeur reçue est enregistrée telle quelle ; seules les valeurs *absentes* sont distinguées | un besoin réel observé (dérive, pic, compteur qui recule) et une règle explicite |
 
@@ -54,19 +54,29 @@ aucun en-tête n'est ajouté et le comportement reste celui de la phase 1.
 `[SOURCE-PDF]`. Côté HTTP, `/status/version` est la source nommée par le client
 officiel (voie sans en-tête, module `yTJA`, l. 183050), et l'extraction y relève
 les champs **lus** : `serialNumber`, `numberOfPhases`, `devicegroup`, `hardwareId`,
-`devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID`. Ni
-`modelName` ni `firmwareVersion` n'y figurent : ce sont des candidats de
-l'application.
+`devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID`.
+
+**Résolu pour la version logicielle.** `swrevisions.GEN24` (l. 128882, 135137) est
+la clé que le client officiel affiche comme version courante : elle passe
+désormais avant les candidats plats `firmwareVersion`/`firmware`/`version`, et le
+test `TestVersionExtractsKnownAndCandidateKeys` couvre les deux chemins. Aucune
+clé de **modèle** n'étant observée, `Model` reste `nil` : le groupe d'appareil
+(`devicegroup`) n'est plus employé comme repli, car c'est un champ frère d'une
+autre nature (l. 183035).
 
 **Décision.** L'identité est lue par `internal/detect` et persistée dans la table
-`device`. `modelName` et `firmwareVersion` — candidats non prouvés — sont
-extraits par liste ordonnée de clés, et une clé absente donne `null`, jamais
-`""` ni « inconnu ». Sans lecture aboutie, `GET /api/v1/system` renvoie
-`device: null` et une détection `unknown` avec son motif : le PDF n'est jamais
-recopié, il décrit un instant, pas une mesure.
+`device`. Les clés non prouvées sont extraites par liste ordonnée de candidats, et
+une clé absente donne `null`, jamais `""` ni « inconnu ». Les trois champs extraits
+mais sans consommateur (`hardwareId`, `devicename`, `articleNumber`) ne sont pas
+persistés : les exposer coûte 14 fichiers dont une migration SQL (`0004`), coût
+mesuré et décision reportée tant qu'aucun besoin ne les nomme (ADR 0008). Sans
+lecture aboutie, `GET /api/v1/system` renvoie `device: null` et une détection
+`unknown` avec son motif : le PDF n'est jamais recopié, il décrit un instant, pas
+une mesure.
 
 **Ce qui la lèverait.** Une capture réelle de `/status/version` par
-`cmd/fronius-probe --endpoint /status/version`.
+`cmd/fronius-probe --endpoint /status/version` (§ `docs/PROBE-READONLY.md`) :
+confirmer la version, trancher sur l'existence d'une clé de modèle.
 
 ## 4 et 5. Smart Meter et batterie
 

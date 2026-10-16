@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -314,15 +315,33 @@ func firstCause(d model.Detection) string {
 
 // eventKey fabrique la clé d'anti-duplication d'un événement brut.
 //
-// Priorité : `code`, puis `state`, puis l'empreinte SHA-256 du JSON brut. Le
-// préfixe « device: » évite toute collision avec une autre famille de clés.
+// Priorité, établie par l'extraction du bundle (docs/ENDPOINTS.md) : `uuid` —
+// l'identité d'instance du client officiel, qu'il compare pour détecter un
+// changement d'état (l. 135742) et qu'il renvoie à `/commands/ConfirmEvent`
+// (l. 135760) —, puis `prefix`-`eventID` (même identité, forme concaténée,
+// l. 164699), puis `code`, puis `state`, puis l'empreinte SHA-256 du JSON brut.
+//
+// `code` est un code de *type* : seul, il fait collisionner deux événements
+// actifs du même type, dont le second ne serait jamais notifié. D'où la priorité
+// donnée aux identifiants d'instance. Conséquence assumée de ce changement
+// d'ordre : un événement déjà vu sous une clé `code` est notifié une fois de plus
+// après mise à jour, la première fois qu'il porte un `uuid`.
+//
+// Le préfixe « device: » évite toute collision avec une autre famille de clés.
 func eventKey(raw json.RawMessage) (string, error) {
 	var fields map[string]any
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return "", fmt.Errorf("événement de l'appareil illisible: %w", err)
 	}
+	if uuid := identifierField(fields, "uuid"); uuid != "" {
+		return "device:" + uuid, nil
+	}
+	prefix, eventID := identifierField(fields, "prefix"), identifierField(fields, "eventID")
+	if prefix != "" && eventID != "" {
+		return "device:" + prefix + "-" + eventID, nil
+	}
 	for _, key := range []string{"code", "state"} {
-		if v, ok := fields[key].(string); ok && strings.TrimSpace(v) != "" {
+		if v := identifierField(fields, key); v != "" {
 			return "device:" + v, nil
 		}
 	}
@@ -330,7 +349,35 @@ func eventKey(raw json.RawMessage) (string, error) {
 	return "device:" + hex.EncodeToString(sum[:])[:16], nil
 }
 
+// identifierField retourne un champ d'identité sous forme de chaîne, ou "".
+//
+// `uuid`, `code` et `state` sont des chaînes, mais `eventID` peut être un nombre :
+// le client officiel concatène les deux formes sans distinction
+// (`${t.prefix}-${t.eventID}`, l. 164699). Un nombre entier est donc rendu tel
+// quel ; toute autre forme est ignorée plutôt que devinée.
+func identifierField(fields map[string]any, key string) string {
+	switch v := fields[key].(type) {
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		if v == float64(int64(v)) {
+			return strconv.FormatInt(int64(v), 10)
+		}
+	}
+	return ""
+}
+
 // deviceEvent construit l'événement persisté à partir du JSON brut.
+//
+// L'horodatage est celui du **collecteur**, pas celui de l'appareil : `timestamp`
+// et `activeUntil` de la charge utile sont des secondes d'horloge appareil
+// (l. 135694-135695), et cette horloge est précisément l'inconnue qui justifie
+// `/commands/GetUTCTime` ; `TS` est l'axe de tri et de rétention de la base, il
+// reste donc local. Les champs observés sans consommateur ici (`category`,
+// `viewer`, `confirmable`, `activeUntil`, `sourceID`) restent intégralement dans
+// `Detail`, qui conserve le JSON brut. Aucun filtrage sur `confirmable` n'est
+// appliqué : masquer des événements demanderait une règle observée, pas une
+// supposition.
 func deviceEvent(now time.Time, raw json.RawMessage) model.Event {
 	var fields map[string]any
 	_ = json.Unmarshal(raw, &fields) // la forme peut être inattendue : le détail brut reste conservé
@@ -344,28 +391,79 @@ func deviceEvent(now time.Time, raw json.RawMessage) model.Event {
 	}
 }
 
-// severityOf mappe la sévérité annoncée. Les clés `severity` et `level` sont des
-// CANDIDATS : la forme réelle n'est pas établie (docs/UNKNOWNS.md).
+// severityOf mappe la sévérité annoncée d'un événement.
+//
+// L'extraction du bundle établit la forme réelle : `severity` est un **entier**,
+// `getEventLevel` (l. 135728-135733) mappant 1 → erreur, 2 → avertissement,
+// 3 → information. Avant cette extraction, seules des chaînes étaient lues : un
+// événement matériel réel était donc **toujours** classé « information ». Les
+// libellés texte restent acceptés par tolérance (simulateur, fixtures) ainsi que
+// `level` comme clé de secours, et la première clé interprétable gagne. Une
+// valeur absente ou inconnue reste « information » : aucune gravité n'est
+// inventée.
 func severityOf(fields map[string]any) model.Severity {
 	for _, key := range []string{"severity", "level"} {
-		v, ok := fields[key].(string)
-		if !ok {
-			continue
-		}
-		lower := strings.ToLower(v)
-		switch {
-		case strings.Contains(lower, "warn"):
-			return model.SeverityWarning
-		case strings.Contains(lower, "error"), strings.Contains(lower, "fault"), strings.Contains(lower, "alert"):
-			return model.SeverityError
+		if s, ok := severityValue(fields[key]); ok {
+			return s
 		}
 	}
 	return model.SeverityInfo
 }
 
+// severityValue interprète une valeur de sévérité : entier de l'appareil, entier
+// sérialisé en chaîne, ou libellé texte.
+func severityValue(v any) (model.Severity, bool) {
+	var text string
+	switch t := v.(type) {
+	case float64:
+		if t != float64(int64(t)) {
+			return "", false
+		}
+		switch int64(t) {
+		case 1:
+			return model.SeverityError, true
+		case 2:
+			return model.SeverityWarning, true
+		case 3:
+			return model.SeverityInfo, true
+		}
+		text = strconv.FormatInt(int64(t), 10)
+	case string:
+		text = strings.TrimSpace(t)
+	default:
+		return "", false
+	}
+	switch text {
+	case "":
+		return "", false
+	case "1":
+		return model.SeverityError, true
+	case "2":
+		return model.SeverityWarning, true
+	case "3":
+		return model.SeverityInfo, true
+	}
+	lower := strings.ToLower(text)
+	switch {
+	case strings.Contains(lower, "warn"):
+		return model.SeverityWarning, true
+	case strings.Contains(lower, "error"), strings.Contains(lower, "fault"), strings.Contains(lower, "alert"):
+		return model.SeverityError, true
+	case strings.Contains(lower, "info"), strings.Contains(lower, "notice"):
+		return model.SeverityInfo, true
+	}
+	return "", false
+}
+
 // messageOf retourne le texte de l'événement, ou un libellé neutre.
+//
+// `label` vient en tête : le client officiel affiche un texte traduit à partir
+// d'une clé de dictionnaire (`STATECODETRANSLATIONS.StateCodes.<prefix>-<eventID>`,
+// l. 164702) et retombe sur `label` quand cette clé manque (l. 135654) — c'est
+// donc le seul texte lisible présent dans la charge utile. Les candidats
+// historiques restent en secours.
 func messageOf(fields map[string]any) string {
-	for _, key := range []string{"message", "text", "description"} {
+	for _, key := range []string{"label", "message", "text", "description"} {
 		if v, ok := fields[key].(string); ok && strings.TrimSpace(v) != "" {
 			return v
 		}

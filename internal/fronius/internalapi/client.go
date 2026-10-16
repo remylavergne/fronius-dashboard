@@ -136,13 +136,22 @@ type Version struct {
 
 // Clés candidates, par ordre de priorité. La première clé non vide gagne.
 //
-// Seuls `serialNumber`, `numberOfPhases` et `devicegroup` sont établis par le
-// bundle (docs/SOURCES.md) ; les autres sont des candidats assumés, à confirmer
-// par une capture matérielle (cmd/fronius-probe). Ajouter une clé observée en
-// tête de la liste correspondante suffit alors à la prendre en compte.
+// Établis par le bundle (docs/SOURCES.md) : `serialNumber`, `numberOfPhases`,
+// `devicegroup`, et la version logicielle sous `swrevisions.GEN24` (l. 128882 et
+// 135137 : c'est la clé que le client officiel lit, et il l'affiche comme version
+// courante de l'appareil). Les autres sont des candidats assumés, à confirmer par
+// une capture matérielle (cmd/fronius-probe) : ajouter une clé observée en tête
+// de la liste correspondante suffit alors à la prendre en compte.
+//
+// `devicegroup` n'est PAS un repli de modèle : c'est le groupe d'appareil
+// (`GEN24PRIMO`, cf. l. 183035 qui en déduit le nombre de phases), une notion
+// distincte du modèle, attestée comme champ frère dans la charge utile. Le
+// chemin prouvé de la version est donc lu d'abord, et le modèle reste nul tant
+// qu'aucune clé de modèle n'est observée : une valeur inconnue n'est jamais
+// remplacée par la valeur d'un autre champ.
 var (
 	serialNumberKeys = []string{"serialNumber", "serial", "serials"}
-	modelKeys        = []string{"modelName", "model", "deviceModel", "inverterModel", "devicegroup"}
+	modelKeys        = []string{"modelName", "model", "deviceModel", "inverterModel"}
 	firmwareKeys     = []string{"firmwareVersion", "firmwareversion", "firmware", "swVersion", "version"}
 	deviceGroupKeys  = []string{"devicegroup", "deviceGroup"}
 	phasesKeys       = []string{"numberOfPhases", "phases"}
@@ -167,10 +176,22 @@ func (c *Client) Version(ctx context.Context) (Version, error) {
 	return Version{
 		SerialNumber:   stringField(fields, serialNumberKeys...),
 		Model:          stringField(fields, modelKeys...),
-		Firmware:       stringField(fields, firmwareKeys...),
+		Firmware:       firmwareOf(fields),
 		DeviceGroup:    stringField(fields, deviceGroupKeys...),
 		NumberOfPhases: intField(fields, phasesKeys...),
 	}, nil
+}
+
+// firmwareOf extrait la version logicielle de l'appareil.
+//
+// Le chemin prouvé passe d'abord : le client officiel lit `swrevisions.GEN24`
+// (l. 128882, 135137). Les clés plates restent des candidats de secours, pour ne
+// pas dépendre d'une seule forme.
+func firmwareOf(fields map[string]json.RawMessage) *string {
+	if v := nestedStringField(fields, "swrevisions", "GEN24"); v != nil {
+		return v
+	}
+	return stringField(fields, firmwareKeys...)
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +341,23 @@ func stringField(fields map[string]json.RawMessage, keys ...string) *string {
 		return new(v)
 	}
 	return nil
+}
+
+// nestedStringField retourne la première clé candidate non vide d'un objet
+// imbriqué, par exemple `swrevisions.GEN24`.
+//
+// Un objet absent, d'un autre type, ou sans clé correspondante rend nil : la
+// forme imbriquée n'est jamais présumée, seulement cherchée.
+func nestedStringField(fields map[string]json.RawMessage, object string, keys ...string) *string {
+	raw, ok := lookupFold(fields, object)
+	if !ok {
+		return nil
+	}
+	var inner map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &inner); err != nil || inner == nil {
+		return nil
+	}
+	return stringField(inner, keys...)
 }
 
 // intField retourne la première clé candidate dont la valeur est un entier.

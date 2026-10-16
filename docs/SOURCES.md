@@ -177,12 +177,19 @@ capture (`cmd/fronius-probe`).
 | `/status/version` | `serialNumber` | oui | l. 45243, l. 127380, l. 143048 (`t.serialNumber`) |
 | `/status/version` | `numberOfPhases` | oui | l. 183034 |
 | `/status/version` | `devicegroup` | oui | l. 183035 (`"P" === t.devicegroup[0] ? 1 : 3`) |
-| `/status/version` | `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID` | oui | l. 126568, 128813, 128814, 128842, 128882, 143049 — champs lus, non utilisés par l'application à ce stade |
-| `/status/version` | `firmwareVersion`, `modelName` | **non** | candidats du simulateur, valeurs visiblement fausses (`1.24.3-sim`) |
+| `/status/version` | `hwrevisions.FAMILYID` | oui | l. 143049 |
+| `/status/version` | `hardwareId`, `devicename`, `articleNumber` | oui | l. 126568, 128813, 128814, 128842 — **lus** par le client officiel, **non utilisés** par l'application à ce stade : les exposer jusqu'à l'écran coûte 14 fichiers dont une migration SQL (`docs/UNKNOWNS.md` #3), décision reportée |
+| `/status/version` | `swrevisions.GEN24` | oui | l. 128882, 135137 — **lu par l'application** : c'est la version logicielle affichée par le client officiel ; clé imbriquée, lue avant les candidats plats (`firmwareOf`, `internal/fronius/internalapi/client.go`) |
+| `/status/version` | `firmwareVersion` | **non** | candidat de secours, utilisé seulement si `swrevisions.GEN24` est absent |
+| `/status/version` | `modelName`, `model` | **non** | candidats : **aucune clé de modèle** n'est observée dans le bundle. `devicegroup` n'est pas un repli de modèle — c'est le groupe d'appareil, champ frère (l. 183035) |
 | `/components/PowerMeter/readable` | `channels` (23 signaux `SMARTMETER_*`), `attributes.addr`, `attributes["[ENABLE]"]` | oui | l. 129011, 129015, 130976-130983 ; enveloppe `Cgi` (l. 75958, 183011) ; la **détection** se fait toujours sur `Body.Data` non vide |
 | `/components/BatteryManagementSystem/readable` | `channels` (10 signaux) | oui | l. 128986 ; enveloppe `Cgi` (l. 75958) |
-| `/status/activeEvents` | `severity`, `viewer`, `uuid`, `timestamp`, `activeUntil`, `category`, `confirmable`, `label`, `sourceID`, `prefix`, `eventID` | oui | l. 135689-135701, 135654, 164699 — lecture établie (l. 76030) ; le JSON brut reste conservé borné à 2 048 octets |
-| `/status/activeEvents` | `code`, `state`, `severity`, `level`, `message`, `text`, `description` | **non** | candidats de l'application : ils servent à la déduplication et à la sévérité, avec repli systématique |
+| `/status/activeEvents` | `severity` (entier : 1 erreur, 2 avertissement, 3 information) | oui | l. 135690 + l. 135728-135733 (`getEventLevel`) ; **utilisé par l'application** (`severityValue`, `internal/detect/detector.go`) — avant correction, la sévérité entière n'était pas reconnue et tout événement matériel était classé « information » |
+| `/status/activeEvents` | `uuid`, `prefix`-`eventID` (identité d'instance) | oui | l. 135693, 164699, 135742 (comparaison), 135760 (`ConfirmEvent` reçoit `{uuid}`) ; **utilisés par l'application** comme clé d'anti-duplication |
+| `/status/activeEvents` | `label` (texte affiché en repli par le client) | oui | l. 135654 ; **utilisé par l'application** comme texte d'événement |
+| `/status/activeEvents` | `timestamp`, `activeUntil` (secondes d'horloge appareil) | oui | l. 135694-135695 — non utilisés : `TS` reste l'horloge du collecteur, axe de tri et de rétention |
+| `/status/activeEvents` | `viewer`, `category`, `confirmable`, `sourceID` | oui | l. 135691, 135696, 135697, 135701 — lus par le client, **non utilisés** par l'application : `Detail` conserve le JSON brut |
+| `/status/activeEvents` | `code`, `state`, `level`, `message`, `text`, `description` | **non** | candidats de l'application : ils servent à la déduplication et à la sévérité, avec repli systématique |
 
 Le client extrait l'identité par **listes de clés candidates ordonnées**
 (`internal/fronius/internalapi/client.go`) : ajouter une clé observée en tête de

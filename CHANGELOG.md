@@ -25,8 +25,12 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   jour avec ce que l'extraction établit (dont un signal d'état de charge lu par le
   client officiel) sans jamais présenter un rôle client comme une permission
   serveur ; `03-API-INVENTAIRE.md` ne laisse ouverts que les relevés exigeant une
-  capture sur l'appareil. **Aucun changement de code** : la liste blanche
-  exécutable reste inchangée.
+  capture sur l'appareil. Documentation associée : ADR 0008 (périmètre des données
+  exposées : modèle de domaine, pas de miroir d'API ; règle d'ajout à la liste
+  blanche) et la liste des cinq captures attendues, chemin par chemin, dans
+  `docs/PROBE-READONLY.md`. La liste blanche exécutable reste inchangée ; les
+  corrections de code que l'extraction a rendues nécessaires sont en
+  `### Fixed`.
 - 2026-10-16 — **Phase 3 : agrégats horaires et purge planifiée.** Migration
   `0003_agg.sql` : table `agg_hour` (`count_all`, `count_pv`, `sum_pv_w`,
   `min_pv_w`, `max_pv_w`, `max_energy_day_wh`) qui matérialise la réduction
@@ -92,6 +96,35 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   et leur motif ; les trois états sont traduits distinctement (« présent »,
   « absent », « non déterminé »), et un champ absent s'affiche en tiret — jamais
   `0`, jamais « inconnu ».
+
+### Fixed
+
+- 2026-10-16 — **Sévérité et identité des événements de l'appareil**
+  (`internal/detect`). L'extraction du bundle établit que `severity` est un
+  **entier** (1 erreur, 2 avertissement, 3 information — `getEventLevel`,
+  l. 135728-135733) ; seules des chaînes étaient reconnues, si bien que **tout**
+  événement matériel était classé « information ». La sévérité entière est
+  désormais interprétée, les libellés texte restant acceptés par tolérance et
+  `level` restant une clé de secours. La clé d'anti-duplication suit l'identité
+  d'instance du client officiel — `uuid`, puis `prefix`-`eventID`, puis `code`,
+  `state`, puis l'empreinte du JSON : dédupliquer sur `code` seul, qui désigne
+  un *type* d'événement, faisait perdre le second de deux événements actifs de
+  même type. Le texte affiché passe par `label` (ce que le client officiel
+  affiche quand la traduction manque) avant les candidats historiques.
+  Conséquence assumée : un événement déjà vu sous une clé `code` est notifié une
+  fois de plus après mise à jour, la première fois qu'il porte un `uuid`. Tests :
+  `TestSeverityMapping` (entiers, chaînes, valeurs hors barème),
+  `TestEventKeyPriorities`, `TestSameCodeDistinctInstancesAreBothRecorded`.
+- 2026-10-16 — **Version logicielle de l'appareil**
+  (`internal/fronius/internalapi`). La version se lit sur le chemin prouvé
+  `swrevisions.GEN24` (l. 128882, 135137 — la clé que le client officiel affiche
+  comme version courante), avant les candidats plats
+  `firmwareVersion`/`firmware`/`version` : `/api/v1/system` renseigne donc
+  `firmware` là où il restait `null` sur le matériel. Corollaire : le groupe
+  d'appareil (`devicegroup`) n'est **plus** employé comme repli de modèle — c'est
+  un champ frère d'une autre nature (l. 183035) — donc `model` reste `null` tant
+  qu'aucune clé de modèle n'est observée, au lieu d'afficher « GEN24PRIMO »
+  comme modèle.
 
 ### Security
 

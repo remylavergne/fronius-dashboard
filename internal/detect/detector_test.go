@@ -451,7 +451,22 @@ func TestNoEventsIsPresentNotUnknown(t *testing.T) {
 }
 
 func TestEventKeyPriorities(t *testing.T) {
-	key, err := eventKey(json.RawMessage(`{"code":"C1","state":"S1"}`))
+	// Priorité observée dans le bundle (docs/ENDPOINTS.md) : `uuid`, puis
+	// `prefix`-`eventID`, puis `code`, puis `state`, puis l'empreinte du JSON.
+	key, err := eventKey(json.RawMessage(`{"uuid":"evt-1","code":"C1","state":"S1"}`))
+	if err != nil || key != "device:evt-1" {
+		t.Fatalf("clé = %q (err=%v)", key, err)
+	}
+	key, err = eventKey(json.RawMessage(`{"prefix":"GEN24","eventID":21,"code":"C1"}`))
+	if err != nil || key != "device:GEN24-21" {
+		t.Fatalf("clé = %q (err=%v)", key, err)
+	}
+	// Préfixe absent : pas de clé composite inventée, repli sur l'empreinte.
+	key, err = eventKey(json.RawMessage(`{"eventID":21}`))
+	if err != nil || !strings.HasPrefix(key, "device:") || len(key) != len("device:")+16 {
+		t.Fatalf("clé = %q (err=%v)", key, err)
+	}
+	key, err = eventKey(json.RawMessage(`{"code":"C1","state":"S1"}`))
 	if err != nil || key != "device:C1" {
 		t.Fatalf("clé = %q (err=%v)", key, err)
 	}
@@ -459,7 +474,7 @@ func TestEventKeyPriorities(t *testing.T) {
 	if err != nil || key != "device:S1" {
 		t.Fatalf("clé = %q (err=%v)", key, err)
 	}
-	key, err = eventKey(json.RawMessage(`{"message":"m","severity":"warning"}`))
+	key, err = eventKey(json.RawMessage(`{"message":"m","severity":2}`))
 	if err != nil || !strings.HasPrefix(key, "device:") || len(key) != len("device:")+16 {
 		t.Fatalf("clé = %q (err=%v)", key, err)
 	}
@@ -468,18 +483,77 @@ func TestEventKeyPriorities(t *testing.T) {
 	}
 }
 
+// Deux événements actifs de même `code` mais d'instances différentes doivent être
+// enregistrés tous les deux : une clé de déduplication fondée sur `code` seul en
+// perdait un, puisque `code` désigne un *type* d'événement.
+func TestSameCodeDistinctInstancesAreBothRecorded(t *testing.T) {
+	payload := func(uuid string) string {
+		return `{"uuid":"` + uuid + `","severity":2,"viewer":1,"timestamp":1789000000,` +
+			`"activeUntil":0,"category":"GEN24","confirmable":true,` +
+			`"label":"Surchauffe module","sourceID":65549,"prefix":"GEN24","eventID":21,` +
+			`"code":"SIM-HEAT"}`
+	}
+	reader := fullyDetected(payload("evt-a"), payload("evt-b"))
+	sink := newFakeSink()
+	d := newDetector(t, reader, sink)
+
+	if _, err := d.DetectOnce(context.Background()); err != nil {
+		t.Fatalf("DetectOnce: %v", err)
+	}
+	_, events, _ := sink.snapshot()
+	if len(events) != 2 {
+		t.Fatalf("événements = %d, attendu 2 (instances distinctes)", len(events))
+	}
+	for _, e := range events {
+		if e.Severity != model.SeverityWarning {
+			t.Fatalf("sévérité entière 2 → %q, attendu %q", e.Severity, model.SeverityWarning)
+		}
+		if e.Message != "Surchauffe module" {
+			t.Fatalf("message = %q, attendu le libellé `label`", e.Message)
+		}
+		if !strings.Contains(e.Detail, `"confirmable":true`) {
+			t.Fatalf("le détail brut doit conserver la charge utile : %q", e.Detail)
+		}
+	}
+
+	sink.mu.Lock()
+	_, hasA := sink.seen["device:evt-a"]
+	_, hasB := sink.seen["device:evt-b"]
+	sink.mu.Unlock()
+	if !hasA || !hasB {
+		t.Fatalf("clés enregistrées = %v, attendu device:evt-a et device:evt-b", sink.seen)
+	}
+}
+
 func TestSeverityMapping(t *testing.T) {
 	cases := map[string]model.Severity{
+		// Forme réelle de l'appareil : `severity` est un entier (bundle,
+		// `getEventLevel` l. 135728-135733).
+		`{"severity":1}`: model.SeverityError,
+		`{"severity":2}`: model.SeverityWarning,
+		`{"severity":3}`: model.SeverityInfo,
+		// Entier hors barème (0, 4, …) ou non entier : aucune gravité inventée.
+		`{"severity":0}`:   model.SeverityInfo,
+		`{"severity":4}`:   model.SeverityInfo,
+		`{"severity":2.5}`: model.SeverityInfo,
+		// Entier sérialisé en chaîne, par tolérance.
+		`{"severity":"1"}`: model.SeverityError,
+		`{"severity":"2"}`: model.SeverityWarning,
+		// Libellés texte (simulateur, fixtures).
 		`{"severity":"warning"}`: model.SeverityWarning,
 		`{"severity":"WARN"}`:    model.SeverityWarning,
 		`{"severity":"error"}`:   model.SeverityError,
 		`{"severity":"fault"}`:   model.SeverityError,
 		`{"severity":"alert"}`:   model.SeverityError,
 		`{"level":"warn"}`:       model.SeverityWarning,
+		`{"level":1}`:            model.SeverityError,
 		`{"severity":"info"}`:    model.SeverityInfo,
 		`{"severity":"notice"}`:  model.SeverityInfo,
 		`{}`:                     model.SeverityInfo,
-		`{"severity":3}`:         model.SeverityInfo,
+		`{"severity":[]}`:        model.SeverityInfo,
+		// La première clé interprétable gagne : `severity` avant `level`.
+		`{"severity":2,"level":"error"}`:       model.SeverityWarning,
+		`{"severity":"notice","level":"warn"}`: model.SeverityInfo,
 	}
 	for body, want := range cases {
 		var fields map[string]any

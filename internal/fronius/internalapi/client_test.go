@@ -136,11 +136,33 @@ func TestVersionExtractsKnownAndCandidateKeys(t *testing.T) {
 			name: "clés prouvées seules",
 			body: `{"serialNumber":"S1","devicegroup":"GEN24PRIMO","numberOfPhases":3}`,
 			want: Version{
-				SerialNumber:   new("S1"),
-				DeviceGroup:    new("GEN24PRIMO"),
-				Model:          new("GEN24PRIMO"), // repli sur devicegroup
+				SerialNumber: new("S1"),
+				DeviceGroup:  new("GEN24PRIMO"),
+				// `devicegroup` n'est pas un modèle : c'est le groupe d'appareil,
+				// un champ frère. Le modèle reste nul, jamais déduit d'un autre champ.
+				Model:          nil,
 				NumberOfPhases: new(3),
 			},
+		},
+		{
+			name: "version lue sur le chemin prouvé swrevisions.GEN24",
+			body: `{"serialNumber":"S","swrevisions":{"GEN24":"1.19.7-1","GEN24PRIMO":"1.19.7-1"},"firmwareVersion":"0.0-inconnu"}`,
+			want: Version{SerialNumber: new("S"), Firmware: new("1.19.7-1")},
+		},
+		{
+			name: "chemin prouvé insensible à la casse, objet imbriqué d'un autre nom ignoré",
+			body: `{"serialNumber":"S","swrevisions":{"gen24":"1.19.7-1"},"SWRevisions":{"GEN24":"9.9.9"}}`,
+			want: Version{SerialNumber: new("S"), Firmware: new("1.19.7-1")},
+		},
+		{
+			name: "swrevisions sans GEN24 : repli sur le candidat plat",
+			body: `{"serialNumber":"S","swrevisions":{"OTHER":"x"},"firmwareVersion":"1.2"}`,
+			want: Version{SerialNumber: new("S"), Firmware: new("1.2")},
+		},
+		{
+			name: "swrevisions d'un autre type : ni panique ni valeur inventée",
+			body: `{"serialNumber":"S","swrevisions":"1.19.7-1"}`,
+			want: Version{SerialNumber: new("S")},
 		},
 		{
 			name: "candidats du simulateur",

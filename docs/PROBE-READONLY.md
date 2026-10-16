@@ -42,6 +42,25 @@ binaire (cinq entrées, toutes `READ` et toutes en `GET`) :
 | `/components/PowerMeter/readable` | après 401 | présence d'un Fronius Smart Meter |
 | `/components/BatteryManagementSystem/readable` | après 401 | présence d'une batterie |
 
+### Ce que la capture doit confirmer, chemin par chemin
+
+L'extraction du bundle (`docs/ENDPOINTS.md`) a remplacé les inconnues par des
+faits **de code client** ; il reste à obtenir les faits **d'appareil**. Chaque
+capture de la liste blanche ferme une inconnue précise :
+
+| Chemin | Inconnue à fermer | Ce que l'extraction affirme déjà | Ce que la capture tranche |
+|---|---|---|---|
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | #1 (forme du JSON), #2 (authentification) | **absent du bundle** : aucun schéma n'est prouvé, `dto.go` est une hypothèse | schéma, unités, horodatages ; et si un Smart Meter ou une batterie existe (`P_Grid`, `P_Akku`, `rel_*`) |
+| `/status/version` | #3 (identité) | `serialNumber`, `numberOfPhases`, `devicegroup` prouvés ; `swrevisions.GEN24` est la version logicielle lue par le client officiel (l. 128882) ; `hardwareId`, `devicename`, `articleNumber` sont lus ; **aucune clé de modèle** n'est observée | la version réelle, l'existence d'une clé de modèle, et la forme escomptée d'`articleNumber` |
+| `/status/activeEvents` | #11 (forme des événements) | charge utile = tableau ; 11 champs lus ; `severity` est un **entier** (1 erreur, 2 avertissement, 3 information, l. 135728) ; identité = `uuid`, ou `prefix`-`eventID` ; texte = `label` | les noms et types réels, la sémantique de `viewer`, et si `label` porte un texte lisible ou un code |
+| `/components/PowerMeter/readable` | #4 (présence du compteur) | `Body.Data` indexé par identifiant de composant ; `channels` (23 signaux `SMARTMETER_*`) ; `attributes.addr` et `attributes["[ENABLE]"]` | présence, noms de signaux et unités réels sur `1.19.7-1` |
+| `/components/BatteryManagementSystem/readable` | #5 (batterie et état de charge) | `channels` (10 signaux), dont `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` en `%` | présence, et si l'état de charge existe bien sur ce firmware |
+
+Tant que ces cinq captures manquent, **aucun autre chemin n'a de raison d'entrer
+dans la liste blanche** : la règle d'ajout est une métrique que la Solar API ne
+fournit pas, et une métrique ne se choisit pas sur un inventaire (ADR 0008). La
+promotion des captures suit le § 8.
+
 Forme d'une requête vers un chemin interne :
 
 ```
