@@ -9,7 +9,7 @@
 - [ ] Vérifier l’inventaire matériel/firmware contre l’export PDF
 - [ ] Identifier métriques effectivement renvoyées par la Solar API (échantillons anonymisés)
 - [ ] Confirmer absence de Smart Meter et batterie ; détecter dynamiquement leur présence future
-- [ ] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
+- [x] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
 - [x] Choisir licence, stratégie branches, conventions de commit
 - [ ] Consigner toutes les inconnues dans un registre de décisions
 
@@ -20,7 +20,7 @@
 - [ ] Extraire méthodes/arguments/DTO des commandes internes utiles en lecture seule
 - [ ] Auditer garde Angular `oi.a` et contrôles de composants sans supposer permissions serveur
 - [ ] Construire matrice endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord
-- [ ] Classifier chaque endpoint READ / MUTATION / DANGEROUS
+- [x] Classifier chaque endpoint READ / MUTATION / DANGEROUS
 - [ ] Analyser module `ytu1` Digest, gestion nonce et cas d’erreur
 - [ ] Vérifier gestion 401/403, nonce expiré et cas d’absence d’auth
 - [ ] Documenter récupération Technician et compteur sans effectuer d’essai
@@ -47,9 +47,9 @@
 
 - [ ] Implémenter client HTTP Go configurable avec timeout/context
 - [ ] Implémenter adaptateur Solar API en lecture seule
-- [ ] Définir DTO bruts versionnés et normalisation en modèle domaine
-- [ ] Normaliser unités W/kW/Wh/kWh, timestamps UTC, qualité des données
-- [ ] Gérer valeurs absentes/nulles et champs optionnels
+- [x] Définir DTO bruts versionnés et normalisation en modèle domaine
+- [x] Normaliser unités W/kW/Wh/kWh, timestamps UTC, qualité des données
+- [x] Gérer valeurs absentes/nulles et champs optionnels
 - [x] Gérer 404/401/5xx, JSON invalide, timeout et déconnexion
 - [ ] Mettre en place polling configurable avec jitter raisonnable
 - [ ] Garantir qu’aucun retry automatique ne déclenche une écriture
@@ -161,3 +161,11 @@
   serveur fermé, corps > 1 MiB, champs inconnus tolérés, préfixe de chemin conservé.
   L'item « Documenter GetPowerFlowRealtimeData.fcgi » reste ouvert jusqu'à `docs/SOURCES.md`
   (étape 6) puis la réconciliation par la sonde (étape 11).
+- 2026-10-16 — Étape 6 : `internal/model` (`measurement.go`, `units.go`, `capabilities.go`,
+  `event.go`) avec l'invariant « jamais de zéro inventé » ; ADR 0001 à 0007 ;
+  `docs/SOURCES.md` (provenance + vérifications exécutées sur le bundle : `fcgi` 0,
+  `RealtimeData` 0, `PowerFlowRealtime` 0, `solar_api` 1, `x-www-authenticate` 7,
+  `AuthHash` 15) ; `docs/ENDPOINTS.md` (classification des 79 chemins du bundle, liste
+  blanche réduite au seul GET Solar API). Décision de modèle : `Capability.Reason` porte un
+  motif d'indisponibilité quand la capacité est indisponible, une réserve quand elle est
+  disponible mais non vérifiée (`production.*`), jamais les deux.
