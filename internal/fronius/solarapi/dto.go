@@ -1,43 +1,43 @@
-// Package solarapi implémente le client lecture seule de la Fronius Solar API v1.
+// Package solarapi implements the read-only client of the Fronius Solar API v1.
 //
-// ATTENTION — provenance de la forme décrite ici. Le bundle JavaScript de
-// l'interface d'origine ne contient AUCUN chemin Solar API : la chaîne
-// « solar_api » n'y apparaît que pour l'endpoint de configuration
-// « /config/solar_api ». La structure ci-dessous est donc une [HYPOTHÈSE]
-// fondée sur la documentation publique de la Solar API v1 et sur des
-// observations rapportées, pas sur une capture du firmware 1.19.7-1.
+// WARNING — provenance of the shape described here. The JavaScript bundle of
+// the original interface contains NO Solar API path: the string "solar_api" only
+// appears there for the configuration endpoint "/config/solar_api". The
+// structure below is therefore a [HYPOTHESIS] based on the public documentation
+// of the Solar API v1 and on reported observations, not on a capture of firmware
+// 1.19.7-1.
 //
-// Conséquences :
-//   - le décodage est tolérant (aucun DisallowUnknownFields) : un firmware plus
-//     récent peut ajouter des champs sans casser le client ;
-//   - toute valeur absente reste nil, jamais 0 (voir internal/model) ;
-//   - les fixtures de test/fixtures/solarapi sont synthétiques jusqu'à ce
-//     qu'une capture réelle expurgée (cmd/fronius-probe) les remplace.
+// Consequences:
+//   - decoding is tolerant (no DisallowUnknownFields): a more recent firmware
+//     can add fields without breaking the client;
+//   - any absent value stays nil, never 0 (see internal/model);
+//   - the test/fixtures/solarapi fixtures are synthetic until a real redacted
+//     capture (cmd/fronius-probe) replaces them.
 //
-// Ce fichier est le SEUL endroit où la forme du JSON Fronius est encodée.
+// This file is the ONLY place where the shape of the Fronius JSON is encoded.
 package solarapi
 
-// PowerFlowEnvelope est la réponse de GetPowerFlowRealtimeData.fcgi.
+// PowerFlowEnvelope is the response of GetPowerFlowRealtimeData.fcgi.
 type PowerFlowEnvelope struct {
 	Body PowerFlowBody `json:"Body"`
 	Head Head          `json:"Head"`
 }
 
-// PowerFlowBody enveloppe les données de mesure.
+// PowerFlowBody wraps the measurement data.
 type PowerFlowBody struct {
 	Data PowerFlowData `json:"Data"`
 }
 
-// PowerFlowData contient le site puis les onduleurs.
+// PowerFlowData contains the site then the inverters.
 type PowerFlowData struct {
 	Site      SiteData              `json:"Site"`
 	Inverters map[string]InverterPF `json:"Inverters"`
 }
 
-// SiteData agrège le point de mesure du site.
+// SiteData aggregates the site measurement point.
 //
-// Noms de champs alignés sur les noms du protocole (P_PV, E_Day…) pour que
-// toute divergence de tag saute aux yeux à la relecture.
+// Field names aligned on the protocol names (P_PV, E_Day…) so that any tag
+// divergence jumps out when rereading.
 type SiteData struct {
 	Mode                   string   `json:"Mode"`
 	P_PV                   *float64 `json:"P_PV"`
@@ -52,7 +52,7 @@ type SiteData struct {
 	Meter_Location_Current *int     `json:"Meter_Location_Current"`
 }
 
-// InverterPF est la mesure d'un onduleur, indexée par son numéro (« 1 », « 2 »…).
+// InverterPF is the measurement of an inverter, indexed by its number ("1", "2"…).
 type InverterPF struct {
 	DT      int      `json:"DT"`
 	P       *float64 `json:"P"`
@@ -61,22 +61,22 @@ type InverterPF struct {
 	E_Total *float64 `json:"E_Total"`
 }
 
-// Head porte les métadonnées de la réponse.
+// Head carries the response metadata.
 type Head struct {
 	RequestArguments map[string]any `json:"RequestArguments"`
 	Status           HeadStatus     `json:"Status"`
 	Timestamp        string         `json:"Timestamp"`
 }
 
-// HeadStatus est l'état applicatif signalé par l'appareil.
+// HeadStatus is the application state reported by the device.
 type HeadStatus struct {
 	Code        int    `json:"Code"`
 	Reason      string `json:"Reason"`
 	UserMessage string `json:"UserMessage"`
 }
 
-// rawEnvelope sert uniquement à détecter l'absence de Body ou de Body.Data,
-// indiscernable d'un objet vide après décodage dans une structure valeur.
+// rawEnvelope only serves to detect the absence of Body or Body.Data,
+// indistinguishable from an empty object after decoding into a value struct.
 type rawEnvelope struct {
 	Body *struct {
 		Data *PowerFlowData `json:"Data"`

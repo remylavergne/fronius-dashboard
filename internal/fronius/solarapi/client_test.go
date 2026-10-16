@@ -33,7 +33,7 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// newServer démarre un serveur de test qui enregistre la requête reçue.
+// newServer starts a test server that records the received request.
 func newServer(t *testing.T, h http.HandlerFunc) (*httptest.Server, *recorded) {
 	t.Helper()
 	rec := &recorded{}
@@ -74,13 +74,13 @@ func TestGetPowerFlowRealtimeDataNominal(t *testing.T) {
 	}
 
 	if rec.method != http.MethodGet {
-		t.Fatalf("méthode = %q, attendu GET", rec.method)
+		t.Fatalf("method = %q, want GET", rec.method)
 	}
 	if rec.path != PowerFlowPath {
-		t.Fatalf("chemin = %q, attendu %q", rec.path, PowerFlowPath)
+		t.Fatalf("path = %q, want %q", rec.path, PowerFlowPath)
 	}
 	if rec.rawQuery != "" {
-		t.Fatalf("aucun paramètre attendu, reçu %q", rec.rawQuery)
+		t.Fatalf("no parameter expected, got %q", rec.rawQuery)
 	}
 	if rec.accept != "application/json" {
 		t.Fatalf("Accept = %q", rec.accept)
@@ -107,16 +107,16 @@ func TestGetPowerFlowRealtimeDataNominal(t *testing.T) {
 		"rel_Autonomy": site.Rel_Autonomy, "rel_SelfConsumption": site.Rel_SelfConsumption,
 	} {
 		if v != nil {
-			t.Fatalf("%s = %v, attendu nil (champ JSON null)", name, *v)
+			t.Fatalf("%s = %v, want nil (JSON field null)", name, *v)
 		}
 	}
 
 	inv, ok := env.Body.Data.Inverters["1"]
 	if !ok {
-		t.Fatalf("onduleur « 1 » absent : %v", env.Body.Data.Inverters)
+		t.Fatalf("inverter \"1\" absent: %v", env.Body.Data.Inverters)
 	}
 	if inv.DT != 1 || inv.P == nil || *inv.P != 1902.4 {
-		t.Fatalf("onduleur 1 = %+v", inv)
+		t.Fatalf("inverter 1 = %+v", inv)
 	}
 	if env.Head.Status.Code != 0 {
 		t.Fatalf("Head.Status = %+v", env.Head.Status)
@@ -126,15 +126,15 @@ func TestGetPowerFlowRealtimeDataNominal(t *testing.T) {
 	}
 }
 
-// TestUnknownFieldsTolerated : le client ne refuse pas les champs inconnus
-// (un firmware plus récent en ajoute, et les fixtures portent _provenance).
+// TestUnknownFieldsTolerated: the client does not refuse unknown fields
+// (a more recent firmware adds some, and the fixtures carry _provenance).
 func TestUnknownFieldsTolerated(t *testing.T) {
 	body := `{
 	  "_provenance": {"synthetic": true, "source": "fronius-sim"},
 	  "Body": {"Data": {
-	    "Site": {"Mode":"produce-only","P_PV":100,"E_Day":1,"E_Year":2,"E_Total":3,"Futur":42,"PowerFlow":{}},
+	    "Site": {"Mode":"produce-only","P_PV":100,"E_Day":1,"E_Year":2,"E_Total":3,"Future":42,"PowerFlow":{}},
 	    "Inverters": {"1": {"DT":1,"P":100,"E_Day":1,"E_Year":2,"E_Total":3,"SOC":55}}
-	  }, "Nouveau": true},
+	  }, "New": true},
 	  "Head": {"Status":{"Code":0},"Timestamp":"2026-10-16T09:17:43+02:00","Extra":"x"}
 	}`
 	srv, _ := newServer(t, staticHandler(http.StatusOK, body))
@@ -142,7 +142,7 @@ func TestUnknownFieldsTolerated(t *testing.T) {
 
 	env, err := c.GetPowerFlowRealtimeData(context.Background())
 	if err != nil {
-		t.Fatalf("un corps avec champs inconnus doit être accepté : %v", err)
+		t.Fatalf("a body with unknown fields must be accepted: %v", err)
 	}
 	if env.Body.Data.Site.P_PV == nil || *env.Body.Data.Site.P_PV != 100 {
 		t.Fatalf("P_PV = %v", env.Body.Data.Site.P_PV)
@@ -165,29 +165,29 @@ func TestStatusMapping(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv, _ := newServer(t, staticHandler(tc.status, "erreur"))
+			srv, _ := newServer(t, staticHandler(tc.status, "error"))
 			c := newClient(t, srv.URL, 2*time.Second)
 
 			_, err := c.GetPowerFlowRealtimeData(context.Background())
 			if err == nil {
-				t.Fatal("une erreur était attendue")
+				t.Fatal("an error was expected")
 			}
 			kind, ok := froniuserr.KindOf(err)
 			if !ok || kind != tc.wantKind {
-				t.Fatalf("KindOf = (%q, %v), attendu %q", kind, ok, tc.wantKind)
+				t.Fatalf("KindOf = (%q, %v), want %q", kind, ok, tc.wantKind)
 			}
 			var typed *froniuserr.Error
 			if !errors.As(err, &typed) {
-				t.Fatal("errors.As n'a pas retrouvé *froniuserr.Error")
+				t.Fatal("errors.As did not find *froniuserr.Error")
 			}
 			if typed.HTTPStatus != tc.status {
-				t.Fatalf("HTTPStatus = %d, attendu %d", typed.HTTPStatus, tc.status)
+				t.Fatalf("HTTPStatus = %d, want %d", typed.HTTPStatus, tc.status)
 			}
 			if typed.Endpoint != PowerFlowPath {
 				t.Fatalf("Endpoint = %q", typed.Endpoint)
 			}
 			if !errors.Is(err, &froniuserr.Error{Kind: tc.wantKind}) {
-				t.Fatalf("errors.Is(%q) faux", tc.wantKind)
+				t.Fatalf("errors.Is(%q) false", tc.wantKind)
 			}
 		})
 	}
@@ -199,13 +199,13 @@ func TestDecodeFailures(t *testing.T) {
 		body string
 		hdr  string
 	}{
-		{"corps vide", "", ""},
-		{"JSON tronqué", `{"Body":{"Data":{"Site":{"P_PV":`, "application/json"},
-		{"page HTML", `<!doctype html><html><body>Erreur</body></html>`, "text/html"},
+		{"empty body", "", ""},
+		{"truncated JSON", `{"Body":{"Data":{"Site":{"P_PV":`, "application/json"},
+		{"HTML page", `<!doctype html><html><body>Error</body></html>`, "text/html"},
 		{"Body absent", `{"Head":{"Status":{"Code":0}}}`, "application/json"},
 		{"Data absent", `{"Body":{},"Head":{"Status":{"Code":0}}}`, "application/json"},
-		{"racine tableau", `[1,2,3]`, "application/json"},
-		{"P_PV non numérique", `{"Body":{"Data":{"Site":{"P_PV":"beaucoup"}}}}`, "application/json"},
+		{"root array", `[1,2,3]`, "application/json"},
+		{"non-numeric P_PV", `{"Body":{"Data":{"Site":{"P_PV":"much"}}}}`, "application/json"},
 	}
 
 	for _, tc := range cases {
@@ -222,10 +222,10 @@ func TestDecodeFailures(t *testing.T) {
 
 			_, err := c.GetPowerFlowRealtimeData(context.Background())
 			if err == nil {
-				t.Fatal("une erreur de décodage était attendue")
+				t.Fatal("a decode error was expected")
 			}
 			if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
-				t.Fatalf("KindOf = %q, attendu %q (%v)", kind, froniuserr.KindDecode, err)
+				t.Fatalf("KindOf = %q, want %q (%v)", kind, froniuserr.KindDecode, err)
 			}
 		})
 	}
@@ -233,28 +233,28 @@ func TestDecodeFailures(t *testing.T) {
 
 func TestDeviceStatusError(t *testing.T) {
 	body := `{"Body":{"Data":{"Site":{"P_PV":0},"Inverters":{}}},
-	          "Head":{"Status":{"Code":7,"Reason":"Simulated device error","UserMessage":"Erreur simulée"}}}`
+	          "Head":{"Status":{"Code":7,"Reason":"Simulated device error","UserMessage":"Simulated device error"}}}`
 	srv, _ := newServer(t, staticHandler(http.StatusOK, body))
 	c := newClient(t, srv.URL, 2*time.Second)
 
 	env, err := c.GetPowerFlowRealtimeData(context.Background())
 	if err == nil {
-		t.Fatal("Head.Status.Code=7 devait produire une erreur")
+		t.Fatal("Head.Status.Code=7 should have produced an error")
 	}
 	kind, _ := froniuserr.KindOf(err)
 	if kind != froniuserr.KindStatus {
-		t.Fatalf("KindOf = %q, attendu %q", kind, froniuserr.KindStatus)
+		t.Fatalf("KindOf = %q, want %q", kind, froniuserr.KindStatus)
 	}
 	var typed *froniuserr.Error
 	if !errors.As(err, &typed) {
-		t.Fatal("errors.As a échoué")
+		t.Fatal("errors.As failed")
 	}
-	if typed.Code != 7 || typed.Reason != "Simulated device error" || typed.UserMessage != "Erreur simulée" {
-		t.Fatalf("erreur incomplète : %+v", typed)
+	if typed.Code != 7 || typed.Reason != "Simulated device error" || typed.UserMessage != "Simulated device error" {
+		t.Fatalf("incomplete error: %+v", typed)
 	}
-	// Le corps reste exploitable : l'appelant peut décider d'ignorer l'erreur.
+	// The body stays usable: the caller may decide to ignore the error.
 	if env.Body.Data.Site.P_PV == nil || *env.Body.Data.Site.P_PV != 0 {
-		t.Fatalf("enveloppe non retournée : %+v", env.Body.Data.Site)
+		t.Fatalf("envelope not returned: %+v", env.Body.Data.Site)
 	}
 }
 
@@ -272,13 +272,13 @@ func TestTimeout(t *testing.T) {
 	start := time.Now()
 	_, err := c.GetPowerFlowRealtimeData(context.Background())
 	if err == nil {
-		t.Fatal("un dépassement de délai était attendu")
+		t.Fatal("a timeout was expected")
 	}
 	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindTimeout {
-		t.Fatalf("KindOf = %q, attendu %q (%v)", kind, froniuserr.KindTimeout, err)
+		t.Fatalf("KindOf = %q, want %q (%v)", kind, froniuserr.KindTimeout, err)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Fatalf("le délai n'a pas été respecté : %v", elapsed)
+		t.Fatalf("the delay was not respected: %v", elapsed)
 	}
 }
 
@@ -297,22 +297,22 @@ func TestContextDeadlineShorterThanTimeout(t *testing.T) {
 
 	_, err := c.GetPowerFlowRealtimeData(ctx)
 	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindTimeout {
-		t.Fatalf("KindOf = %q, attendu %q (%v)", kind, froniuserr.KindTimeout, err)
+		t.Fatalf("KindOf = %q, want %q (%v)", kind, froniuserr.KindTimeout, err)
 	}
 }
 
 func TestServerUnreachable(t *testing.T) {
 	srv, _ := newServer(t, staticHandler(http.StatusOK, validBody))
 	baseURL := srv.URL
-	srv.Close() // le serveur n'accepte plus de connexion
+	srv.Close() // the server no longer accepts connections
 
 	c := newClient(t, baseURL, 500*time.Millisecond)
 	_, err := c.GetPowerFlowRealtimeData(context.Background())
 	if err == nil {
-		t.Fatal("une panne réseau était attendue")
+		t.Fatal("a network failure was expected")
 	}
 	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindTransport {
-		t.Fatalf("KindOf = %q, attendu %q (%v)", kind, froniuserr.KindTransport, err)
+		t.Fatalf("KindOf = %q, want %q (%v)", kind, froniuserr.KindTransport, err)
 	}
 }
 
@@ -323,27 +323,27 @@ func TestOversizedBodyRejected(t *testing.T) {
 
 	_, err := c.GetPowerFlowRealtimeData(context.Background())
 	if err == nil {
-		t.Fatal("un corps hors limite était attendu")
+		t.Fatal("an out-of-limit body was expected")
 	}
 	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
-		t.Fatalf("KindOf = %q, attendu %q", kind, froniuserr.KindDecode)
+		t.Fatalf("KindOf = %q, want %q", kind, froniuserr.KindDecode)
 	}
-	if !strings.Contains(err.Error(), "dépasse") {
-		t.Fatalf("message inattendu : %v", err)
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("unexpected message: %v", err)
 	}
 }
 
 func TestNewRejectsInvalidBaseURL(t *testing.T) {
-	for _, base := range []string{"", "127.0.0.1:8081", "ftp://onduleur/", "http://"} {
+	for _, base := range []string{"", "127.0.0.1:8081", "ftp://inverter/", "http://"} {
 		t.Run(base, func(t *testing.T) {
 			if _, err := New(base, nil, time.Second, testLogger()); err == nil {
-				t.Fatalf("New(%q) devait échouer", base)
+				t.Fatalf("New(%q) should have failed", base)
 			}
 		})
 	}
 }
 
-// TestNilDoerDefaultsToHTTPClient vérifie qu'un transport nil reste utilisable.
+// TestNilDoerDefaultsToHTTPClient checks that a nil transport remains usable.
 func TestNilDoerDefaultsToHTTPClient(t *testing.T) {
 	srv, _ := newServer(t, staticHandler(http.StatusOK, validBody))
 	c, err := New(srv.URL, nil, 2*time.Second, nil)
@@ -355,35 +355,35 @@ func TestNilDoerDefaultsToHTTPClient(t *testing.T) {
 	}
 }
 
-// TestReadOnlyGuardIntegration : le client tel qu'il est construit en production
-// ne peut pas émettre autre chose qu'un GET.
+// TestReadOnlyGuardIntegration: the client as built in production cannot emit
+// anything other than a GET.
 func TestReadOnlyGuardIntegration(t *testing.T) {
 	srv, rec := newServer(t, staticHandler(http.StatusOK, validBody))
 	c := newClient(t, srv.URL, 2*time.Second)
 
-	// Un POST direct via la garde doit être refusé sans atteindre le serveur.
+	// A direct POST through the guard must be refused without reaching the server.
 	ro := fronius.ReadOnly{Inner: &http.Client{}}
 	req, err := http.NewRequest(http.MethodPost, srv.URL+PowerFlowPath, nil)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	if _, err := ro.Do(req); err == nil {
-		t.Fatal("la garde lecture seule devait refuser le POST")
+		t.Fatal("the read-only guard should have refused the POST")
 	}
 	if rec.method != "" {
-		t.Fatalf("le serveur a reçu une requête : %+v", rec)
+		t.Fatalf("the server received a request: %+v", rec)
 	}
 
-	// Et le client nominal, lui, passe.
+	// And the nominal client, for its part, passes.
 	if _, err := c.GetPowerFlowRealtimeData(context.Background()); err != nil {
 		t.Fatalf("GetPowerFlowRealtimeData: %v", err)
 	}
 	if rec.method != http.MethodGet {
-		t.Fatalf("méthode = %q", rec.method)
+		t.Fatalf("method = %q", rec.method)
 	}
 }
 
-// TestBaseURLWithPathPrefix : un chemin de base est conservé.
+// TestBaseURLWithPathPrefix: a base path is preserved.
 func TestBaseURLWithPathPrefix(t *testing.T) {
 	srv, rec := newServer(t, staticHandler(http.StatusOK, validBody))
 	c := newClient(t, srv.URL+"/prefix/", 2*time.Second)
@@ -392,6 +392,6 @@ func TestBaseURLWithPathPrefix(t *testing.T) {
 		t.Fatalf("GetPowerFlowRealtimeData: %v", err)
 	}
 	if rec.path != "/prefix"+PowerFlowPath {
-		t.Fatalf("chemin = %q, attendu %q", rec.path, "/prefix"+PowerFlowPath)
+		t.Fatalf("path = %q, want %q", rec.path, "/prefix"+PowerFlowPath)
 	}
 }

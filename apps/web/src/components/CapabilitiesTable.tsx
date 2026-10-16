@@ -15,18 +15,17 @@ export type CapabilitiesTableProps = {
 }
 
 /**
- * Tableau des capacités de la supervision.
+ * Table of the monitoring capabilities.
  *
- * Une capacité indisponible est rendue comme telle, avec son motif : aucune
- * carte « consommation », « import/export » ou « batterie » n'est codée en dur
- * ailleurs dans l'interface, et aucune valeur numérique n'est affichée pour une
- * capacité indisponible (l'invariant « pas de zéro inventé » va jusqu'à
- * l'écran).
+ * An unavailable capability is rendered as such, with its reason: no
+ * "consumption", "import/export" or "battery" card is hard-coded elsewhere in
+ * the interface, and no numeric value is displayed for an unavailable
+ * capability (the "no invented zero" invariant goes all the way to the screen).
  */
 export function CapabilitiesTable({ capabilities }: CapabilitiesTableProps) {
   const { t } = useT()
 
-  // Tri stable par identifiant : l'ordre ne dépend pas de l'API.
+  // Stable sort by identifier: the order does not depend on the API.
   const rows = [...capabilities].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
 
   return (

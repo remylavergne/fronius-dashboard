@@ -33,13 +33,13 @@ func TestFromPowerFlowDeviceTimestamp(t *testing.T) {
 	}
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", site, nil), now)
 
-	// TS toujours en UTC : 09:17:43+02:00 == 07:17:43Z.
+	// TS always in UTC: 09:17:43+02:00 == 07:17:43Z.
 	want := time.Date(2026, 10, 16, 7, 17, 43, 0, time.UTC)
 	if !got.TS.Equal(want) {
-		t.Fatalf("TS = %v, attendu %v", got.TS, want)
+		t.Fatalf("TS = %v, want %v", got.TS, want)
 	}
 	if got.TS.Location() != time.UTC {
-		t.Fatalf("TS doit être en UTC, reçu %v", got.TS.Location())
+		t.Fatalf("TS must be in UTC, got %v", got.TS.Location())
 	}
 	if got.TSSource != TSSourceDevice {
 		t.Fatalf("TSSource = %q", got.TSSource)
@@ -69,48 +69,48 @@ func TestFromPowerFlowTimestampFallback(t *testing.T) {
 		name string
 		ts   string
 	}{
-		{"horodatage vide", ""},
-		{"horodatage non RFC3339", "16/10/2026 09:17"},
-		{"horodatage sans fuseau", "2026-10-16T09:17:43"},
-		{"horodatage numérique", "1760000000"},
+		{"empty timestamp", ""},
+		{"non-RFC3339 timestamp", "16/10/2026 09:17"},
+		{"timestamp without time zone", "2026-10-16T09:17:43"},
+		{"numeric timestamp", "1760000000"},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := FromPowerFlow(envelope(tc.ts, site, nil), now)
 			if !got.TS.Equal(now.UTC()) {
-				t.Fatalf("TS = %v, attendu %v (horloge du collecteur)", got.TS, now.UTC())
+				t.Fatalf("TS = %v, want %v (collector clock)", got.TS, now.UTC())
 			}
 			if got.TS.Location() != time.UTC {
-				t.Fatalf("TS doit être en UTC, reçu %v", got.TS.Location())
+				t.Fatalf("TS must be in UTC, got %v", got.TS.Location())
 			}
 			if got.TSSource != TSSourceCollector {
-				t.Fatalf("TSSource = %q, attendu %q", got.TSSource, TSSourceCollector)
+				t.Fatalf("TSSource = %q, want %q", got.TSSource, TSSourceCollector)
 			}
 			if got.Quality != QualityEstimated {
-				t.Fatalf("Quality = %q, attendu %q", got.Quality, QualityEstimated)
+				t.Fatalf("Quality = %q, want %q", got.Quality, QualityEstimated)
 			}
 		})
 	}
 }
 
-// TestFromPowerFlowNeverInventsZero : un champ absent reste nil, tandis qu'un
-// zéro explicitement envoyé par l'appareil reste 0.
+// TestFromPowerFlowNeverInventsZero: an absent field remains nil, whereas a
+// zero explicitly sent by the device remains 0.
 func TestFromPowerFlowNeverInventsZero(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 	site := solarapi.SiteData{
 		Mode:   "produce-only",
-		P_PV:   new(float64(0)), // explicitement nul (nuit)
-		P_Grid: new(float64(0)), // explicitement nul (compteur présent, échange nul)
-		// P_Load, P_Akku, rel_* absents → null dans le protocole
+		P_PV:   new(float64(0)), // explicitly zero (night)
+		P_Grid: new(float64(0)), // explicitly zero (meter present, zero exchange)
+		// P_Load, P_Akku, rel_* absent → null in the protocol
 	}
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", site, nil), now)
 
 	if got.PowerPVW == nil || *got.PowerPVW != 0 {
-		t.Fatalf("PowerPVW = %v, attendu 0 explicite", got.PowerPVW)
+		t.Fatalf("PowerPVW = %v, want explicit 0", got.PowerPVW)
 	}
 	if got.PowerGridW == nil || *got.PowerGridW != 0 {
-		t.Fatalf("PowerGridW = %v, attendu 0 explicite", got.PowerGridW)
+		t.Fatalf("PowerGridW = %v, want explicit 0", got.PowerGridW)
 	}
 	for name, v := range map[string]*float64{
 		"PowerLoadW":            got.PowerLoadW,
@@ -122,25 +122,25 @@ func TestFromPowerFlowNeverInventsZero(t *testing.T) {
 		"RelSelfConsumptionPct": got.RelSelfConsumptionPct,
 	} {
 		if v != nil {
-			t.Fatalf("%s = %v, attendu nil (champ absent)", name, *v)
+			t.Fatalf("%s = %v, want nil (absent field)", name, *v)
 		}
 	}
 	if got.Quality != QualityMeasured {
-		t.Fatalf("Quality = %q (une mesure nulle explicite reste mesurée)", got.Quality)
+		t.Fatalf("Quality = %q (an explicit zero measurement remains measured)", got.Quality)
 	}
 }
 
-// TestFromPowerFlowEmptyResponseIsMissing : l'appareil répond avec un
-// horodatage mais aucune valeur ⇒ l'échantillon n'est pas « mesuré ».
+// TestFromPowerFlowEmptyResponseIsMissing: the device answers with a
+// timestamp but no value ⇒ the sample is not `measured`.
 func TestFromPowerFlowEmptyResponseIsMissing(t *testing.T) {
 	now := time.Now().UTC()
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", solarapi.SiteData{Mode: "produce-only"}, nil), now)
 
 	if got.Quality != QualityMissing {
-		t.Fatalf("Quality = %q, attendu %q", got.Quality, QualityMissing)
+		t.Fatalf("Quality = %q, want %q", got.Quality, QualityMissing)
 	}
 	if got.TSSource != TSSourceDevice {
-		t.Fatalf("TSSource = %q (l'horodatage reste celui de l'appareil)", got.TSSource)
+		t.Fatalf("TSSource = %q (the timestamp remains the device's)", got.TSSource)
 	}
 }
 
@@ -156,21 +156,21 @@ func TestFromPowerFlowInverters(t *testing.T) {
 		t.Fatalf("len(Inverters) = %d", len(got.Inverters))
 	}
 	if got.Inverters[0].ID != "1" || got.Inverters[1].ID != "2" {
-		t.Fatalf("ordre des onduleurs non déterministe : %+v", got.Inverters)
+		t.Fatalf("non-deterministic inverter order: %+v", got.Inverters)
 	}
 	first := got.Inverters[0]
 	if first.DT != 1 || first.PowerW == nil || *first.PowerW != 20 {
-		t.Fatalf("onduleur 1 = %+v", first)
+		t.Fatalf("inverter 1 = %+v", first)
 	}
 	if first.EnergyDayWh == nil || *first.EnergyDayWh != 2 {
-		t.Fatalf("E_Day onduleur 1 = %v", first.EnergyDayWh)
+		t.Fatalf("E_Day inverter 1 = %v", first.EnergyDayWh)
 	}
 }
 
 func TestFromPowerFlowNoInverters(t *testing.T) {
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", solarapi.SiteData{P_PV: new(float64(1))}, nil), time.Now())
 	if got.Inverters != nil {
-		t.Fatalf("Inverters = %+v, attendu nil", got.Inverters)
+		t.Fatalf("Inverters = %+v, want nil", got.Inverters)
 	}
 }
 

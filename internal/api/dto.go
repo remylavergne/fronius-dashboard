@@ -1,15 +1,15 @@
-// Package api expose l'API REST de consultation.
+// Package api exposes the REST read API.
 //
-// Conventions de sérialisation (miroir à tenir avec apps/web/src/lib/schema.ts) :
-//   - clés en snake_case ;
-//   - unités SI de base (W, Wh, %) : la conversion en kW/kWh est faite par
-//     l'interface, jamais ici ;
-//   - une valeur absente est sérialisée en `null`, jamais en 0 ;
-//   - les horodatages sont en UTC, à la milliseconde, suffixés `Z`.
+// Serialisation conventions (mirror to keep with apps/web/src/lib/schema.ts):
+//   - snake_case keys;
+//   - base SI units (W, Wh, %): the conversion to kW/kWh is done by
+//     the interface, never here;
+//   - an absent value is serialised as `null`, never as 0;
+//   - timestamps are in UTC, to the millisecond, suffixed `Z`.
 //
-// Aucun secret ne figure dans ces structures : les identifiants de l'appareil
-// vivent dans le type secret.String du côté de froniusd, ne sont jamais
-// sérialisés, et aucune de ces réponses ne peut les restituer (test dédié).
+// No secret appears in these structures: the device credentials
+// live in the secret.String type on the froniusd side, are never
+// serialised, and none of these responses can return them (dedicated test).
 package api
 
 import (
@@ -19,10 +19,10 @@ import (
 	"fronius-supervisor/internal/storage"
 )
 
-// apiTimeLayout : horodatage UTC à la milliseconde, lisible par JavaScript.
+// apiTimeLayout: UTC timestamp to the millisecond, readable by JavaScript.
 const apiTimeLayout = "2006-01-02T15:04:05.000Z"
 
-// Codes d'erreur exposés par l'API.
+// Error codes exposed by the API.
 const (
 	CodeInvalidRange     = "invalid_range"
 	CodeInvalidStep      = "invalid_step"
@@ -32,25 +32,25 @@ const (
 	CodeNoData           = "no_data"
 )
 
-// envelope est l'enveloppe de toute réponse.
+// envelope is the envelope of any response.
 type envelope struct {
 	Data  any       `json:"data"`
 	Meta  *meta     `json:"meta,omitempty"`
 	Error *apiError `json:"error,omitempty"`
 }
 
-// meta accompagne chaque réponse ; les endpoints de mesure y ajoutent l'état de
-// fraîcheur.
+// meta accompanies every response; the measurement endpoints add the freshness
+// state to it.
 type meta struct {
 	GeneratedAt string   `json:"generated_at"`
 	SampledAt   *string  `json:"sampled_at,omitempty"`
 	Stale       *bool    `json:"stale,omitempty"`
 	StaleAfterS *float64 `json:"stale_after_s,omitempty"`
-	// StepS est le pas effectivement appliqué par /api/v1/timeseries, en
-	// secondes. Il est indispensable au client : sans lui, déduire le pas de
-	// l'écart entre deux buckets renvoyés donne un résultat faux dès qu'un
-	// bucket manque, et l'interface tracerait alors la courbe en travers du
-	// trou — exactement l'interpolation qu'elle doit éviter.
+	// StepS is the step actually applied by /api/v1/timeseries, in
+	// seconds. It is indispensable to the client: without it, deducing the step from
+	// the gap between two returned buckets gives a wrong result as soon as a
+	// bucket is missing, and the interface would then draw the curve across the
+	// hole — exactly the interpolation it must avoid.
 	StepS *float64 `json:"step_s,omitempty"`
 }
 
@@ -59,17 +59,17 @@ type apiError struct {
 	Message string `json:"message"`
 }
 
-// errorEnvelope est la forme d'une réponse d'erreur.
+// errorEnvelope is the shape of an error response.
 //
-// Elle ne porte pas de champ « data » : le contrat est exactement
-// {"error":{"code":"…","message":"…"}}. L'enveloppe de succès, elle, expose
-// toujours « data » (éventuellement null, cas no_data de /live).
+// It carries no "data" field: the contract is exactly
+// {"error":{"code":"…","message":"…"}}. The success envelope, on the other
+// hand, always exposes "data" (possibly null, the no_data case of /live).
 type errorEnvelope struct {
 	Error apiError `json:"error"`
 }
 
 // ---------------------------------------------------------------------------
-// Mesures
+// Measurements
 // ---------------------------------------------------------------------------
 
 type sampleDTO struct {
@@ -186,7 +186,7 @@ func eventsToDTO(events []model.Event) []eventDTO {
 }
 
 // ---------------------------------------------------------------------------
-// Capacités, santé, système
+// Capabilities, health, system
 // ---------------------------------------------------------------------------
 
 type capabilityDTO struct {
@@ -239,9 +239,9 @@ type collectorHealthDTO struct {
 	SamplesTotal   int64  `json:"samples_total"`
 }
 
-// systemDTO décrit l'application de supervision. `device` reste null tant
-// qu'aucune lecture d'identité n'a abouti : la Solar API ne fournit ni modèle,
-// ni version de firmware, ni numéro de série (voir docs/UNKNOWNS.md).
+// systemDTO describes the supervision application. `device` stays null as long
+// as no identity read has succeeded: the Solar API provides neither model,
+// nor firmware version, nor serial number (see docs/UNKNOWNS.md).
 type systemDTO struct {
 	Version       string        `json:"version"`
 	GoVersion     string        `json:"go_version"`
@@ -256,10 +256,10 @@ type systemDTO struct {
 	Detection     *detectionDTO `json:"detection"`
 }
 
-// deviceDTO est l'identité de l'appareil telle qu'elle a été lue.
+// deviceDTO is the device identity as it was read.
 //
-// Les trois champs d'identité sont nullables : une chaîne vide en base signifie
-// « non trouvé dans la réponse » et devient `null`, jamais "" ni « inconnu ».
+// The three identity fields are nullable: an empty string in the database means
+// "not found in the response" and becomes `null`, never "" nor "unknown".
 type deviceDTO struct {
 	Model        *string `json:"model"`
 	Firmware     *string `json:"firmware"`
@@ -268,7 +268,7 @@ type deviceDTO struct {
 	ReadAtUTC    string  `json:"read_at_utc"`
 }
 
-// detectionDTO expose l'état des quatre détections internes.
+// detectionDTO exposes the state of the four internal detections.
 type detectionDTO struct {
 	ReadAtUTC    *string              `json:"read_at_utc"`
 	Meter        detectionResourceDTO `json:"meter"`
@@ -278,7 +278,7 @@ type detectionDTO struct {
 	LastError    string               `json:"last_error"`
 }
 
-// detectionResourceDTO est l'état d'une détection : unknown, absent ou present.
+// detectionResourceDTO is the state of one detection: unknown, absent or present.
 type detectionResourceDTO struct {
 	State  string `json:"state"`
 	Source string `json:"source"`

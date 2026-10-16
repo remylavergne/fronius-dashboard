@@ -1,55 +1,55 @@
 /**
- * Mise en forme des séries temporelles pour le graphique.
+ * Time series formatting for the chart.
  *
- * Règle centrale : un bucket sans mesure conserve un trou. On n'interpole
- * jamais entre deux points et on ne remplace jamais une absence par 0.
+ * Central rule: a bucket without a measurement keeps a gap. We never
+ * interpolate between two points and never replace an absence with 0.
  *
- * Attention au piège : Recharts ne connaît que les points qu'on lui donne. Si
- * l'API ne renvoie pas un bucket (parce qu'il est vide), deux buckets voisins
- * deviennent adjacents dans le tableau et la courbe est **tracée en travers du
- * trou** — c'est précisément l'interpolation que l'on veut éviter. Il faut donc
- * matérialiser les buckets manquants par des points `null`, que
- * `connectNulls={false}` transforme en coupure visible.
+ * Watch out for the trap: Recharts only knows the points we give it. If the API
+ * does not return a bucket (because it is empty), two neighbouring buckets
+ * become adjacent in the array and the curve is **drawn across the gap** — this
+ * is precisely the interpolation we want to avoid. The missing buckets must
+ * therefore be materialised as `null` points, which `connectNulls={false}`
+ * turns into a visible break.
  */
 import type { Bucket } from './schema'
 
 export type PowerPoint = {
-  /** Horodatage du début de bucket, en millisecondes (axe X). */
+  /** Start timestamp of the bucket, in milliseconds (X axis). */
   t: number
-  /** Libellé lisible du bucket. */
+  /** Readable label of the bucket. */
   label: string
-  /** Puissance moyenne du bucket, ou `null` si aucune mesure n'y existe. */
+  /** Average power of the bucket, or `null` if no measurement exists there. */
   powerW: number | null
-  /** Nombre d'échantillons agrégés (0 pour un bucket manquant). */
+  /** Number of aggregated samples (0 for a missing bucket). */
   count: number
-  /** Nombre d'échantillons du bucket sans valeur de puissance. */
+  /** Number of samples in the bucket without a power value. */
   missing: number
 }
 
-/** Fenêtre demandée à l'API, utilisée pour compléter les buckets manquants. */
+/** Window requested from the API, used to fill in the missing buckets. */
 export type TimeWindow = {
   from: string
   to: string
 }
 
 /**
- * Nombre maximal de points pour lesquels la grille est complétée.
+ * Maximum number of points for which the grid is filled in.
  *
- * `step=auto` borne déjà la réponse à 1500 points ; cette limite protège le cas
- * d'une plage personnalisée avec un pas fin sur une longue durée, où compléter
- * la grille ferait exploser le nombre de points rendus. Au-delà, seuls les
- * buckets réellement renvoyés sont affichés.
+ * `step=auto` already bounds the response to 1500 points; this limit protects
+ * the case of a custom range with a fine step over a long duration, where
+ * filling the grid would blow up the number of returned points. Beyond that,
+ * only the buckets actually returned are displayed.
  */
 export const MAX_FILLED_POINTS = 5000
 
-const timeFormat = new Intl.DateTimeFormat('fr-BE', { hour: '2-digit', minute: '2-digit' })
-const dayTimeFormat = new Intl.DateTimeFormat('fr-BE', {
+const timeFormat = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' })
+const dayTimeFormat = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
   month: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
 })
-const dateFormat = new Intl.DateTimeFormat('fr-BE', { day: '2-digit', month: '2-digit' })
+const dateFormat = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit' })
 
 function labelFor(date: Date, stepSeconds: number): string {
   if (stepSeconds >= 86400) {
@@ -72,7 +72,7 @@ function pointFromBucket(bucket: Bucket, stepSeconds: number): PowerPoint {
   }
 }
 
-/** Point sans mesure : matérialise un bucket absent de la réponse. */
+/** Point without a measurement: materialises a bucket absent from the response. */
 function blankPoint(t: number, stepSeconds: number): PowerPoint {
   return { t, label: labelFor(new Date(t), stepSeconds), powerW: null, count: 0, missing: 0 }
 }
@@ -82,12 +82,12 @@ function mapBuckets(buckets: Bucket[], stepSeconds: number): PowerPoint[] {
 }
 
 /**
- * Convertit des buckets d'API en points de graphique.
+ * Converts API buckets into chart points.
  *
- * @param buckets buckets non vides renvoyés par l'API
- * @param stepSeconds pas du bucket (déduit par `inferStepSeconds`)
- * @param window fenêtre demandée ; fournie, elle fait apparaître les buckets
- *   manquants sous forme de points sans mesure
+ * @param buckets non-empty buckets returned by the API
+ * @param stepSeconds bucket step (inferred by `inferStepSeconds`)
+ * @param window requested window; when provided, it makes the missing buckets
+ *   appear as points without a measurement
  */
 export function toPowerPoints(buckets: Bucket[], stepSeconds = 300, window?: TimeWindow): PowerPoint[] {
   if (!window || stepSeconds <= 0) {
@@ -101,7 +101,7 @@ export function toPowerPoints(buckets: Bucket[], stepSeconds = 300, window?: Tim
     return mapBuckets(buckets, stepSeconds)
   }
 
-  // Les buckets sont alignés sur l'epoch côté serveur : la grille doit l'être aussi.
+  // Buckets are aligned on the epoch server-side: the grid must be too.
   const firstMs = Math.ceil(fromMs / stepMs) * stepMs
   const expected = Math.ceil((toMs - firstMs) / stepMs)
   if (expected <= 0 || expected > MAX_FILLED_POINTS) {
@@ -122,11 +122,11 @@ export function toPowerPoints(buckets: Bucket[], stepSeconds = 300, window?: Tim
 }
 
 /**
- * Déduit le pas réel d'une série à partir de ses deux premiers buckets.
+ * Infers the real step of a series from its first two buckets.
  *
- * L'API ne renvoie pas le pas résolu pour `step=auto` ; l'écart entre deux
- * buckets consécutifs le donne. Le repli sert quand la série ne contient qu'un
- * point — le format des libellés est alors sans importance.
+ * The API does not return the resolved step for `step=auto`; the gap between
+ * two consecutive buckets gives it. The fallback applies when the series
+ * contains only one point — the label format then does not matter.
  */
 export function inferStepSeconds(buckets: Bucket[], fallbackSeconds = 300): number {
   const [first, second] = buckets
@@ -138,13 +138,13 @@ export function inferStepSeconds(buckets: Bucket[], fallbackSeconds = 300): numb
 }
 
 export type SeriesSummary = {
-  /** Buckets contenant au moins une mesure. */
+  /** Buckets containing at least one measurement. */
   measured: number
-  /** Buckets sans aucune mesure de puissance : les trous de la courbe. */
+  /** Buckets without any power measurement: the gaps in the curve. */
   withoutMeasure: number
-  /** Échantillons agrégés, toutes valeurs confondues. */
+  /** Aggregated samples, all values combined. */
   samples: number
-  /** Échantillons dépourvus de valeur de puissance. */
+  /** Samples lacking a power value. */
   missingSamples: number
   minW: number | null
   maxW: number | null
@@ -152,8 +152,8 @@ export type SeriesSummary = {
 }
 
 /**
- * Résumé textuel d'une série : sert de description accessible au graphique et
- * de garde-fou contre un écran vide inexplicable.
+ * Textual summary of a series: serves as an accessible description to the chart
+ * and as a safeguard against an inexplicable blank screen.
  */
 export function summarize(points: PowerPoint[]): SeriesSummary {
   let measured = 0

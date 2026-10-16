@@ -1,8 +1,8 @@
-// Package collector assure l'acquisition périodique des mesures.
+// Package collector performs the periodic acquisition of measurements.
 //
-// Invariant : la seule opération distante est un GET. Aucun retry, aucun
-// backoff et aucune reprise ne peut déclencher une écriture sur l'onduleur,
-// puisque le transport lui-même refuse toute méthode autre que GET
+// Invariant: the only remote operation is a GET. No retry, no
+// backoff and no recovery can trigger a write on the inverter,
+// since the transport itself refuses any method other than GET
 // (internal/fronius/readonly.go).
 package collector
 
@@ -20,29 +20,29 @@ import (
 	"fronius-supervisor/internal/storage"
 )
 
-// Clés d'état persistées.
+// Persisted state keys.
 const (
 	StateLastSuccess = "last_success_utc"
 	StateLastError   = "last_error"
 )
 
-// Bornes du backoff appliqué après un échec.
+// Backoff bounds applied after a failure.
 const (
 	initialBackoff = time.Second
 	maxBackoff     = time.Minute
 )
 
-// Source fournit la mesure brute. L'interface est volontairement réduite à
-// l'unique endpoint de la phase 1.
+// Source provides the raw measurement. The interface is deliberately reduced to
+// the single endpoint of phase 1.
 type Source interface {
 	GetPowerFlowRealtimeData(ctx context.Context) (solarapi.PowerFlowEnvelope, error)
 }
 
-// Sink persiste les effets d'un cycle de collecte.
+// Sink persists the effects of a collection cycle.
 //
-// InsertEvent ne figure pas dans la définition minimale du plan mais il est
-// nécessaire au comportement demandé (événement de sévérité warning à l'échec,
-// avec anti-duplication, et événement de reprise).
+// InsertEvent does not appear in the minimal definition of the plan but it is
+// necessary for the requested behaviour (warning-severity event on failure,
+// with anti-duplication, and recovery event).
 type Sink interface {
 	InsertSample(context.Context, model.Sample) error
 	InsertEvent(context.Context, model.Event) error
@@ -50,30 +50,30 @@ type Sink interface {
 	SetState(context.Context, string, string) error
 }
 
-// Collector boucle sur la source et persiste les résultats.
+// Collector loops over the source and persists the results.
 type Collector struct {
 	Source Source
 	Sink   Sink
 	Log    *slog.Logger
-	// Interval est la période nominale en cas de succès.
+	// Interval is the nominal period on success.
 	Interval time.Duration
-	// Jitter est l'amplitude de la variation aléatoire appliquée à Interval.
+	// Jitter is the amplitude of the random variation applied to Interval.
 	Jitter time.Duration
-	// Now permet d'injecter une horloge (tests).
+	// Now allows injecting a clock (tests).
 	Now func() time.Time
-	// Rand permet d'injecter une source aléatoire reproductible (tests).
+	// Rand allows injecting a reproducible random source (tests).
 	Rand *rand.Rand
 
 	mu sync.Mutex
-	// lastEventDetail mémorise le dernier message d'erreur ayant donné lieu à
-	// un événement, pour ne pas dupliquer un événement à chaque cycle.
+	// lastEventDetail remembers the last error message that gave rise to
+	// an event, so as not to duplicate an event on every cycle.
 	lastEventDetail string
-	// failing indique qu'une série d'échecs est en cours.
+	// failing indicates that a series of failures is in progress.
 	failing bool
 }
 
-// Run collecte jusqu'à l'annulation du contexte. Retourne nil lorsque le
-// contexte est annulé : l'arrêt est un cas nominal, pas une erreur.
+// Run collects until the context is cancelled. Returns nil when the
+// context is cancelled: stopping is a nominal case, not an error.
 func (c *Collector) Run(ctx context.Context) error {
 	c.log().Info("collector started",
 		"interval", c.Interval, "jitter", c.Jitter)
@@ -104,10 +104,10 @@ func (c *Collector) Run(ctx context.Context) error {
 	}
 }
 
-// CollectOnce exécute un cycle complet et retourne l'échantillon persisté.
+// CollectOnce runs a complete cycle and returns the persisted sample.
 //
-// En cas d'erreur, aucun échantillon n'est inséré : un cycle raté ne doit
-// jamais produire de point de mesure, sous peine d'inventer une donnée.
+// On error, no sample is inserted: a failed cycle must
+// never produce a measurement point, on pain of inventing data.
 func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 	started := c.now()
 
@@ -121,8 +121,8 @@ func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 
 	sm := model.FromPowerFlow(env, started)
 	if err := c.Sink.InsertSample(ctx, sm); err != nil {
-		// L'échec de persistance n'est pas un échec de l'appareil : pas
-		// d'événement de panne matérielle, et l'erreur remonte telle quelle.
+		// The persistence failure is not a device failure: no
+		// hardware-failure event, and the error is returned as is.
 		return model.Sample{}, err
 	}
 
@@ -160,10 +160,10 @@ func (c *Collector) recordFailure(ctx context.Context, started time.Time, durati
 		Error:      err.Error(),
 	})
 	if logErr != nil {
-		c.log().Error("enregistrement du cycle échoué impossible", "error", logErr)
+		c.log().Error("failed to record the failed cycle", "error", logErr)
 	}
 	if setErr := c.Sink.SetState(ctx, StateLastError, err.Error()); setErr != nil {
-		c.log().Error("écriture de last_error impossible", "error", setErr)
+		c.log().Error("failed to write last_error", "error", setErr)
 	}
 
 	detail := err.Error()
@@ -180,17 +180,17 @@ func (c *Collector) recordFailure(ctx context.Context, started time.Time, durati
 		TS:       started.UTC(),
 		Kind:     model.EventCollectorError,
 		Severity: model.SeverityWarning,
-		Message:  "échec de la collecte",
+		Message:  "collection failure",
 		Detail:   detail,
 	}); insErr != nil {
-		c.log().Error("insertion de l'événement d'échec impossible", "error", insErr)
+		c.log().Error("failed to insert the failure event", "error", insErr)
 	}
 
-	c.log().Warn("collecte échouée", "kind", kind, "error", err)
+	c.log().Warn("collection failed", "kind", kind, "error", err)
 }
 
-// onSuccess publie l'événement de reprise si une série d'échecs vient de
-// s'achever.
+// onSuccess publishes the recovery event if a series of failures has just
+// ended.
 func (c *Collector) onSuccess(ctx context.Context, started time.Time) {
 	c.mu.Lock()
 	wasFailing := c.failing
@@ -205,19 +205,19 @@ func (c *Collector) onSuccess(ctx context.Context, started time.Time) {
 		TS:       started.UTC(),
 		Kind:     model.EventCollectorRecovered,
 		Severity: model.SeverityInfo,
-		Message:  "collecte rétablie",
+		Message:  "collection recovered",
 	}); err != nil {
-		c.log().Error("insertion de l'événement de reprise impossible", "error", err)
+		c.log().Error("failed to insert the recovery event", "error", err)
 	}
-	c.log().Info("collecte rétablie")
+	c.log().Info("collection recovered")
 }
 
-// successDelay retourne Interval ± Jitter.
+// successDelay returns Interval ± Jitter.
 func (c *Collector) successDelay() time.Duration {
 	if c.Jitter <= 0 {
 		return c.Interval
 	}
-	// Int64N(2*Jitter+1) ∈ [0, 2·Jitter] : le décalage reste dans les bornes.
+	// Int64N(2*Jitter+1) ∈ [0, 2·Jitter]: the offset stays within bounds.
 	offset := time.Duration(c.int64n(int64(2*c.Jitter) + 1))
 	d := c.Interval - c.Jitter + offset
 	if d < 0 {
@@ -226,8 +226,8 @@ func (c *Collector) successDelay() time.Duration {
 	return d
 }
 
-// backoff retourne le délai après attempt échecs consécutifs :
-// 1 s, 2 s, 4 s, … plafonné à 60 s.
+// backoff returns the delay after attempt consecutive failures:
+// 1 s, 2 s, 4 s, … capped at 60 s.
 func (c *Collector) backoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1

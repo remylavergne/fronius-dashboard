@@ -1,50 +1,50 @@
 # ADR 0007 — Packaging
 
-## Statut
+## Status
 
-Accepté (phase 1)
+Accepted (phase 1)
 
-## Contexte
+## Context
 
-La phase 1 doit être vérifiable sur un poste de développement : collecter depuis le simulateur,
-historiser, servir l'API REST et afficher le dashboard React. Le frontend est un projet Vite avec
-rechargement à chaud ; le backend est un binaire Go.
+Phase 1 must be verifiable on a development machine: collect from the simulator,
+historize, serve the REST API and display the React dashboard. The frontend is a Vite project with
+hot reload; the backend is a Go binary.
 
-La cible finale est une installation sur NAS, mais l'unité d'installation et le mode de déploiement ne
-sont pas encore arrêtés.
+The final target is an installation on a NAS, but the installation unit and the deployment mode are
+not yet decided.
 
-## Décision
+## Decision
 
-En phase 1, trois binaires autonomes et un serveur de développement Vite :
+In phase 1, three standalone binaries and a Vite development server:
 
-- `froniusd` : collecteur + API REST + service statique optionnel de `FRONIUS_WEB_DIR` ;
-- `fronius-sim` : simulateur ;
-- `fronius-probe` : sonde lecture seule.
+- `froniusd`: collector + REST API + optional static service of `FRONIUS_WEB_DIR`;
+- `fronius-sim`: simulator;
+- `fronius-probe`: read-only probe.
 
-Ils sont compilés avec `CGO_ENABLED=0`, sans `go:embed` des assets React. Le conditionnement conteneur
-(Dockerfile multi-stage, compose, healthcheck, documentation d'installation NAS) et l'intégration des
-assets par `go:embed` sont reportés en phase 5.
+They are compiled with `CGO_ENABLED=0`, without `go:embed` of the React assets. Container packaging
+(multi-stage Dockerfile, compose, healthcheck, NAS installation documentation) and the integration of
+assets by `go:embed` are deferred to phase 5.
 
-## Conséquences
+## Consequences
 
-- Aucun `go:embed` ne doit être introduit avant la phase 5.
-- Le service statique se contente de servir `FRONIUS_WEB_DIR` avec repli SPA sur `index.html` ; si la
-  variable est vide, aucun statique n'est servi.
-- `CGO_ENABLED=0` prouve déjà l'absence de dépendance native (vérifié en CI).
-- L'exploitation sur NAS dépend de la phase 5 ; aucune unité systemd ni image n'est produite en phase 1.
-- Le cycle de build du frontend reste indépendant de celui du backend.
+- No `go:embed` must be introduced before phase 5.
+- The static service merely serves `FRONIUS_WEB_DIR` with an SPA fallback to `index.html`; if the
+  variable is empty, no static content is served.
+- `CGO_ENABLED=0` already proves the absence of a native dependency (verified in CI).
+- Operation on a NAS depends on phase 5; no systemd unit or image is produced in phase 1.
+- The frontend build cycle remains independent of the backend's.
 
-## Alternatives écartées
+## Rejected alternatives
 
-- **Binaire unique avec `go:embed` dès la phase 1** : fige le cycle de build du frontend dans celui du
-  backend, sans besoin identifié.
-- **Docker dès la phase 1** : ajoute une dépendance à Docker pour une application locale déjà exécutable
-  en binaire.
-- **Service systemd natif en phase 1** : l'unité d'installation n'est pas encore connue.
+- **Single binary with `go:embed` from phase 1**: freezes the frontend build cycle into the
+  backend's, with no identified need.
+- **Docker from phase 1**: adds a dependency on Docker for a local application already runnable
+  as a binary.
+- **Native systemd service in phase 1**: the installation unit is not yet known.
 
 ## Sources
 
 - `Makefile` (`build`, `dev-sim`, `dev-api`, `dev-web`)
-- `cmd/froniusd/main.go` (`FRONIUS_WEB_DIR`, repli SPA)
+- `cmd/froniusd/main.go` (`FRONIUS_WEB_DIR`, SPA fallback)
 - `.github/workflows/ci.yml` (`CGO_ENABLED=0 go build ./...`)
-- Roadmap phase 5 (packaging, `go:embed`, Dockerfile multi-stage, compose, E2E)
+- Phase 5 roadmap (packaging, `go:embed`, multi-stage Dockerfile, compose, E2E)

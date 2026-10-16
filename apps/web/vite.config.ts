@@ -12,8 +12,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    // Toutes les requêtes /api sont relayées vers froniusd : le frontend ne
-    // détient aucune adresse d'onduleur et aucun identifiant.
+    // All /api requests are proxied to froniusd: the frontend holds
+    // no inverter address and no credential.
     proxy: {
       '/api': 'http://127.0.0.1:8080',
     },

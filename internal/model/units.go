@@ -1,14 +1,14 @@
 package model
 
-// Conversions d'unités pour l'API et l'interface.
+// Unit conversions for the API and the interface.
 //
-// La base et le modèle domaine restent en unités SI de base (W, Wh) : les
-// conversions ne servent qu'à la frontière d'affichage. Aucune conversion
-// n'est appliquée lors de l'acquisition, pour ne pas introduire d'erreur
-// d'arrondi cumulative dans l'historique.
+// The database and the domain model stay in base SI units (W, Wh): the
+// conversions are only used at the display boundary. No conversion is applied
+// during acquisition, so as not to introduce a cumulative rounding error in
+// the history.
 
-// WhToKWh convertit des watts-heure en kilowatts-heure.
+// WhToKWh converts watt-hours to kilowatt-hours.
 func WhToKWh(v float64) float64 { return v / 1000 }
 
-// WToKW convertit des watts en kilowatts.
+// WToKW converts watts to kilowatts.
 func WToKW(v float64) float64 { return v / 1000 }

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// clearFroniusEnv retire toutes les variables FRONIUS_* pour la durée du test.
+// clearFroniusEnv removes all FRONIUS_* variables for the duration of the test.
 func clearFroniusEnv(t *testing.T) {
 	t.Helper()
 	for _, kv := range os.Environ() {
@@ -53,13 +53,13 @@ func TestLoadDefaults(t *testing.T) {
 		DetectInterval: 60 * time.Second,
 	}
 	if got != want {
-		t.Fatalf("défauts incorrects\n got: %+v\nwant: %+v", got, want)
+		t.Fatalf("wrong defaults\n got: %+v\nwant: %+v", got, want)
 	}
 }
 
 func TestLoadOverrides(t *testing.T) {
 	clearFroniusEnv(t)
-	t.Setenv("FRONIUS_SOLARAPI_URL", "https://onduleur.local:443")
+	t.Setenv("FRONIUS_SOLARAPI_URL", "https://inverter.local:443")
 	t.Setenv("FRONIUS_HTTP_ADDR", "0.0.0.0:9000")
 	t.Setenv("FRONIUS_ALLOW_REMOTE", "1")
 	t.Setenv("FRONIUS_DB_PATH", "/tmp/x.db")
@@ -72,23 +72,23 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("FRONIUS_LOG_FORMAT", "JSON")
 	t.Setenv("FRONIUS_WEB_DIR", "/srv/web")
 	t.Setenv("FRONIUS_STALE_AFTER", "2m")
-	t.Setenv("FRONIUS_DEVICE_USER", "installateur")
-	t.Setenv("FRONIUS_DEVICE_PASSWORD", "mot-de-passe")
+	t.Setenv("FRONIUS_DEVICE_USER", "installer")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "password")
 	t.Setenv("FRONIUS_DETECT_INTERVAL", "5m")
 
 	got, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got.SolarAPIURL != "https://onduleur.local:443" || got.HTTPAddr != "0.0.0.0:9000" ||
+	if got.SolarAPIURL != "https://inverter.local:443" || got.HTTPAddr != "0.0.0.0:9000" ||
 		!got.AllowRemote || got.DBPath != "/tmp/x.db" || got.TZ != "UTC" ||
 		got.PollInterval != 10*time.Second || got.PollJitter != 0 ||
 		got.HTTPTimeout != 1500*time.Millisecond || got.RetentionDays != 365 ||
 		got.LogLevel != "debug" || got.LogFormat != "json" || got.WebDir != "/srv/web" ||
 		got.StaleAfter != 2*time.Minute ||
-		got.DeviceUser != "installateur" || got.DevicePassword.Reveal() != "mot-de-passe" ||
+		got.DeviceUser != "installer" || got.DevicePassword.Reveal() != "password" ||
 		got.DetectInterval != 5*time.Minute {
-		t.Fatalf("surcharges non appliquées : %+v", got)
+		t.Fatalf("overrides not applied: %+v", got)
 	}
 }
 
@@ -98,20 +98,20 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 		env     map[string]string
 		wantSub string
 	}{
-		{"intervalle trop court", map[string]string{"FRONIUS_POLL_INTERVAL": "500ms"}, "FRONIUS_POLL_INTERVAL"},
-		{"intervalle non parsable", map[string]string{"FRONIUS_POLL_INTERVAL": "cinq secondes"}, "durée Go attendue"},
-		{"jitter négatif", map[string]string{"FRONIUS_POLL_JITTER": "-1s"}, "FRONIUS_POLL_JITTER"},
-		{"timeout nul", map[string]string{"FRONIUS_HTTP_TIMEOUT": "0s"}, "FRONIUS_HTTP_TIMEOUT"},
-		{"rétention négative", map[string]string{"FRONIUS_RETENTION_DAYS": "-1"}, "FRONIUS_RETENTION_DAYS"},
-		{"rétention non entière", map[string]string{"FRONIUS_RETENTION_DAYS": "un an"}, "entier attendu"},
-		{"booléen invalide", map[string]string{"FRONIUS_ALLOW_REMOTE": "peut-être"}, "FRONIUS_ALLOW_REMOTE"},
-		{"fuseau inconnu", map[string]string{"FRONIUS_TZ": "Mars/Olympus"}, "FRONIUS_TZ"},
-		{"URL sans schéma", map[string]string{"FRONIUS_SOLARAPI_URL": "127.0.0.1:8081"}, "URL http(s) absolue"},
-		{"URL schéma exotique", map[string]string{"FRONIUS_SOLARAPI_URL": "ftp://x/y"}, "URL http(s) absolue"},
-		{"adresse sans port", map[string]string{"FRONIUS_HTTP_ADDR": "localhost"}, "hôte:port"},
-		{"niveau de log inconnu", map[string]string{"FRONIUS_LOG_LEVEL": "verbose"}, "FRONIUS_LOG_LEVEL"},
-		{"format de log inconnu", map[string]string{"FRONIUS_LOG_FORMAT": "xml"}, "FRONIUS_LOG_FORMAT"},
-		{"stale nul", map[string]string{"FRONIUS_STALE_AFTER": "0s"}, "FRONIUS_STALE_AFTER"},
+		{"interval too short", map[string]string{"FRONIUS_POLL_INTERVAL": "500ms"}, "FRONIUS_POLL_INTERVAL"},
+		{"unparsable interval", map[string]string{"FRONIUS_POLL_INTERVAL": "five seconds"}, "Go duration expected"},
+		{"negative jitter", map[string]string{"FRONIUS_POLL_JITTER": "-1s"}, "FRONIUS_POLL_JITTER"},
+		{"zero timeout", map[string]string{"FRONIUS_HTTP_TIMEOUT": "0s"}, "FRONIUS_HTTP_TIMEOUT"},
+		{"negative retention", map[string]string{"FRONIUS_RETENTION_DAYS": "-1"}, "FRONIUS_RETENTION_DAYS"},
+		{"non-integer retention", map[string]string{"FRONIUS_RETENTION_DAYS": "one year"}, "integer expected"},
+		{"invalid boolean", map[string]string{"FRONIUS_ALLOW_REMOTE": "maybe"}, "FRONIUS_ALLOW_REMOTE"},
+		{"unknown timezone", map[string]string{"FRONIUS_TZ": "Mars/Olympus"}, "FRONIUS_TZ"},
+		{"URL without scheme", map[string]string{"FRONIUS_SOLARAPI_URL": "127.0.0.1:8081"}, "absolute http(s) URL"},
+		{"exotic scheme URL", map[string]string{"FRONIUS_SOLARAPI_URL": "ftp://x/y"}, "absolute http(s) URL"},
+		{"address without port", map[string]string{"FRONIUS_HTTP_ADDR": "localhost"}, "host:port"},
+		{"unknown log level", map[string]string{"FRONIUS_LOG_LEVEL": "verbose"}, "FRONIUS_LOG_LEVEL"},
+		{"unknown log format", map[string]string{"FRONIUS_LOG_FORMAT": "xml"}, "FRONIUS_LOG_FORMAT"},
+		{"zero stale", map[string]string{"FRONIUS_STALE_AFTER": "0s"}, "FRONIUS_STALE_AFTER"},
 	}
 
 	for _, tc := range cases {
@@ -122,10 +122,10 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 			}
 			_, err := Load()
 			if err == nil {
-				t.Fatal("Load devait échouer")
+				t.Fatal("Load should have failed")
 			}
 			if !strings.Contains(err.Error(), tc.wantSub) {
-				t.Fatalf("erreur %q ne mentionne pas %q", err, tc.wantSub)
+				t.Fatalf("error %q does not mention %q", err, tc.wantSub)
 			}
 		})
 	}
@@ -138,11 +138,11 @@ func TestLoadAccumulatesErrors(t *testing.T) {
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("Load devait échouer")
+		t.Fatal("Load should have failed")
 	}
 	for _, want := range []string{"FRONIUS_POLL_INTERVAL", "FRONIUS_LOG_FORMAT"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("erreur %q ne mentionne pas %q", err, want)
+			t.Fatalf("error %q does not mention %q", err, want)
 		}
 	}
 }
@@ -154,13 +154,13 @@ func TestLoadRejectsPartialCredentials(t *testing.T) {
 		wantSubs []string
 	}{
 		{
-			name:     "utilisateur seul",
-			env:      map[string]string{"FRONIUS_DEVICE_USER": "installateur"},
+			name:     "user only",
+			env:      map[string]string{"FRONIUS_DEVICE_USER": "installer"},
 			wantSubs: []string{"FRONIUS_DEVICE_USER", "FRONIUS_DEVICE_PASSWORD"},
 		},
 		{
-			name:     "mot de passe seul",
-			env:      map[string]string{"FRONIUS_DEVICE_PASSWORD": "mot-de-passe"},
+			name:     "password only",
+			env:      map[string]string{"FRONIUS_DEVICE_PASSWORD": "password"},
 			wantSubs: []string{"FRONIUS_DEVICE_USER", "FRONIUS_DEVICE_PASSWORD"},
 		},
 	}
@@ -172,22 +172,22 @@ func TestLoadRejectsPartialCredentials(t *testing.T) {
 			}
 			_, err := Load()
 			if err == nil {
-				t.Fatal("une paire d'identifiants incomplète doit être refusée")
+				t.Fatal("an incomplete credential pair must be refused")
 			}
 			for _, want := range tc.wantSubs {
 				if !strings.Contains(err.Error(), want) {
-					t.Fatalf("erreur %q ne nomme pas %q", err, want)
+					t.Fatalf("error %q does not name %q", err, want)
 				}
 			}
 		})
 	}
 
-	// Les deux renseignés : accepté.
+	// Both set: accepted.
 	clearFroniusEnv(t)
-	t.Setenv("FRONIUS_DEVICE_USER", "installateur")
-	t.Setenv("FRONIUS_DEVICE_PASSWORD", "mot-de-passe")
+	t.Setenv("FRONIUS_DEVICE_USER", "installer")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "password")
 	if _, err := Load(); err != nil {
-		t.Fatalf("une paire complète doit être acceptée : %v", err)
+		t.Fatalf("a complete pair must be accepted: %v", err)
 	}
 }
 
@@ -196,51 +196,51 @@ func TestDetectIntervalBounds(t *testing.T) {
 	t.Setenv("FRONIUS_DETECT_INTERVAL", "4s")
 	_, err := Load()
 	if err == nil {
-		t.Fatal("un intervalle de détection trop court doit être refusé")
+		t.Fatal("a too-short detect interval must be refused")
 	}
 	if !strings.Contains(err.Error(), "FRONIUS_DETECT_INTERVAL") {
-		t.Fatalf("erreur %q ne nomme pas la variable", err)
+		t.Fatalf("error %q does not name the variable", err)
 	}
 
 	clearFroniusEnv(t)
-	t.Setenv("FRONIUS_DETECT_INTERVAL", "chaque minute")
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "every minute")
 	_, err = Load()
 	if err == nil {
-		t.Fatal("une durée illisible doit être refusée")
+		t.Fatal("an unreadable duration must be refused")
 	}
-	if !strings.Contains(err.Error(), "durée Go attendue") {
-		t.Fatalf("erreur %q n'explique pas le format attendu", err)
+	if !strings.Contains(err.Error(), "Go duration expected") {
+		t.Fatalf("error %q does not explain the expected format", err)
 	}
 
 	clearFroniusEnv(t)
 	t.Setenv("FRONIUS_DETECT_INTERVAL", "5s")
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("la borne basse exacte doit être acceptée : %v", err)
+		t.Fatalf("the exact lower bound must be accepted: %v", err)
 	}
 	if cfg.DetectInterval != 5*time.Second {
 		t.Fatalf("detect interval = %v", cfg.DetectInterval)
 	}
 }
 
-// TestErrorsNeverContainPassword : un message d'erreur de configuration ne doit
-// jamais citer la valeur du mot de passe, même lorsque celle-ci est en cause.
+// TestErrorsNeverContainPassword: a configuration error message must never
+// quote the password value, even when that value is at fault.
 func TestErrorsNeverContainPassword(t *testing.T) {
-	const fake = "valeur-très-secrète-42"
+	const fake = "very-secret-value-42"
 
 	clearFroniusEnv(t)
-	t.Setenv("FRONIUS_DEVICE_PASSWORD", fake) // utilisateur absent → erreur
-	t.Setenv("FRONIUS_DETECT_INTERVAL", "1s") // seconde faute, pour un message composite
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", fake) // user absent → error
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "1s") // second fault, for a composite message
 
 	_, err := Load()
 	if err == nil {
-		t.Fatal("Load devait échouer")
+		t.Fatal("Load should have failed")
 	}
 	if strings.Contains(err.Error(), fake) {
-		t.Fatalf("le message d'erreur a divulgué le mot de passe : %v", err)
+		t.Fatalf("the error message leaked the password: %v", err)
 	}
 	if !strings.Contains(err.Error(), "FRONIUS_DEVICE_PASSWORD") {
-		t.Fatalf("le message doit nommer la variable fautive : %v", err)
+		t.Fatalf("the message must name the faulty variable: %v", err)
 	}
 }
 
@@ -250,39 +250,39 @@ func TestLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Location: %v", err)
 	}
-	// Heure d'hiver : UTC+1 ; heure d'été : UTC+2.
+	// Winter time: UTC+1; summer time: UTC+2.
 	winter := time.Date(2026, 1, 15, 12, 0, 0, 0, loc)
 	summer := time.Date(2026, 7, 15, 12, 0, 0, 0, loc)
 	if _, off := winter.Zone(); off != 3600 {
-		t.Fatalf("décalage hiver = %d s, attendu 3600", off)
+		t.Fatalf("winter offset = %d s, want 3600", off)
 	}
 	if _, off := summer.Zone(); off != 7200 {
-		t.Fatalf("décalage été = %d s, attendu 7200", off)
+		t.Fatalf("summer offset = %d s, want 7200", off)
 	}
 
 	if _, err := (Config{TZ: "Mars/Olympus"}).Location(); err == nil {
-		t.Fatal("fuseau inconnu devait échouer")
+		t.Fatal("unknown timezone should have failed")
 	}
 }
 
-// refusalMessageParts : éléments attendus dans le message de refus d'écoute non locale.
-var refusalMessageParts = []string{"refus", "FRONIUS_ALLOW_REMOTE", "0005"}
+// refusalMessageParts: elements expected in the non-local listen refusal message.
+var refusalMessageParts = []string{"refusal", "FRONIUS_ALLOW_REMOTE", "0005"}
 
 func TestCheckListenAddress(t *testing.T) {
 	cases := []struct {
 		name        string
 		addr        string
 		allowRemote bool
-		wantSubs    []string // vide = aucune erreur attendue
+		wantSubs    []string // empty = no error expected
 	}{
 		{name: "loopback IPv4", addr: "127.0.0.1:8080"},
 		{name: "loopback IPv6", addr: "[::1]:8080"},
 		{name: "localhost", addr: "localhost:8080"},
-		{name: "toutes interfaces", addr: ":8080", wantSubs: refusalMessageParts},
+		{name: "all interfaces", addr: ":8080", wantSubs: refusalMessageParts},
 		{name: "0.0.0.0", addr: "0.0.0.0:8080", wantSubs: refusalMessageParts},
-		{name: "IP du onduleur", addr: "192.0.2.10:8080", wantSubs: refusalMessageParts},
-		{name: "distant autorisé", addr: "192.0.2.10:8080", allowRemote: true},
-		{name: "adresse invalide", addr: "pas-une-adresse", wantSubs: []string{"FRONIUS_HTTP_ADDR", "missing port"}},
+		{name: "inverter IP", addr: "192.0.2.10:8080", wantSubs: refusalMessageParts},
+		{name: "remote allowed", addr: "192.0.2.10:8080", allowRemote: true},
+		{name: "invalid address", addr: "not-an-address", wantSubs: []string{"FRONIUS_HTTP_ADDR", "missing port"}},
 	}
 
 	for _, tc := range cases {
@@ -291,16 +291,16 @@ func TestCheckListenAddress(t *testing.T) {
 			err := c.CheckListenAddress()
 			if len(tc.wantSubs) == 0 {
 				if err != nil {
-					t.Fatalf("CheckListenAddress a refusé : %v", err)
+					t.Fatalf("CheckListenAddress refused: %v", err)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatal("CheckListenAddress devait refuser")
+				t.Fatal("CheckListenAddress should have refused")
 			}
 			for _, want := range tc.wantSubs {
 				if !strings.Contains(err.Error(), want) {
-					t.Fatalf("message %q ne mentionne pas %q", err, want)
+					t.Fatalf("message %q does not mention %q", err, want)
 				}
 			}
 		})

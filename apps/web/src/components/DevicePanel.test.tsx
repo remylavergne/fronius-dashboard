@@ -14,7 +14,7 @@ const device: Device = {
 const detection: Detection = {
   read_at_utc: '2026-10-16T07:00:00.000Z',
   meter: { state: 'present', source: '/components/PowerMeter/readable', reason: '' },
-  battery: { state: 'absent', source: '/components/BatteryManagementSystem/readable', reason: 'aucun composant indexé' },
+  battery: { state: 'absent', source: '/components/BatteryManagementSystem/readable', reason: 'no component indexed' },
   internal_api: { state: 'present', source: '/status/version', reason: '' },
   device_events: { state: 'present', source: '/status/activeEvents', reason: '' },
   last_error: '',
@@ -28,75 +28,75 @@ function resourceRow(label: string): HTMLElement {
 }
 
 describe('DevicePanel', () => {
-  it('affiche l’identité quand une lecture a abouti', () => {
+  it('shows the identity when a read succeeded', () => {
     render(<DevicePanel device={device} detection={detection} />)
 
     expect(screen.getByText('Fronius Primo GEN24 3.6 Plus')).toBeInTheDocument()
     expect(screen.getByText('1.24.3')).toBeInTheDocument()
     expect(screen.getByText('SIMULATED-0001')).toBeInTheDocument()
-    // La provenance et l'âge de la lecture sont visibles.
+    // The provenance and the age of the read are visible.
     expect(screen.getByText('/status/version')).toBeInTheDocument()
-    expect(within(screen.getByTestId('device-read-at')).getByText(/il y a|à l’instant/)).toBeInTheDocument()
+    expect(within(screen.getByTestId('device-read-at')).getByText(/ago|just now/)).toBeInTheDocument()
   })
 
-  it('traduit les trois états de détection', () => {
+  it('translates the three detection states', () => {
     render(<DevicePanel device={device} detection={detection} />)
 
-    const meter = resourceRow('Compteur')
+    const meter = resourceRow('Meter')
     expect(meter).toHaveAttribute('data-state', 'present')
-    expect(within(meter).getByText('présent')).toBeInTheDocument()
+    expect(within(meter).getByText('present')).toBeInTheDocument()
 
-    const battery = resourceRow('Batterie')
+    const battery = resourceRow('Battery')
     expect(battery).toHaveAttribute('data-state', 'absent')
     expect(within(battery).getByText('absent')).toBeInTheDocument()
-    // Un état non « présent » porte toujours son motif.
-    expect(within(battery).getByText('aucun composant indexé')).toBeInTheDocument()
+    // A state that is not "present" always carries its reason.
+    expect(within(battery).getByText('no component indexed')).toBeInTheDocument()
   })
 
-  it('distingue « absent » de « non déterminé »', () => {
+  it('distinguishes "absent" from "unknown"', () => {
     const unknown: Detection = {
       ...detection,
       read_at_utc: null,
-      meter: { state: 'unknown', source: '/components/PowerMeter/readable', reason: 'accès refusé (401)' },
-      internal_api: { state: 'unknown', source: '/status/version', reason: 'accès refusé (401)' },
-      last_error: '/status/version : accès refusé (401)',
+      meter: { state: 'unknown', source: '/components/PowerMeter/readable', reason: 'access denied (401)' },
+      internal_api: { state: 'unknown', source: '/status/version', reason: 'access denied (401)' },
+      last_error: '/status/version: access denied (401)',
     }
     render(<DevicePanel device={null} detection={unknown} />)
 
-    const meter = resourceRow('Compteur')
+    const meter = resourceRow('Meter')
     expect(meter).toHaveAttribute('data-state', 'unknown')
-    expect(within(meter).getByText('non déterminé')).toBeInTheDocument()
-    expect(within(meter).getByText('accès refusé (401)')).toBeInTheDocument()
+    expect(within(meter).getByText('unknown')).toBeInTheDocument()
+    expect(within(meter).getByText('access denied (401)')).toBeInTheDocument()
 
-    // La dernière erreur de détection est mise en évidence.
+    // The last detection error is highlighted.
     const lastError = screen.getByTestId('detection-last-error')
     expect(lastError).toHaveClass('text-destructive')
-    expect(lastError.textContent).toContain('accès refusé (401)')
+    expect(lastError.textContent).toContain('access denied (401)')
   })
 
-  it('n’affiche aucun chiffre quand l’identité est indéterminée', () => {
-    // Invariant « pas de zéro inventé » : sans lecture, l'identité entière est
-    // rendue « — » et le bloc ne contient aucun nombre de remplissage.
+  it('shows no digit when the identity is undetermined', () => {
+    // "No invented zero" invariant: without a read, the whole identity is
+    // rendered "—" and the block contains no padding number.
     render(<DevicePanel device={null} detection={null} />)
 
     const identity = screen.getByTestId('device-identity')
     expect(within(identity).getAllByText('—')).toHaveLength(3)
     expect(identity.textContent).not.toMatch(/\d/)
 
-    // Sans détection, chaque ressource est « non déterminé ».
-    for (const label of ['Compteur', 'Batterie', 'API interne', 'Événements']) {
+    // Without detection, each resource is "unknown".
+    for (const label of ['Meter', 'Battery', 'Internal API', 'Events']) {
       const row = resourceRow(label)
       expect(row).toHaveAttribute('data-state', 'unknown')
-      expect(within(row).getByText('non déterminé')).toBeInTheDocument()
+      expect(within(row).getByText('unknown')).toBeInTheDocument()
     }
   })
 
-  it('rend un tiret pour un champ d’identité absent, jamais une chaîne vide', () => {
-    // Les schémas interdisent '' : une identité lue peut seulement porter null.
+  it('renders a dash for an absent identity field, never an empty string', () => {
+    // The schemas forbid '': a read identity can only carry null.
     render(<DevicePanel device={{ ...device, model: null, firmware: null, serial_number: null }} detection={detection} />)
 
     const identity = screen.getByTestId('device-identity')
     expect(within(identity).getAllByText('—')).toHaveLength(3)
-    expect(identity.textContent).not.toContain('inconnu')
+    expect(identity.textContent).not.toContain('unknown')
   })
 })

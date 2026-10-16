@@ -11,9 +11,9 @@ import (
 	"fronius-supervisor/internal/model"
 )
 
-// fill insère des échantillons de from (inclus) à to (exclu) par pas de step.
-// mk reçoit l'indice et l'instant ; un échantillon d'horodatage nul est ignoré,
-// ce qui permet de créer un trou.
+// fill inserts samples from from (inclusive) to to (exclusive) by step.
+// mk receives the index and the instant; a sample with a zero timestamp is
+// skipped, which allows creating a gap.
 func fill(t *testing.T, s *Store, from, to time.Time, step time.Duration, mk func(i int, ts time.Time) model.Sample) {
 	t.Helper()
 	i := 0
@@ -26,24 +26,24 @@ func fill(t *testing.T, s *Store, from, to time.Time, step time.Duration, mk fun
 	}
 }
 
-// pvSample construit un échantillon de puissance PV, sans énergie journalière.
+// pvSample builds a PV power sample, without daily energy.
 func pvSample(ts time.Time, pv *float64) model.Sample {
 	sm := sample(ts, 0)
 	sm.PowerPVW = pv
 	return sm
 }
 
-// seriesFixture remplit une base autour d'une transition d'heure locale, avec
-// des trous et des valeurs absentes :
+// seriesFixture fills a database around a local hour transition, with
+// gaps and absent values:
 //
-//   - 5 minutes de pas sur [2026-03-28T21:00Z, 2026-03-29T06:30Z[ ;
-//   - une heure entière sans aucune mesure (04:00Z à 05:00Z) ;
-//   - des valeurs de puissance absentes sur une fenêtre de 20 minutes ;
-//   - une énergie journalière en dents de scie, pour éprouver la règle du
-//     maximum par heure puis par date locale.
+//   - 5-minute step over [2026-03-28T21:00Z, 2026-03-29T06:30Z[ ;
+//   - a whole hour without any measurement (04:00Z to 05:00Z) ;
+//   - absent power values over a 20-minute window ;
+//   - a sawtooth daily energy, to test the rule of the maximum
+//     per hour then per local date.
 //
-// Le passage à l'heure d'été de Bruxelles a lieu le 2026-03-29 à 02:00 locales
-// (01:00Z) : la fenêtre couvre la nuit de 23 h.
+// The transition to Brussels summer time takes place on 2026-03-29 at 02:00 local
+// (01:00Z): the window covers the 23 h night.
 func seriesFixture(t *testing.T, s *Store) time.Time {
 	t.Helper()
 	base := time.Date(2026, 3, 28, 21, 0, 0, 0, time.UTC)
@@ -52,10 +52,10 @@ func seriesFixture(t *testing.T, s *Store) time.Time {
 
 	fill(t, s, base, end, step, func(i int, ts time.Time) model.Sample {
 		if ts.Hour() == 4 {
-			return model.Sample{} // trou d'une heure complète
+			return model.Sample{} // gap of one whole hour
 		}
 		sm := sample(ts, 0)
-		// Valeurs absentes sur une fenêtre de 20 minutes.
+		// Absent values over a 20-minute window.
 		if ts.Hour() == 3 && ts.Minute() >= 10 && ts.Minute() < 30 {
 			sm.PowerPVW = nil
 		} else {
@@ -79,33 +79,33 @@ func closeFloat(a, b *float64) bool {
 	return math.Abs(*a-*b) <= 1e-9*scale
 }
 
-// assertSameBuckets compare deux séries en tolérant la réassociation des
-// flottants (la somme d'agrégats horaires n'est pas sommée dans le même ordre
-// que la somme brute), mais en exigeant l'égalité exacte des effectifs.
+// assertSameBuckets compares two series tolerating the reassociation of
+// floats (the sum of hourly aggregates is not summed in the same order
+// as the raw sum), but requiring exact equality of the counts.
 func assertSameBuckets(t *testing.T, label string, got, want []Bucket) {
 	t.Helper()
 	if len(got) != len(want) {
-		t.Fatalf("%s : %d buckets, attendu %d\ngot : %+v\nwant: %+v", label, len(got), len(want), got, want)
+		t.Fatalf("%s: %d buckets, wanted %d\ngot : %+v\nwant: %+v", label, len(got), len(want), got, want)
 	}
 	for i := range want {
 		g, w := got[i], want[i]
 		if !g.Start.Equal(w.Start) {
-			t.Fatalf("%s : bucket %d à %v, attendu %v", label, i, g.Start, w.Start)
+			t.Fatalf("%s: bucket %d at %v, wanted %v", label, i, g.Start, w.Start)
 		}
 		if g.Count != w.Count {
-			t.Fatalf("%s : bucket %v, effectif %d, attendu %d", label, g.Start, g.Count, w.Count)
+			t.Fatalf("%s: bucket %v, count %d, wanted %d", label, g.Start, g.Count, w.Count)
 		}
 		if g.Missing != w.Missing {
-			t.Fatalf("%s : bucket %v, absents %d, attendu %d", label, g.Start, g.Missing, w.Missing)
+			t.Fatalf("%s: bucket %v, missing %d, wanted %d", label, g.Start, g.Missing, w.Missing)
 		}
 		if !closeFloat(g.PowerPVAvgW, w.PowerPVAvgW) {
-			t.Fatalf("%s : bucket %v, moyenne %v, attendu %v", label, g.Start, deref(g.PowerPVAvgW), deref(w.PowerPVAvgW))
+			t.Fatalf("%s: bucket %v, average %v, wanted %v", label, g.Start, deref(g.PowerPVAvgW), deref(w.PowerPVAvgW))
 		}
 		if !closeFloat(g.PowerPVMinW, w.PowerPVMinW) {
-			t.Fatalf("%s : bucket %v, minimum %v, attendu %v", label, g.Start, deref(g.PowerPVMinW), deref(w.PowerPVMinW))
+			t.Fatalf("%s: bucket %v, minimum %v, wanted %v", label, g.Start, deref(g.PowerPVMinW), deref(w.PowerPVMinW))
 		}
 		if !closeFloat(g.PowerPVMaxW, w.PowerPVMaxW) {
-			t.Fatalf("%s : bucket %v, maximum %v, attendu %v", label, g.Start, deref(g.PowerPVMaxW), deref(w.PowerPVMaxW))
+			t.Fatalf("%s: bucket %v, maximum %v, wanted %v", label, g.Start, deref(g.PowerPVMaxW), deref(w.PowerPVMaxW))
 		}
 	}
 }
@@ -117,9 +117,9 @@ func deref(v *float64) any {
 	return *v
 }
 
-// seriesRanges liste les plages éprouvant chaque branche du découpage : plage
-// entièrement close, entête au milieu d'une heure, queue dans l'heure ouverte,
-// plage sans heure pleine éligible, et plage couvrant une heure vide.
+// seriesRanges lists the ranges exercising each branch of the split: a fully
+// closed range, a header in the middle of an hour, a tail in the open hour,
+// a range without an eligible whole hour, and a range covering an empty hour.
 func seriesRanges() []struct {
 	name     string
 	from, to time.Time
@@ -129,18 +129,18 @@ func seriesRanges() []struct {
 		name     string
 		from, to time.Time
 	}{
-		{"tout close", at(0, 0), at(5, 0)},
-		{"entête partielle", at(2, 30), at(5, 0)},
-		{"queue ouverte", at(2, 0), at(6, 30)},
-		{"sans heure pleine", at(2, 30), at(3, 30)},
-		{"avec heure vide", at(3, 0), at(6, 0)},
-		{"une seule minute", at(2, 30), at(2, 31)},
+		{"all closed", at(0, 0), at(5, 0)},
+		{"partial header", at(2, 30), at(5, 0)},
+		{"open tail", at(2, 0), at(6, 30)},
+		{"no whole hour", at(2, 30), at(3, 30)},
+		{"with empty hour", at(3, 0), at(6, 0)},
+		{"a single minute", at(2, 30), at(2, 31)},
 	}
 }
 
-// TestTimeSeriesIdenticalWithAndWithoutAggregates est le test d'équivalence de
-// la phase 3 : la même requête doit rendre le même résultat qu'elle soit
-// servie par les agrégats horaires ou par les mesures brutes.
+// TestTimeSeriesIdenticalWithAndWithoutAggregates is the phase-3 equivalence test:
+// the same request must return the same result whether it is
+// served by the hourly aggregates or by the raw measurements.
 func TestTimeSeriesIdenticalWithAndWithoutAggregates(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
@@ -150,13 +150,13 @@ func TestTimeSeriesIdenticalWithAndWithoutAggregates(t *testing.T) {
 	steps := []time.Duration{time.Minute, 15 * time.Minute, time.Hour, 24 * time.Hour}
 	ranges := seriesRanges()
 
-	// Référence : aucune borne d'eau n'existe encore, tout est lu au brut.
+	// Reference: no watermark exists yet, everything is read raw.
 	before := map[string][]Bucket{}
 	for _, st := range steps {
 		for _, rg := range ranges {
 			b, err := s.TimeSeries(ctx, TimeSeriesQuery{From: rg.from, To: rg.to, Step: st})
 			if err != nil {
-				t.Fatalf("TimeSeries brut (%s, %s): %v", st, rg.name, err)
+				t.Fatalf("raw TimeSeries (%s, %s): %v", st, rg.name, err)
 			}
 			before[st.String()+"/"+rg.name] = b
 		}
@@ -167,25 +167,25 @@ func TestTimeSeriesIdenticalWithAndWithoutAggregates(t *testing.T) {
 		t.Fatalf("Rollup: %v", err)
 	}
 	if res.To.Sub(res.From) <= 0 {
-		t.Fatalf("Rollup n'a rien agrégé : %+v", res)
+		t.Fatalf("Rollup aggregated nothing: %+v", res)
 	}
 	var aggRows int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agg_hour`).Scan(&aggRows); err != nil {
-		t.Fatalf("comptage des agrégats: %v", err)
+		t.Fatalf("counting the aggregates: %v", err)
 	}
 	if aggRows == 0 {
-		t.Fatal("aucune ligne d'agrégat : le test comparerait le brut à lui-même")
+		t.Fatal("no aggregate row: the test would compare the raw data to itself")
 	}
 
 	closed, ok, err := s.aggWatermark(ctx)
 	if err != nil || !ok {
-		t.Fatalf("borne d'eau absente après agrégation (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark absent after aggregation (ok=%v, err=%v)", ok, err)
 	}
 	if !closed.Equal(now.Truncate(time.Hour)) {
-		t.Fatalf("borne d'eau = %v, attendu %v", closed, now.Truncate(time.Hour))
+		t.Fatalf("watermark = %v, wanted %v", closed, now.Truncate(time.Hour))
 	}
-	// Garde anti-test-dégénéré : au moins une des plages doit réellement être
-	// servie par les agrégats.
+	// Anti-degenerate-test guard: at least one of the ranges must really be
+	// served by the aggregates.
 	usedAggregates := false
 	for _, rg := range ranges {
 		if _, _, ok := aggSplit(rg.from, rg.to, closed, true); ok {
@@ -193,34 +193,34 @@ func TestTimeSeriesIdenticalWithAndWithoutAggregates(t *testing.T) {
 		}
 	}
 	if !usedAggregates {
-		t.Fatal("aucune plage n'emprunte le chemin agrégé")
+		t.Fatal("no range takes the aggregated path")
 	}
 
 	for _, st := range steps {
 		for _, rg := range ranges {
 			got, err := s.TimeSeries(ctx, TimeSeriesQuery{From: rg.from, To: rg.to, Step: st})
 			if err != nil {
-				t.Fatalf("TimeSeries après agrégation (%s, %s): %v", st, rg.name, err)
+				t.Fatalf("TimeSeries after aggregation (%s, %s): %v", st, rg.name, err)
 			}
 			assertSameBuckets(t, st.String()+"/"+rg.name, got, before[st.String()+"/"+rg.name])
 		}
 	}
 
-	// La plage « queue ouverte » couvre le trou d'une heure et la dernière
-	// mesure : l'heure vide ne doit produire aucun bucket (aucune
-	// interpolation), et le dernier bucket doit précéder la fin des mesures.
-	open := before["1h0m0s/queue ouverte"]
+	// The "open tail" range covers the one-hour gap and the last
+	// measurement: the empty hour must produce no bucket (no
+	// interpolation), and the last bucket must precede the end of the measurements.
+	open := before["1h0m0s/open tail"]
 	if len(open) != 4 {
-		t.Fatalf("%d buckets sur la plage ouverte, attendu 4 : %+v", len(open), open)
+		t.Fatalf("%d buckets over the open range, wanted 4: %+v", len(open), open)
 	}
 	if last := open[len(open)-1].Start; !last.Before(end) {
-		t.Fatalf("dernier bucket %v au-delà de la dernière mesure %v", last, end)
+		t.Fatalf("last bucket %v beyond the last measurement %v", last, end)
 	}
 }
 
-// TestDailyEnergyIdenticalWithAndWithoutAggregates vérifie l'équivalence du
-// calcul d'énergie journalière, y compris sur une plage coupée au milieu d'une
-// journée locale et sur la journée de 23 h.
+// TestDailyEnergyIdenticalWithAndWithoutAggregates checks the equivalence of the
+// daily energy computation, including over a range split in the middle of a
+// local day and over the 23 h day.
 func TestDailyEnergyIdenticalWithAndWithoutAggregates(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
@@ -232,55 +232,55 @@ func TestDailyEnergyIdenticalWithAndWithoutAggregates(t *testing.T) {
 		name     string
 		from, to time.Time
 	}{
-		{"journées entières", time.Date(2026, 3, 28, 0, 0, 0, 0, loc), time.Date(2026, 3, 30, 0, 0, 0, 0, loc)},
-		{"coupée en plein jour", time.Date(2026, 3, 28, 12, 30, 0, 0, loc), time.Date(2026, 3, 29, 6, 0, 0, 0, time.UTC)},
-		{"heure ouverte incluse", time.Date(2026, 3, 29, 0, 0, 0, 0, loc), now.Add(30 * time.Minute)},
-		{"avant toute mesure", time.Date(2026, 3, 20, 0, 0, 0, 0, loc), time.Date(2026, 3, 21, 0, 0, 0, 0, loc)},
+		{"whole days", time.Date(2026, 3, 28, 0, 0, 0, 0, loc), time.Date(2026, 3, 30, 0, 0, 0, 0, loc)},
+		{"cut in the middle of the day", time.Date(2026, 3, 28, 12, 30, 0, 0, loc), time.Date(2026, 3, 29, 6, 0, 0, 0, time.UTC)},
+		{"open hour included", time.Date(2026, 3, 29, 0, 0, 0, 0, loc), now.Add(30 * time.Minute)},
+		{"before any measurement", time.Date(2026, 3, 20, 0, 0, 0, 0, loc), time.Date(2026, 3, 21, 0, 0, 0, 0, loc)},
 	}
 
 	before := map[string][]DailyEnergy{}
 	for _, rg := range ranges {
 		d, err := s.DailyEnergy(ctx, rg.from, rg.to)
 		if err != nil {
-			t.Fatalf("DailyEnergy brut (%s): %v", rg.name, err)
+			t.Fatalf("raw DailyEnergy (%s): %v", rg.name, err)
 		}
 		before[rg.name] = d
 	}
-	if len(before["journées entières"]) == 0 {
-		t.Fatal("aucune journée agrégée : test sans objet")
+	if len(before["whole days"]) == 0 {
+		t.Fatal("no aggregated day: pointless test")
 	}
 
 	if _, err := s.Rollup(ctx, now); err != nil {
 		t.Fatalf("Rollup: %v", err)
 	}
-	// Garde anti-test-dégénéré : la plage principale doit réellement être
-	// servie par les agrégats.
+	// Anti-degenerate-test guard: the main range must really be
+	// served by the aggregates.
 	if _, _, ok := aggSplit(ranges[0].from, ranges[0].to, now.Truncate(time.Hour), true); !ok {
-		t.Fatal("la plage de référence n'emprunte pas le chemin agrégé")
+		t.Fatal("the reference range does not take the aggregated path")
 	}
 	for _, rg := range ranges {
 		got, err := s.DailyEnergy(ctx, rg.from, rg.to)
 		if err != nil {
-			t.Fatalf("DailyEnergy agrégé (%s): %v", rg.name, err)
+			t.Fatalf("aggregated DailyEnergy (%s): %v", rg.name, err)
 		}
 		want := before[rg.name]
 		if len(got) != len(want) {
-			t.Fatalf("%s : %d journées, attendu %d (%v vs %v)", rg.name, len(got), len(want), got, want)
+			t.Fatalf("%s: %d days, wanted %d (%v vs %v)", rg.name, len(got), len(want), got, want)
 		}
 		for i := range want {
 			if got[i].Date != want[i].Date {
-				t.Fatalf("%s : journée %d = %q, attendu %q", rg.name, i, got[i].Date, want[i].Date)
+				t.Fatalf("%s: day %d = %q, wanted %q", rg.name, i, got[i].Date, want[i].Date)
 			}
 			if !closeFloat(got[i].EnergyWh, want[i].EnergyWh) {
-				t.Fatalf("%s : %s = %v, attendu %v", rg.name, got[i].Date,
+				t.Fatalf("%s: %s = %v, wanted %v", rg.name, got[i].Date,
 					deref(got[i].EnergyWh), deref(want[i].EnergyWh))
 			}
 		}
 	}
 }
 
-// TestRollupIsIdempotent vérifie qu'une seconde passe sur la même plage ne
-// change rien, et qu'une reprise après une autre passe non plus.
+// TestRollupIsIdempotent checks that a second pass over the same range changes
+// nothing, and that a resume after another pass does not either.
 func TestRollupIsIdempotent(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
@@ -289,7 +289,7 @@ func TestRollupIsIdempotent(t *testing.T) {
 
 	first, err := s.Rollup(ctx, now)
 	if err != nil {
-		t.Fatalf("premier Rollup: %v", err)
+		t.Fatalf("first Rollup: %v", err)
 	}
 	dump := func(before string) string {
 		q := `SELECT bucket_utc, count_all, count_pv, sum_pv_w, min_pv_w, max_pv_w, max_energy_day_wh
@@ -302,7 +302,7 @@ func TestRollupIsIdempotent(t *testing.T) {
 		q += ` ORDER BY bucket_utc`
 		rows, err := s.db.Query(q, args...)
 		if err != nil {
-			t.Fatalf("lecture des agrégats: %v", err)
+			t.Fatalf("reading the aggregates: %v", err)
 		}
 		defer rows.Close()
 		var out []string
@@ -320,92 +320,92 @@ func TestRollupIsIdempotent(t *testing.T) {
 				bucket, countAll, countPV, sum, deref(min), deref(max), deref(eDay)))
 		}
 		if err := rows.Err(); err != nil {
-			t.Fatalf("parcours des agrégats: %v", err)
+			t.Fatalf("iterating the aggregates: %v", err)
 		}
 		return strings.Join(out, "\n")
 	}
 	before := dump("")
 	if len(before) == 0 {
-		t.Fatal("aucun agrégat écrit")
+		t.Fatal("no aggregate written")
 	}
 	closedAt := formatTS(now.Truncate(time.Hour))
 
-	// Même instant : la passe ne couvre plus rien et ne doit rien réécrire.
+	// Same instant: the pass no longer covers anything and must rewrite nothing.
 	second, err := s.Rollup(ctx, now)
 	if err != nil {
 		t.Fatalf("second Rollup: %v", err)
 	}
 	if second.Buckets != 0 {
-		t.Fatalf("second Rollup a écrit %d buckets, attendu 0", second.Buckets)
+		t.Fatalf("second Rollup wrote %d buckets, wanted 0", second.Buckets)
 	}
 	if got := dump(""); got != before {
-		t.Fatalf("agrégats modifiés par une passe sans travail:\n%s\nvs\n%s", got, before)
+		t.Fatalf("aggregates changed by a pass with no work:\n%s\nvs\n%s", got, before)
 	}
 
-	// Plus tard sans nouveau relevé : seule l'heure encore ouverte à la
-	// première passe (06:00Z, qui contient déjà six relevés) devient close.
-	// Les heures déjà agrégées ne sont pas réécrites.
+	// Later with no new reading: only the hour still open at the
+	// first pass (06:00Z, which already contains six readings) becomes closed.
+	// The already aggregated hours are not rewritten.
 	third, err := s.Rollup(ctx, now.Add(3*time.Hour))
 	if err != nil {
-		t.Fatalf("troisième Rollup: %v", err)
+		t.Fatalf("third Rollup: %v", err)
 	}
 	if third.Buckets != 1 {
-		t.Fatalf("troisième Rollup a écrit %d buckets, attendu 1 (fermeture de l'heure ouverte)", third.Buckets)
+		t.Fatalf("third Rollup wrote %d buckets, wanted 1 (closing the open hour)", third.Buckets)
 	}
 	if want := now.Add(3 * time.Hour).Truncate(time.Hour); !third.Watermark.Equal(want) {
-		t.Fatalf("borne d'eau = %v, attendu %v", third.Watermark, want)
+		t.Fatalf("watermark = %v, wanted %v", third.Watermark, want)
 	}
 	if got := dump(closedAt); got != before {
-		t.Fatalf("heures closes réécrites sans nouveaux relevés:\n%s\nvs\n%s", got, before)
+		t.Fatalf("closed hours rewritten with no new readings:\n%s\nvs\n%s", got, before)
 	}
 	if first.Buckets == 0 {
-		t.Fatal("la première passe n'a rien écrit")
+		t.Fatal("the first pass wrote nothing")
 	}
 }
 
-// TestRollupCatchesUpDataInsertedBelowWatermark reproduit l'import d'un
-// historique après une première passe : les mesures plus anciennes que la borne
-// d'eau doivent être agrégées, et donc visibles des lectures agrégées.
+// TestRollupCatchesUpDataInsertedBelowWatermark reproduces the import of a
+// history after a first pass: measurements older than the watermark
+// must be aggregated, and therefore visible to the aggregated reads.
 func TestRollupCatchesUpDataInsertedBelowWatermark(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
 	base := time.Date(2026, 10, 16, 6, 0, 0, 0, time.UTC)
 
-	// Première journée : agrégée immédiatement.
+	// First day: aggregated immediately.
 	fill(t, s, base, base.Add(2*time.Hour), 10*time.Minute, func(i int, ts time.Time) model.Sample {
 		return pvSample(ts, new(float64(1000+i)))
 	})
 	now := base.Add(4 * time.Hour)
 	if _, err := s.Rollup(ctx, now); err != nil {
-		t.Fatalf("premier Rollup: %v", err)
+		t.Fatalf("first Rollup: %v", err)
 	}
 	wm, ok, err := s.aggWatermark(ctx)
 	if err != nil || !ok {
-		t.Fatalf("borne d'eau absente (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark absent (ok=%v, err=%v)", ok, err)
 	}
 	if !wm.Equal(now.Truncate(time.Hour)) {
-		t.Fatalf("borne d'eau = %v, attendu %v", wm, now.Truncate(time.Hour))
+		t.Fatalf("watermark = %v, wanted %v", wm, now.Truncate(time.Hour))
 	}
 
-	// Import tardif de la veille (backfill) : les mesures sont plus anciennes
-	// que la borne d'eau.
+	// Late import of the previous day (backfill): the measurements are older
+	// than the watermark.
 	old := base.Add(-3 * time.Hour)
 	fill(t, s, old, old.Add(2*time.Hour), 10*time.Minute, func(i int, ts time.Time) model.Sample {
 		return pvSample(ts, new(float64(500+i)))
 	})
 	after, ok, err := s.aggWatermark(ctx)
 	if err != nil || !ok {
-		t.Fatalf("borne d'eau disparue (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark disappeared (ok=%v, err=%v)", ok, err)
 	}
 	if !after.Before(wm) {
-		t.Fatalf("borne d'eau non abaissée : %v (avant %v)", after, wm)
+		t.Fatalf("watermark not lowered: %v (before %v)", after, wm)
 	}
 	if !after.Equal(old.Truncate(time.Hour)) {
-		t.Fatalf("borne d'eau = %v, attendu %v", after, old.Truncate(time.Hour))
+		t.Fatalf("watermark = %v, wanted %v", after, old.Truncate(time.Hour))
 	}
 
-	// Avant la passe suivante, la lecture agrégée doit malgré tout rester
-	// correcte : la plage n'est pas close au-delà de la nouvelle borne.
+	// Before the next pass, the aggregated read must nevertheless remain
+	// correct: the range is not closed beyond the new watermark.
 	buckets, err := s.TimeSeries(ctx, TimeSeriesQuery{From: old, To: now, Step: time.Hour})
 	if err != nil {
 		t.Fatalf("TimeSeries: %v", err)
@@ -414,36 +414,36 @@ func TestRollupCatchesUpDataInsertedBelowWatermark(t *testing.T) {
 	for _, b := range buckets {
 		raw += b.Count
 	}
-	if want := 4 * 6; raw != want { // 4 heures × 6 relevés de 10 minutes
-		t.Fatalf("échantillons couverts = %d, attendu %d", raw, want)
+	if want := 4 * 6; raw != want { // 4 hours × 6 10-minute readings
+		t.Fatalf("samples covered = %d, wanted %d", raw, want)
 	}
 
-	// Après la passe, les agrégats couvrent de nouveau tout l'historique.
+	// After the pass, the aggregates cover the whole history again.
 	if _, err := s.Rollup(ctx, now); err != nil {
-		t.Fatalf("Rollup de rattrapage: %v", err)
+		t.Fatalf("catch-up Rollup: %v", err)
 	}
 	after, _, err = s.aggWatermark(ctx)
 	if err != nil {
-		t.Fatalf("borne d'eau: %v", err)
+		t.Fatalf("watermark: %v", err)
 	}
 	if !after.Equal(wm) {
-		t.Fatalf("borne d'eau = %v, attendu %v après rattrapage", after, wm)
+		t.Fatalf("watermark = %v, wanted %v after catch-up", after, wm)
 	}
 	var aggCount, rawCount int
 	if err := s.db.QueryRow(`SELECT COALESCE(SUM(count_all), 0) FROM agg_hour`).Scan(&aggCount); err != nil {
-		t.Fatalf("comptage des agrégats: %v", err)
+		t.Fatalf("counting the aggregates: %v", err)
 	}
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM samples`).Scan(&rawCount); err != nil {
-		t.Fatalf("comptage des mesures: %v", err)
+		t.Fatalf("counting the measurements: %v", err)
 	}
 	if aggCount != rawCount {
-		t.Fatalf("agrégats couvrent %d mesures, %d conservées", aggCount, rawCount)
+		t.Fatalf("aggregates cover %d measurements, %d retained", aggCount, rawCount)
 	}
 }
 
-// TestRollupNeverAggregatesOpenHour : une heure encore alimentée n'est jamais
-// agrégée, sinon une lecture la croirait complète alors que de nouvelles
-// mesures arrivent encore.
+// TestRollupNeverAggregatesOpenHour: an hour still being fed is never
+// aggregated, otherwise a read would believe it complete while new
+// measurements are still arriving.
 func TestRollupNeverAggregatesOpenHour(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
@@ -457,25 +457,25 @@ func TestRollupNeverAggregatesOpenHour(t *testing.T) {
 		t.Fatalf("Rollup: %v", err)
 	}
 	if res.Buckets != 0 {
-		t.Fatalf("Rollup a agrégé l'heure ouverte (%d buckets)", res.Buckets)
+		t.Fatalf("Rollup aggregated the open hour (%d buckets)", res.Buckets)
 	}
 	if _, ok, err := s.aggWatermark(ctx); err != nil || ok {
-		t.Fatalf("borne d'eau écrite sans agrégat (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark written without aggregate (ok=%v, err=%v)", ok, err)
 	}
 
-	// La lecture reste correcte : elle passe entièrement par le brut.
+	// The read remains correct: it goes entirely through the raw data.
 	buckets, err := s.TimeSeries(ctx, TimeSeriesQuery{From: base, To: base.Add(time.Hour), Step: time.Minute})
 	if err != nil {
 		t.Fatalf("TimeSeries: %v", err)
 	}
 	if len(buckets) != 30 {
-		t.Fatalf("%d buckets, attendu 30", len(buckets))
+		t.Fatalf("%d buckets, wanted 30", len(buckets))
 	}
 }
 
-// TestRollupEmptyStoreWritesNoWatermark : sans mesure, aucune borne d'eau ne
-// doit être écrite, sinon un historique importé plus tard serait lu comme déjà
-// agrégé.
+// TestRollupEmptyStoreWritesNoWatermark: without a measurement, no watermark must
+// be written, otherwise a history imported later would be read as already
+// aggregated.
 func TestRollupEmptyStoreWritesNoWatermark(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
@@ -485,67 +485,67 @@ func TestRollupEmptyStoreWritesNoWatermark(t *testing.T) {
 		t.Fatalf("Rollup: %v", err)
 	}
 	if res.Buckets != 0 {
-		t.Fatalf("buckets = %d, attendu 0", res.Buckets)
+		t.Fatalf("buckets = %d, wanted 0", res.Buckets)
 	}
 	if _, ok, err := s.aggWatermark(ctx); err != nil || ok {
-		t.Fatalf("borne d'eau écrite sur base vide (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark written on an empty database (ok=%v, err=%v)", ok, err)
 	}
 
-	// Un historique importé ensuite doit être agrégé normalement.
+	// A history imported afterwards must be aggregated normally.
 	base := time.Date(2026, 10, 15, 22, 0, 0, 0, time.UTC)
 	fill(t, s, base, base.Add(3*time.Hour), 15*time.Minute, func(i int, ts time.Time) model.Sample {
 		return pvSample(ts, new(float64(i)))
 	})
 	if _, err := s.Rollup(ctx, time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)); err != nil {
-		t.Fatalf("Rollup après import: %v", err)
+		t.Fatalf("Rollup after import: %v", err)
 	}
 	buckets, err := s.TimeSeries(ctx, TimeSeriesQuery{From: base, To: base.Add(3 * time.Hour), Step: time.Hour})
 	if err != nil {
 		t.Fatalf("TimeSeries: %v", err)
 	}
 	if len(buckets) != 3 {
-		t.Fatalf("%d buckets, attendu 3 : %+v", len(buckets), buckets)
+		t.Fatalf("%d buckets, wanted 3: %+v", len(buckets), buckets)
 	}
 }
 
-// TestInsertSampleLowersWatermarkOnlyBelow : l'abaissement ne doit se produire
-// que pour une mesure réellement plus ancienne que la borne d'eau.
+// TestInsertSampleLowersWatermarkOnlyBelow: the lowering must occur
+// only for a measurement really older than the watermark.
 func TestInsertSampleLowersWatermarkOnlyBelow(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 
-	// Sans borne d'eau, une insertion n'en crée pas.
+	// Without a watermark, an insertion does not create one.
 	mustInsert(t, s, pvSample(now.Add(-5*time.Hour), new(1.0)))
 	if _, ok, err := s.aggWatermark(ctx); err != nil || ok {
-		t.Fatalf("borne d'eau créée par une insertion (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark created by an insertion (ok=%v, err=%v)", ok, err)
 	}
 
 	if err := s.SetState(ctx, aggStateKey, formatTS(now)); err != nil {
 		t.Fatalf("SetState: %v", err)
 	}
-	// Mesure postérieure : la borne d'eau ne bouge pas.
+	// Later measurement: the watermark does not move.
 	mustInsert(t, s, pvSample(now.Add(30*time.Minute), new(2.0)))
 	wm, _, err := s.aggWatermark(ctx)
 	if err != nil {
 		t.Fatalf("aggWatermark: %v", err)
 	}
 	if !wm.Equal(now) {
-		t.Fatalf("borne d'eau = %v, attendu %v", wm, now)
+		t.Fatalf("watermark = %v, wanted %v", wm, now)
 	}
-	// Mesure antérieure : la borne d'eau descend à l'heure pleine inférieure.
+	// Earlier measurement: the watermark drops to the lower whole hour.
 	mustInsert(t, s, pvSample(now.Add(-90*time.Minute), new(3.0)))
 	wm, _, err = s.aggWatermark(ctx)
 	if err != nil {
 		t.Fatalf("aggWatermark: %v", err)
 	}
 	if want := now.Add(-2 * time.Hour); !wm.Equal(want) {
-		t.Fatalf("borne d'eau = %v, attendu %v", wm, want)
+		t.Fatalf("watermark = %v, wanted %v", wm, want)
 	}
 }
 
-// TestPurgeRemovesAggregatesAndRaisesWatermark vérifie que la rétention laisse
-// les deux tables cohérentes : aucune ligne d'agrégat ne survit à ses mesures.
+// TestPurgeRemovesAggregatesAndRaisesWatermark checks that the retention leaves
+// the two tables consistent: no aggregate row outlives its measurements.
 func TestPurgeRemovesAggregatesAndRaisesWatermark(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
@@ -565,31 +565,31 @@ func TestPurgeRemovesAggregatesAndRaisesWatermark(t *testing.T) {
 	}
 	var before int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM agg_hour WHERE bucket_utc < ?`, formatTS(limit)).Scan(&before); err != nil {
-		t.Fatalf("comptage: %v", err)
+		t.Fatalf("counting: %v", err)
 	}
 	if before != 0 {
-		t.Fatalf("%d agrégats antérieurs à la borne de purge", before)
+		t.Fatalf("%d aggregates earlier than the purge bound", before)
 	}
 	wm, ok, err := s.aggWatermark(ctx)
 	if err != nil || !ok {
-		t.Fatalf("borne d'eau absente après purge (ok=%v, err=%v)", ok, err)
+		t.Fatalf("watermark absent after purge (ok=%v, err=%v)", ok, err)
 	}
 	if wm.Before(limit) {
-		t.Fatalf("borne d'eau %v antérieure à la borne de purge %v", wm, limit)
+		t.Fatalf("watermark %v earlier than the purge bound %v", wm, limit)
 	}
 
-	// Les journées conservées restent lisibles par le chemin agrégé.
+	// The retained days remain readable via the aggregated path.
 	buckets, err := s.TimeSeries(ctx, TimeSeriesQuery{From: limit, To: now, Step: time.Hour})
 	if err != nil {
 		t.Fatalf("TimeSeries: %v", err)
 	}
 	if len(buckets) != 48 {
-		t.Fatalf("%d buckets, attendu 48", len(buckets))
+		t.Fatalf("%d buckets, wanted 48", len(buckets))
 	}
 }
 
-// TestAggSplitBoundaries fixe la règle de découpage : seules les heures
-// entières contenues dans [from, to) et closes sont servies par les agrégats.
+// TestAggSplitBoundaries fixes the split rule: only the whole hours
+// contained in [from, to) and closed are served by the aggregates.
 func TestAggSplitBoundaries(t *testing.T) {
 	at := func(h, m int) time.Time { return time.Date(2026, 3, 29, h, m, 0, 0, time.UTC) }
 	closed := at(5, 0)
@@ -601,32 +601,32 @@ func TestAggSplitBoundaries(t *testing.T) {
 		wantFrom, wantTo time.Time
 		wantOK           bool
 	}{
-		{"plage close alignée", at(2, 0), at(5, 0), true, at(2, 0), at(5, 0), true},
-		{"entête au milieu d'une heure", at(2, 30), at(5, 0), true, at(3, 0), at(5, 0), true},
-		{"queue ouverte", at(2, 0), at(6, 30), true, at(2, 0), at(5, 0), true},
-		{"sans heure pleine éligible", at(2, 30), at(3, 30), true, time.Time{}, time.Time{}, false},
-		{"postérieure à la borne d'eau", at(6, 0), at(7, 0), true, time.Time{}, time.Time{}, false},
-		{"antérieure à la borne d'eau", at(1, 0), at(1, 30), true, time.Time{}, time.Time{}, false},
-		{"agrégats désactivés", at(1, 0), at(5, 0), false, time.Time{}, time.Time{}, false},
-		{"plage vide", at(3, 0), at(3, 0), true, time.Time{}, time.Time{}, false},
+		{"aligned closed range", at(2, 0), at(5, 0), true, at(2, 0), at(5, 0), true},
+		{"header in the middle of an hour", at(2, 30), at(5, 0), true, at(3, 0), at(5, 0), true},
+		{"open tail", at(2, 0), at(6, 30), true, at(2, 0), at(5, 0), true},
+		{"no eligible whole hour", at(2, 30), at(3, 30), true, time.Time{}, time.Time{}, false},
+		{"after the watermark", at(6, 0), at(7, 0), true, time.Time{}, time.Time{}, false},
+		{"before the watermark", at(1, 0), at(1, 30), true, time.Time{}, time.Time{}, false},
+		{"aggregates disabled", at(1, 0), at(5, 0), false, time.Time{}, time.Time{}, false},
+		{"empty range", at(3, 0), at(3, 0), true, time.Time{}, time.Time{}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			from, to, ok := aggSplit(tc.from, tc.to, closed, tc.enabled)
 			if ok != tc.wantOK {
-				t.Fatalf("ok = %v, attendu %v", ok, tc.wantOK)
+				t.Fatalf("ok = %v, wanted %v", ok, tc.wantOK)
 			}
 			if !ok {
 				return
 			}
 			if !from.Equal(tc.wantFrom) || !to.Equal(tc.wantTo) {
-				t.Fatalf("plage = [%v, %v), attendu [%v, %v)", from, to, tc.wantFrom, tc.wantTo)
+				t.Fatalf("range = [%v, %v), wanted [%v, %v)", from, to, tc.wantFrom, tc.wantTo)
 			}
 		})
 	}
 }
 
-// TestCeilHour couvre l'arrondi supérieur utilisé par le découpage.
+// TestCeilHour covers the ceiling rounding used by the split.
 func TestCeilHour(t *testing.T) {
 	at := func(h, m, s int) time.Time { return time.Date(2026, 3, 29, h, m, s, 0, time.UTC) }
 	cases := []struct{ in, want time.Time }{
@@ -636,7 +636,7 @@ func TestCeilHour(t *testing.T) {
 	}
 	for _, tc := range cases {
 		if got := ceilHour(tc.in); !got.Equal(tc.want) {
-			t.Fatalf("ceilHour(%v) = %v, attendu %v", tc.in, got, tc.want)
+			t.Fatalf("ceilHour(%v) = %v, wanted %v", tc.in, got, tc.want)
 		}
 	}
 }

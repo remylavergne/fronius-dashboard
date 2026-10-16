@@ -2,20 +2,20 @@ import { Badge } from '@/components/ui/badge'
 import { formatAge } from '@/lib/format'
 
 export type StaleBadgeProps = {
-  /** `undefined` tant que l'API n'a pas fourni d'état de fraîcheur. */
+  /** `undefined` until the API has provided a freshness state. */
   stale: boolean | undefined
-  /** Seuil de péremption configuré côté serveur, en secondes. */
+  /** Staleness threshold configured server-side, in seconds. */
   staleAfterS: number | undefined
-  /** Instant de la mesure, pour dater la mention. */
+  /** Time of the measurement, to date the note. */
   sampledAt: string | undefined
 }
 
 /**
- * Indique si la dernière mesure est périmée.
+ * Indicates whether the last measurement is stale.
  *
- * « Périmé » ne veut pas dire « faux » : la mesure reste affichée, mais
- * l'utilisateur doit savoir que la supervision n'a rien reçu depuis plus que le
- * seuil (`FRONIUS_STALE_AFTER`).
+ * "Stale" does not mean "wrong": the measurement is still displayed, but the
+ * user must know that the monitoring has received nothing for longer than the
+ * threshold (`FRONIUS_STALE_AFTER`).
  */
 export function StaleBadge({ stale, staleAfterS, sampledAt }: StaleBadgeProps) {
   if (stale === undefined) {
@@ -23,10 +23,10 @@ export function StaleBadge({ stale, staleAfterS, sampledAt }: StaleBadgeProps) {
   }
 
   const age = formatAge(sampledAt)
-  const threshold = staleAfterS !== undefined ? ` (seuil ${staleAfterS} s)` : ''
+  const threshold = staleAfterS !== undefined ? ` (threshold ${staleAfterS} s)` : ''
   const label = stale
-    ? `Données périmées${threshold} — ${age}`
-    : `Données à jour — ${age}`
+    ? `Stale data${threshold} — ${age}`
+    : `Fresh data — ${age}`
 
   return (
     <Badge variant={stale ? 'destructive' : 'secondary'} data-stale={stale ? 'true' : 'false'}>

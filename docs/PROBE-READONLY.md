@@ -1,184 +1,181 @@
-# Sonde lecture seule — protocole et accord préalable
+# Read-only probe — protocol and prior consent
 
-`cmd/fronius-probe` est le **seul** outil de ce dépôt capable de contacter un
-onduleur réel autre que le simulateur. Ce document décrit ce qu'il fait
-exactement, ce qu'il refuse de faire, et ce que l'utilisateur doit faire de son
-résultat.
+`cmd/fronius-probe` is the **only** tool in this repository able to contact a
+real inverter other than the simulator. This document describes exactly what it
+does, what it refuses to do, and what the user must do with its result.
 
-Règle fondatrice : **l'agent de développement n'exécute jamais cette sonde**, ni
-sur le matériel, ni contre une adresse non locale. Elle est livrée pour être
-lancée par la personne responsable de l'installation, qui décide du moment.
+Founding rule: **the development agent never runs this probe**, neither on
+hardware nor against a non-local address. It is shipped to be launched by the
+person responsible for the installation, who decides when.
 
-## 1. Ce que la sonde demande avant de partir
+## 1. What the probe asks before leaving
 
-Avant toute exécution contre le matériel réel, cinq questions doivent avoir une
-réponse explicite :
+Before any execution against real hardware, five questions must have an explicit
+answer:
 
-1. **Adresse cible** — l'URL exacte de l'appareil (par exemple
-   `http://192.0.2.10`). L'hôte et le port sont-ils ceux de l'onduleur et
-   non d'un autre équipement ?
-2. **Moment** — est-il acceptable que le journal de l'onduleur enregistre cette
-   requête à cet instant ?
-3. **Réseau** — l'accès est-il prévu (Wi-Fi de l'installation, VPN, poste sur le
-   même réseau) ?
-4. **Identifiants** — l'appareil exige-t-il un utilisateur et un mot de passe
-   pour ses chemins internes ? Où sont-ils posés : environnement du service, ou
-   `--password-stdin` ? (Ne jamais les écrire dans un fichier versionné.)
-5. **Sortie** — où le résultat expurgé sera-t-il conservé, et qui le relira ?
+1. **Target address** — the exact URL of the device (for example
+   `http://192.0.2.10`). Are the host and port those of the inverter and
+   not of another piece of equipment?
+2. **Moment** — is it acceptable that the inverter's log records this request at
+   that instant?
+3. **Network** — is access planned (installation Wi-Fi, VPN, workstation on the
+   same network)?
+4. **Credentials** — does the device require a user and a password for its
+   internal paths? Where are they set: service environment, or
+   `--password-stdin`? (Never write them to a versioned file.)
+5. **Output** — where will the redacted result be kept, and who will read it
+   again?
 
-Aucune de ces réponses ne peut être devinée par l'agent : elles relèvent de
-l'utilisateur.
+None of these answers can be guessed by the agent: they are the user's
+responsibility.
 
-## 2. Requêtes exactes émises
+## 2. Exact requests emitted
 
-La sonde ne peut émettre que les requêtes de sa liste blanche, figée dans le
-binaire (cinq entrées, toutes `READ` et toutes en `GET`) :
+The probe can only emit the requests of its allowlist, frozen in the binary
+(five entries, all `READ` and all `GET`):
 
-| Chemin | Digest | Ce qu'il apporte |
+| Path | Digest | What it provides |
 |---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | non | mesures de production (site et onduleurs) |
-| `/status/version` | après 401 | identité de l'appareil (numéro de série, nombre de phases, groupe d'appareil) |
-| `/status/activeEvents` | après 401 | événements actifs (forme **non établie** : c'est la capture attendue) |
-| `/components/PowerMeter/readable` | après 401 | présence d'un Fronius Smart Meter |
-| `/components/BatteryManagementSystem/readable` | après 401 | présence d'une batterie |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | no | production measurements (site and inverters) |
+| `/status/version` | after 401 | device identity (serial number, number of phases, device group) |
+| `/status/activeEvents` | after 401 | active events (shape **not established**: this is the expected capture) |
+| `/components/PowerMeter/readable` | after 401 | presence of a Fronius Smart Meter |
+| `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery |
 
-### Ce que la capture doit confirmer, chemin par chemin
+### What the capture must confirm, path by path
 
-L'extraction du bundle (`docs/ENDPOINTS.md`) a remplacé les inconnues par des
-faits **de code client** ; il reste à obtenir les faits **d'appareil**. Chaque
-capture de la liste blanche ferme une inconnue précise :
+The bundle extraction (`docs/ENDPOINTS.md`) replaced the unknowns with
+**client-code** facts; what remains is to obtain the **device** facts. Each
+capture of the allowlist closes a precise unknown:
 
-| Chemin | Inconnue à fermer | Ce que l'extraction affirme déjà | Ce que la capture tranche |
+| Path | Unknown to close | What the extraction already asserts | What the capture settles |
 |---|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | #1 (forme du JSON), #2 (authentification) | **absent du bundle** : aucun schéma n'est prouvé, `dto.go` est une hypothèse | schéma, unités, horodatages ; et si un Smart Meter ou une batterie existe (`P_Grid`, `P_Akku`, `rel_*`) |
-| `/status/version` | #3 (identité) | `serialNumber`, `numberOfPhases`, `devicegroup` prouvés ; `swrevisions.GEN24` est la version logicielle lue par le client officiel (l. 128882) ; `hardwareId`, `devicename`, `articleNumber` sont lus ; **aucune clé de modèle** n'est observée | la version réelle, l'existence d'une clé de modèle, et la forme escomptée d'`articleNumber` |
-| `/status/activeEvents` | #11 (forme des événements) | charge utile = tableau ; 11 champs lus ; `severity` est un **entier** (1 erreur, 2 avertissement, 3 information, l. 135728) ; identité = `uuid`, ou `prefix`-`eventID` ; texte = `label` | les noms et types réels, la sémantique de `viewer`, et si `label` porte un texte lisible ou un code |
-| `/components/PowerMeter/readable` | #4 (présence du compteur) | `Body.Data` indexé par identifiant de composant ; `channels` (23 signaux `SMARTMETER_*`) ; `attributes.addr` et `attributes["[ENABLE]"]` | présence, noms de signaux et unités réels sur `1.19.7-1` |
-| `/components/BatteryManagementSystem/readable` | #5 (batterie et état de charge) | `channels` (10 signaux), dont `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` en `%` | présence, et si l'état de charge existe bien sur ce firmware |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | #1 (JSON shape), #2 (authentication) | **absent from the bundle**: no schema is proven, `dto.go` is a hypothesis | schema, units, timestamps; and whether a Smart Meter or a battery exists (`P_Grid`, `P_Akku`, `rel_*`) |
+| `/status/version` | #3 (identity) | `serialNumber`, `numberOfPhases`, `devicegroup` proven; `swrevisions.GEN24` is the software version read by the official client (l. 128882); `hardwareId`, `devicename`, `articleNumber` are read; **no model key** is observed | the real version, the existence of a model key, and the expected shape of `articleNumber` |
+| `/status/activeEvents` | #11 (event shape) | payload = array; 11 fields read; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728); identity = `uuid`, or `prefix`-`eventID`; text = `label` | the real names and types, the semantics of `viewer`, and whether `label` carries readable text or a code |
+| `/components/PowerMeter/readable` | #4 (meter presence) | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]` | presence, real signal names and units on `1.19.7-1` |
+| `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge) | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%` | presence, and whether the state of charge really exists on this firmware |
 
-Tant que ces cinq captures manquent, **aucun autre chemin n'a de raison d'entrer
-dans la liste blanche** : la règle d'ajout est une métrique que la Solar API ne
-fournit pas, et une métrique ne se choisit pas sur un inventaire (ADR 0008). La
-promotion des captures suit le § 8.
+As long as these five captures are missing, **no other path has any reason to
+enter the allowlist**: the rule for adding is a metric that the Solar API does
+not provide, and a metric is not chosen from an inventory (ADR 0008). Promotion
+of captures follows § 8.
 
-Forme d'une requête vers un chemin interne :
-
-```
-GET /status/version HTTP/1.1
-Accept: application/json
-Host: <adresse fournie avec --base-url>
-```
-
-puis, **seulement si** l'appareil a répondu `401` :
+Shape of a request to an internal path:
 
 ```
 GET /status/version HTTP/1.1
 Accept: application/json
-Authorization: Digest username="<utilisateur>", realm="…", nonce="…", uri="/status/version",
+Host: <address provided with --base-url>
+```
+
+then, **only if** the device answered `401`:
+
+```
+GET /status/version HTTP/1.1
+Accept: application/json
+Authorization: Digest username="<user>", realm="…", nonce="…", uri="/status/version",
               response="…", qop=auth, nc=00000001, cnonce="…"
-Host: <adresse fournie avec --base-url>
+Host: <address provided with --base-url>
 ```
 
-- **Méthode** : `GET` uniquement. La méthode de chaque entrée est une constante
-  du code.
-- **Paramètres** : aucun. La sonde n'ajoute ni requête de chaîne, ni corps, ni
-  champ de formulaire.
-- **En-têtes** : `Accept: application/json`, puis `Authorization` **en réponse à
-  un 401 uniquement**. L'en-tête n'est jamais envoyé préemptivement : le
-  premier envoi vers un chemin interne est toujours une requête nue, ce que le
-  simulateur et le test `TestProbeSendsNoCredentialsPreemptively` vérifient.
-- **Répétition** : une seule réémission par chemin, après un 401. Le défi reçu
-  est mémorisé : les chemins suivants réutilisent le même nonce et n'émettent
-  qu'une requête. Aucune boucle, aucun intervalle.
-- **Périmètre** : les identifiants ne peuvent sortir que vers l'hôte de
-  `--base-url` ; le transport refuse tout autre hôte
-  (`digest.ErrForeignHost`).
+- **Method**: `GET` only. The method of each entry is a code constant.
+- **Parameters**: none. The probe adds neither query string, nor body, nor form
+  field.
+- **Headers**: `Accept: application/json`, then `Authorization` **only in
+  response to a 401**. The header is never sent preemptively: the first send to
+  an internal path is always a bare request, which the simulator and the test
+  `TestProbeSendsNoCredentialsPreemptively` verify.
+- **Repetition**: a single resend per path, after a 401. The received challenge
+  is remembered: subsequent paths reuse the same nonce and emit only one
+  request. No loop, no interval.
+- **Scope**: the credentials can only leave towards the host of `--base-url`;
+  the transport refuses any other host (`digest.ErrForeignHost`).
 
-Le contractuel est vérifié par construction, pas par discipline :
+The contract is verified by construction, not by discipline:
 
-- `fronius.ReadOnly` est interposé devant les transports et rejette toute
-  requête dont la méthode n'est pas `GET`, avant toute ouverture de connexion
-  (`internal/fronius/readonly.go`) ;
-- `selectEndpoints` refuse tout chemin absent de la liste blanche
-  (`errNotWhitelisted`) : la sonde ne peut pas viser une URL arbitraire ;
-- la vérification `grep -rn 'MethodPost\|MethodPut\|MethodDelete\|MethodPatch' internal cmd`
-  ne trouve rien hors du message d'erreur de cette garde et de ses tests.
+- `fronius.ReadOnly` is interposed in front of the transports and rejects any
+  request whose method is not `GET`, before any connection is opened
+  (`internal/fronius/readonly.go`);
+- `selectEndpoints` refuses any path absent from the allowlist
+  (`errNotWhitelisted`): the probe cannot target an arbitrary URL;
+- the check `grep -rn 'MethodPost\|MethodPut\|MethodDelete\|MethodPatch' internal cmd`
+  finds nothing outside the error message of this guard and its tests.
 
-Pour afficher la liste blanche sans émettre aucune requête :
+To display the allowlist without emitting any request:
 
 ```bash
 go run ./cmd/fronius-probe --list
 ```
 
-## 3. Identifiants de l'appareil
+## 3. Device credentials
 
-Les identifiants ne passent **jamais** par un argument de ligne de commande : un
-mot de passe en argument apparaît dans l'historique du shell et dans la table
-des processus.
+Credentials **never** go through a command-line argument: a password in an
+argument appears in the shell history and in the process table.
 
 | Source | Usage |
 |---|---|
-| `FRONIUS_DEVICE_USER` | utilisateur, lu dans l'environnement |
-| `FRONIUS_DEVICE_PASSWORD` | mot de passe, lu dans l'environnement (à poser avec `read -rs`, jamais sur une ligne de commande) |
-| `--password-stdin` | mot de passe lu sur la première ligne de l'entrée standard, pour un usage interactif |
+| `FRONIUS_DEVICE_USER` | user, read from the environment |
+| `FRONIUS_DEVICE_PASSWORD` | password, read from the environment (set with `read -rs`, never on a command line) |
+| `--password-stdin` | password read from the first line of standard input, for interactive use |
 
-Les deux vont ensemble : n'en fournir qu'un est une erreur, refusée avant toute
-requête. Sans aucun identifiant, la sonde fonctionne comme en phase 1 : elle
-émet les requêtes nues et rapporte le `401` reçu.
+Both go together: providing only one is an error, refused before any request.
+With no credentials at all, the probe works as in phase 1: it emits bare
+requests and reports the `401` received.
 
 ```bash
-# interactif : le mot de passe n'apparaît ni dans l'historique ni dans ps
+# interactive: the password appears neither in the history nor in ps
 read -r FRONIUS_DEVICE_USER && export FRONIUS_DEVICE_USER
 read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081 --endpoint /status/version
 
-# ou, mot de passe sur l'entrée standard
-export FRONIUS_DEVICE_USER=installateur
+# or, password on standard input
+export FRONIUS_DEVICE_USER=installer
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081 --password-stdin
 ```
 
-`--endpoint <chemin|all>` restreint la sonde à une entrée de la liste blanche ;
-tout autre chemin est refusé.
+`--endpoint <path|all>` restricts the probe to one allowlist entry; any other
+path is refused.
 
-## 4. Garde d'adresse locale
+## 4. Local-address guard
 
-Par défaut, la sonde **refuse** toute adresse qui n'est pas la boucle locale
-(`127.0.0.1`, `::1`, `localhost`) :
+By default, the probe **refuses** any address that is not the loopback
+(`127.0.0.1`, `::1`, `localhost`):
 
 ```bash
 go run ./cmd/fronius-probe --base-url http://192.0.2.10
-# fronius-probe: refus: http://192.0.2.10 n'est pas une adresse locale ;
-# relancer avec --allow-non-loopback après avoir lu docs/PROBE-READONLY.md
-# et obtenu l'accord explicite de l'utilisateur
+# fronius-probe: refusal: http://192.0.2.10 is not a local address;
+# re-run with --allow-non-loopback after reading docs/PROBE-READONLY.md
+# and obtaining the user's explicit consent
 ```
 
-Le refus intervient **avant** toute résolution de nom et toute connexion :
-aucun paquet ne part vers l'appareil. La levée de la garde est un acte
-volontaire : `--allow-non-loopback`.
+The refusal happens **before** any name resolution and any connection: no
+packet leaves towards the device. Lifting the guard is a deliberate act:
+`--allow-non-loopback`.
 
-## 5. Commande à lancer
+## 5. Command to run
 
-Vers le simulateur local (aucun risque, aucun matériel) :
+Towards the local simulator (no risk, no hardware):
 
 ```bash
 # terminal 1
 go run ./cmd/fronius-sim --api-user sim --api-password simpass --with-meter
 
-# terminal 2 : sans identifiants, les quatre chemins internes répondent 401
+# terminal 2: without credentials, the four internal paths answer 401
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081
 
-# terminal 2 : avec le compte du simulateur, les cinq chemins répondent 200.
-# Le mot de passe du simulateur est « simpass » ; il est saisi à l'entrée
-# standard pour ne pas figurer dans l'historique du shell.
+# terminal 2: with the simulator account, the five paths answer 200.
+# The simulator password is "simpass"; it is entered on standard input
+# so it does not appear in the shell history.
 export FRONIUS_DEVICE_USER=sim
 read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081 --save /tmp/probe-out
 ```
 
-Vers l'onduleur réel, après l'accord du point 1 :
+Towards the real inverter, after the consent of point 1:
 
 ```bash
-export FRONIUS_DEVICE_USER=installateur
+export FRONIUS_DEVICE_USER=installer
 read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
 go run ./cmd/fronius-probe \
   --base-url http://192.0.2.10 \
@@ -187,136 +184,132 @@ go run ./cmd/fronius-probe \
   --save /tmp/probe-reel
 ```
 
-Le mot de passe est alors saisi sur l'entrée standard, jamais en argument. Au
-plus une réémission par chemin, et seulement après un `401`. Si l'appareil
-répond en erreur, la sonde le signale et s'arrête.
+The password is then entered on standard input, never as an argument. At most
+one resend per path, and only after a `401`. If the device answers with an
+error, the probe reports it and stops.
 
-## 6. Sortie attendue
+## 6. Expected output
 
 ```
-Requête
+Request
   GET http://192.0.2.10/status/version
-  classification : READ
-  liste blanche : Identité de l'appareil : numéro de série (clé établie), nombre de phases, groupe d'appareil
+  classification: READ
+  allowlist: Device identity: serial number (established key), number of phases, device group
 
-Réponse
-  statut   : 200 OK
-  durée    : 12ms
-  octets   : 164
-  en-têtes (valeurs sensibles masquées)
+Response
+  status   : 200 OK
+  duration : 12ms
+  bytes    : 164
+  headers (sensitive values masked)
     Authorization: <redacted>
     Content-Type: application/json
     Date: Fri, 16 Oct 2026 09:58:15 GMT
 
-Corps expurgé
+Redacted body
 { … }
 ```
 
-L'en-tête de défi reçu (`x-www-authenticate`, puis `www-authenticate` en repli)
-est affiché masqué : il porte un nonce, donc un identifiant de session.
+The received challenge header (`x-www-authenticate`, then `www-authenticate` as
+a fallback) is displayed masked: it carries a nonce, hence a session identifier.
 
-Interprétation :
+Interpretation:
 
-| Observation | Conséquence |
+| Observation | Consequence |
 |---|---|
-| `200 OK` et `Body.Data.Site` renseigné | La forme supposée de `dto.go` est confirmée : promouvoir la fixture (§ 8). |
-| `401` ou `403` avec `x-www-authenticate` | L'appareil exige une authentification sur ce chemin : poser `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ 3) et relancer. Un `401` persistant **après** une réauthentification signale un utilisateur ou un mot de passe erronés, ou un realm inattendu. |
-| `404` | Le chemin diffère sur ce firmware : corriger `internal/fronius/solarapi/dto.go` et ce document. |
-| Champs ou unités différents de ceux attendus | Corriger `dto.go`, les fixtures et `docs/SOURCES.md`. Les colonnes SQLite ne changent pas (unités SI de base). |
-| Absence de `P_Grid`, `P_Load`, `rel_*` | Comportement attendu sans Smart Meter ; confirme l'invariance « pas de zéro inventé ». |
+| `200 OK` and `Body.Data.Site` populated | The assumed shape of `dto.go` is confirmed: promote the fixture (§ 8). |
+| `401` or `403` with `x-www-authenticate` | The device requires authentication on this path: set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ 3) and re-run. A persistent `401` **after** re-authentication signals a wrong user or password, or an unexpected realm. |
+| `404` | The path differs on this firmware: fix `internal/fronius/solarapi/dto.go` and this document. |
+| Fields or units different from those expected | Fix `dto.go`, the fixtures and `docs/SOURCES.md`. The SQLite columns do not change (base SI units). |
+| Absence of `P_Grid`, `P_Load`, `rel_*` | Expected behaviour without a Smart Meter; confirms the invariant "no invented zero". |
 
-## 7. Règles d'expurgation
+## 7. Redaction rules
 
-L'expurgation s'applique **avant** tout affichage et **avant** toute écriture sur
-disque. Elle est implémentée dans `cmd/fronius-probe/redact.go` et testée dans
-`probe_test.go`.
+Redaction applies **before** any display and **before** any write to disk. It is
+implemented in `cmd/fronius-probe/redact.go` and tested in `probe_test.go`.
 
-| Cible | Règle |
+| Target | Rule |
 |---|---|
-| Champs JSON | Toute clé contenant `password`, `passwd`, `secret`, `nonce`, `token`, `authorization`, `credential`, `serial`, `mac`, `ssid`, `hostname`, `ipaddress` ou `sessionid` voit sa valeur remplacée par `<redacted>`. |
-| Valeurs textuelles | Adresse IPv4, adresse IPv6, adresse MAC, nom d'hôte ou nom pleinement qualifié → `<redacted>`. |
-| Corps non JSON | Les affectations `password=…`, `nonce=…`, `serial=…`, etc. sont expurgées, puis les motifs d'adresses sont appliqués au texte. |
-| En-têtes HTTP | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `WWW-Authenticate` / `x-www-authenticate`, `X-CSRF-Token`, `X-Auth-Token` : valeur intégralement masquée. Les autres en-têtes sont masqués si leur valeur ressemble à une adresse. |
-| Fichier écrit | Mode `0600`, nom dérivé du **chemin** et horodaté (`probe_components_powermeter_readable_<UTC>.json`). Le nom ne peut pas venir du seul dernier segment : `/components/PowerMeter/readable` et `/components/BatteryManagementSystem/readable` finissent tous deux par `readable` et s'écraseraient l'un l'autre. |
+| JSON fields | Any key containing `password`, `passwd`, `secret`, `nonce`, `token`, `authorization`, `credential`, `serial`, `mac`, `ssid`, `hostname`, `ipaddress` or `sessionid` has its value replaced by `<redacted>`. |
+| Textual values | IPv4 address, IPv6 address, MAC address, host name or fully qualified name → `<redacted>`. |
+| Non-JSON body | The assignments `password=…`, `nonce=…`, `serial=…`, etc. are redacted, then the address patterns are applied to the text. |
+| HTTP headers | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `WWW-Authenticate` / `x-www-authenticate`, `X-CSRF-Token`, `X-Auth-Token`: value fully masked. Other headers are masked if their value looks like an address. |
+| Written file | Mode `0600`, name derived from the **path** and timestamped (`probe_components_powermeter_readable_<UTC>.json`). The name cannot come from the last segment alone: `/components/PowerMeter/readable` and `/components/BatteryManagementSystem/readable` both end in `readable` and would overwrite each other. |
 
-Deux règles de non-régression sont testées explicitement :
+Two non-regression rules are tested explicitly:
 
-- **les mesures ne sont jamais expurgées** : une puissance, une énergie, un
-  horodatage ou un mode restent intacts (sinon la fixture serait inutilisable) ;
-- **une heure n'est pas une adresse IPv6** : `12:00:00` et
-  `2026-06-21T12:00:00+02:00` ne sont pas masqués (`looksLikeIPv6` exige au
-  moins quatre groupes, ou la forme compressée `::`).
+- **measurements are never redacted**: a power, an energy, a timestamp or a mode
+  stay intact (otherwise the fixture would be unusable);
+- **a time is not an IPv6 address**: `12:00:00` and
+  `2026-06-21T12:00:00+02:00` are not masked (`looksLikeIPv6` requires at least
+  four groups, or the compressed form `::`).
 
-Le JSON est réécrit avec une indentation stable, ce qui peut **réordonner les
-clés** d'un objet. Le résultat reste un JSON valide ; c'est le prix d'une
-expurgation structurelle fiable.
+The JSON is rewritten with stable indentation, which may **reorder the keys** of
+an object. The result remains valid JSON; that is the price of reliable
+structural redaction.
 
-## 8. Promotion d'une fixture expurgée
+## 8. Promotion of a redacted fixture
 
-1. Vérifier le fichier écrit : ouvrir `probe_*.json` et confirmer qu'aucun
-   numéro de série, nom d'hôte, adresse ou identifiant ne subsiste.
-2. Masquer le numéro de série de l'appareil s'il apparaît sous une forme non
-   prévue par l'expurgation, puis remplacer le champ racine `_provenance` par :
+1. Check the written file: open `probe_*.json` and confirm that no serial
+   number, host name, address or identifier remains.
+2. Mask the device serial number if it appears in a form not covered by the
+   redaction, then replace the root field `_provenance` with:
 
    ```json
    "_provenance": {
      "synthetic": false,
      "source": "fronius-probe",
-     "confidence": "VÉRIFIÉ (matériel)",
-     "firmware": "<version observée>",
-     "captured_at": "<horodatage UTC de la capture>",
+     "confidence": "VERIFIED (hardware)",
+     "firmware": "<observed version>",
+     "captured_at": "<UTC timestamp of the capture>",
      "http_status": 200,
      "digest_required": true
    }
    ```
 
-   `digest_required` vaut `true` si l'appareil a répondu `401` avant le défi,
-   `false` s'il a répondu directement : les deux voies existent dans le client
-   officiel (voir `docs/SOURCES.md`), et c'est la réponse observée qui tranche
-   pour *cette* installation.
+   `digest_required` is `true` if the device answered `401` before the challenge,
+   `false` if it answered directly: both paths exist in the official client (see
+   `docs/SOURCES.md`), and it is the observed response that settles it for *this*
+   installation.
 
-3. Renommer d'après le **chemin** capturé (`status_version.json`,
+3. Rename after the captured **path** (`status_version.json`,
    `components_powermeter_readable.json`, `status_activeevents.json`,
-   `components_batterymanagementsystem_readable.json`, ou
-   `powerflow_produce_only.json`, `powerflow_with_meter.json`, …) et remplacer
-   le fichier synthétique correspondant.
-4. Relancer `go test ./...` : le test de contrat
-   (`internal/fronius/solarapi/contract_test.go`) échouera sur les valeurs
-   attendues. **C'est le but** : mettre à jour les valeurs attendues *après*
-   vérification, jamais pour faire passer le test.
-5. Mettre à jour `docs/SOURCES.md` (statut de la capture, firmware, date) et
-   consigner le changement dans `CHANGELOG.md`.
-6. Réévaluer les capacités dans `internal/model/capabilities.go` : les mentions
-   « Schéma non validé sur firmware 1.19.7-1 » peuvent être retirées seulement
-   pour ce qui a été effectivement observé.
+   `components_batterymanagementsystem_readable.json`, or
+   `powerflow_produce_only.json`, `powerflow_with_meter.json`, …) and replace
+   the corresponding synthetic file.
+4. Re-run `go test ./...`: the contract test
+   (`internal/fronius/solarapi/contract_test.go`) will fail on the expected
+   values. **That is the point**: update the expected values *after*
+   verification, never to make the test pass.
+5. Update `docs/SOURCES.md` (capture status, firmware, date) and record the
+   change in `CHANGELOG.md`.
+6. Re-evaluate the capabilities in `internal/model/capabilities.go`: the
+   mentions "Schema not validated on firmware 1.19.7-1" can be removed only for
+   what was actually observed.
 
-Une fixture promue devient la référence contractuelle du projet. Toute capture
-ultérieure doit être comparée à elle avant d'être adoptée.
+A promoted fixture becomes the contractual reference of the project. Any later
+capture must be compared to it before being adopted.
 
-## 9. Règle de non-écriture
+## 9. No-write rule
 
-**Aucune commande `POST`, `PUT`, `PATCH` ou `DELETE` ne doit être émise vers
-l'onduleur tant qu'une revue de sécurité dédiée n'a pas autorisé un endpoint
-nommé.**
+**No `POST`, `PUT`, `PATCH` or `DELETE` command must be emitted towards the
+inverter until a dedicated security review has authorized a named endpoint.**
 
-Cette règle couvre :
+This rule covers:
 
-- l'application (`froniusd`) : tous ses clients sont construits derrière
-  `fronius.ReadOnly` ;
-- la sonde (`fronius-probe`) : liste blanche d'un seul GET ;
-- le simulateur (`fronius-sim`) : il ne contacte jamais l'onduleur ;
-- les tests et la CI : aucun test n'effectue de requête sortante vers un
-  onduleur.
+- the application (`froniusd`): all its clients are built behind
+  `fronius.ReadOnly`;
+- the probe (`fronius-probe`): allowlist of a single GET;
+- the simulator (`fronius-sim`): it never contacts the inverter;
+- tests and CI: no test performs an outgoing request to an inverter.
 
-Les endpoints `MUTATION` et `DANGEROUS` sont inventoriés et classés dans
-`docs/ENDPOINTS.md`, avec pour seul objectif de **savoir ce qu'il ne faut pas
-appeler**. L'inventaire n'est pas une autorisation.
+The `MUTATION` and `DANGEROUS` endpoints are inventoried and classified in
+`docs/ENDPOINTS.md`, with the sole goal of **knowing what must not be called**.
+The inventory is not an authorization.
 
-La phase 2 pourra élargir la liste blanche à des lectures d'API interne
-(`/status/*`, `/config/*` en GET). Chaque ajout devra être :
+Phase 2 may widen the allowlist to internal API reads (`/status/*`, `/config/*`
+over GET). Each addition will have to be:
 
-1. justifié par une métrique que la Solar API ne fournit pas ;
-2. documenté dans `docs/ENDPOINTS.md` (rôle déclaré, rôle testé, effet de bord) ;
-3. accompagné d'un test qui prouve que la méthode est bien `GET` ;
-4. autorisé explicitement par l'utilisateur avant la première exécution sur le
-   matériel.
+1. justified by a metric that the Solar API does not provide;
+2. documented in `docs/ENDPOINTS.md` (declared role, tested role, side effect);
+3. accompanied by a test proving that the method is indeed `GET`;
+4. explicitly authorized by the user before the first execution on hardware.

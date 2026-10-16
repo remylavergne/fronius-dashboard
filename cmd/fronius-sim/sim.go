@@ -1,9 +1,9 @@
-// Simulateur local de la Fronius Solar API v1.
+// Local simulator of the Fronius Solar API v1.
 //
-// La forme du JSON produite ici est une [HYPOTHÈSE] : le bundle de l'interface
-// d'origine ne contient aucun chemin Solar API (voir docs/SOURCES.md), donc
-// aucun schéma n'a pu être extrait du fabricant. Les fixtures générées doivent
-// être réconciliées avec une capture réelle produite par cmd/fronius-probe.
+// The shape of the JSON produced here is a [HYPOTHESIS]: the bundle of the
+// original interface contains no Solar API path (see docs/SOURCES.md), so
+// no schema could be extracted from the manufacturer. The generated fixtures
+// must be reconciled with a real capture produced by cmd/fronius-probe.
 package main
 
 import (
@@ -14,30 +14,30 @@ import (
 )
 
 const (
-	// Production nulle hors de cette plage horaire locale.
+	// Zero production outside this local time range.
 	dayStartHour = 7.0
 	dayEndHour   = 19.0
 
-	// Périodes du bruit de nébulosité lissé.
+	// Periods of the smoothed cloudiness noise.
 	cloudPeriod1 = 37 * time.Minute
 	cloudPeriod2 = 113 * time.Minute
 
-	// Pas d'intégration de la courbe de puissance.
+	// Integration step of the power curve.
 	integrationStep = time.Minute
 
-	// Date (locale) à partir de laquelle E_Total est cumulé. Constante du
-	// simulateur : la date d'installation réelle de l'onduleur n'est exposée
-	// par aucun endpoint confirmé.
+	// Date (local) from which E_Total is accumulated. Simulator constant:
+	// the real installation date of the inverter is exposed
+	// by no confirmed endpoint.
 	installYear = 2025
 )
 
-// generator produit une courbe de production déterministe.
+// generator produces a deterministic production curve.
 //
-//	p(t) = max(0, sin(π·(h−7)/12)) · nominal · cloud(t),  h = heure locale décimale
+//	p(t) = max(0, sin(π·(h−7)/12)) · nominal · cloud(t),  h = local decimal hour
 //
-// cloud(t) ∈ [0.75, 1.0] est la somme de deux sinusoïdes de périodes 37 min et
-// 113 min, dont les phases dérivent du seed. Aucun appel à math/rand : la même
-// entrée produit toujours le même octet de sortie.
+// cloud(t) ∈ [0.75, 1.0] is the sum of two sinusoids with periods 37 min and
+// 113 min, whose phases derive from the seed. No call to math/rand: the same
+// input always produces the same output byte.
 type generator struct {
 	nominal float64
 	seed    uint64
@@ -55,18 +55,18 @@ func newGenerator(seed uint64, nominalW float64, loc *time.Location) *generator 
 		nominal: nominalW,
 		seed:    seed,
 		loc:     loc,
-		// Deux périodes premières distinctes pour décorréler les phases.
+		// Two distinct prime periods to decorrelate the phases.
 		phase1: 2 * math.Pi * float64(seed%977) / 977,
 		phase2: 2 * math.Pi * float64((seed/977)%991) / 991,
-		// Énergie fictive produite avant installDate, pour que E_Total ne
-		// démarre pas à zéro : 1 000 kWh + seed%100 · 1 kWh.
+		// Fictitious energy produced before installDate, so that E_Total does
+		// not start at zero: 1,000 kWh + seed%100 · 1 kWh.
 		baseTotalWh: 1_000_000 + float64(seed%100)*1_000,
 		installDate: time.Date(installYear, 1, 1, 0, 0, 0, 0, loc),
 		dayCache:    map[string]float64{},
 	}
 }
 
-// cloudAt retourne le facteur de nébulosité, dans [0.75, 1.0].
+// cloudAt returns the cloudiness factor, in [0.75, 1.0].
 func (g *generator) cloudAt(t time.Time) float64 {
 	u := float64(t.UTC().UnixNano()) / 1e9
 	a := 2*math.Pi*u/cloudPeriod1.Seconds() + g.phase1
@@ -74,7 +74,7 @@ func (g *generator) cloudAt(t time.Time) float64 {
 	return 0.875 + 0.125*(0.5*math.Sin(a)+0.5*math.Sin(b))
 }
 
-// instantaneousW retourne la puissance PV en W à l'instant t.
+// instantaneousW returns the PV power in W at instant t.
 func (g *generator) instantaneousW(t time.Time) float64 {
 	lt := t.In(g.loc)
 	h := float64(lt.Hour()) + float64(lt.Minute())/60 + float64(lt.Second())/3600
@@ -88,13 +88,13 @@ func (g *generator) instantaneousW(t time.Time) float64 {
 	return shape * g.nominal * g.cloudAt(t)
 }
 
-// solarSecondsBetween intègre la puissance sur [from, to] par la méthode du
-// point milieu (pas de 60 s, dernier pas tronqué) et retourne des Wh.
+// solarSecondsBetween integrates the power over [from, to] by the midpoint
+// method (step of 60 s, last step truncated) and returns Wh.
 func (g *generator) solarSecondsBetween(from, to time.Time) float64 {
 	if !to.After(from) {
 		return 0
 	}
-	var ws float64 // watts-seconde
+	var ws float64 // watt-seconds
 	cur := from
 	for {
 		next := cur.Add(integrationStep)
@@ -120,8 +120,8 @@ func (g *generator) nextDay(d time.Time) time.Time {
 	return time.Date(d.Year(), d.Month(), d.Day()+1, 0, 0, 0, 0, g.loc)
 }
 
-// dayEnergyWh retourne la production d'une journée locale complète (23 h, 24 h
-// ou 25 h selon le changement d'heure).
+// dayEnergyWh returns the production of a complete local day (23 h, 24 h
+// or 25 h depending on the daylight-saving change).
 func (g *generator) dayEnergyWh(date time.Time) float64 {
 	key := date.Format("2006-01-02")
 	if v, ok := g.dayCache[key]; ok {
@@ -132,7 +132,7 @@ func (g *generator) dayEnergyWh(date time.Time) float64 {
 	return v
 }
 
-// sumDaysWh somme les journées locales de [from, to[.
+// sumDaysWh sums the local days of [from, to[.
 func (g *generator) sumDaysWh(from, to time.Time) float64 {
 	var total float64
 	for d := from; d.Before(to); d = g.nextDay(d) {
@@ -141,7 +141,7 @@ func (g *generator) sumDaysWh(from, to time.Time) float64 {
 	return total
 }
 
-// snapshot est l'ensemble des valeurs dérivées d'un instant.
+// snapshot is the set of values derived from an instant.
 type snapshot struct {
 	PowerW   float64
 	EDayWh   float64
@@ -149,7 +149,7 @@ type snapshot struct {
 	ETotalWh float64
 }
 
-// snapshotAt calcule les compteurs d'énergie cohérents avec l'instant t.
+// snapshotAt computes the energy counters consistent with instant t.
 func (g *generator) snapshotAt(t time.Time) snapshot {
 	day := g.dateOnly(t)
 	yearStart := time.Date(day.Year(), 1, 1, 0, 0, 0, 0, g.loc)
@@ -169,7 +169,7 @@ func (g *generator) snapshotAt(t time.Time) snapshot {
 func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
 // ---------------------------------------------------------------------------
-// Forme JSON supposée de GetPowerFlowRealtimeData.fcgi
+// Assumed JSON shape of GetPowerFlowRealtimeData.fcgi
 // ---------------------------------------------------------------------------
 
 type envelope struct {
@@ -220,16 +220,16 @@ type statusJSON struct {
 	UserMessage string `json:"UserMessage"`
 }
 
-// loadW modélise une consommation de base déterministe, utilisée uniquement
-// lorsque --with-meter est actif.
+// loadW models a deterministic base consumption, used only
+// when --with-meter is active.
 func (g *generator) loadW(t time.Time) float64 {
 	u := float64(t.UTC().UnixNano()) / 1e9
-	// 400 W de veille + deux profils lents (17 min et 41 min), plage ~[180, 1100] W.
+	// 400 W of standby + two slow profiles (17 min and 41 min), range ~[180, 1100] W.
 	v := 640 + 300*math.Sin(2*math.Pi*u/1020+g.phase2) + 160*math.Sin(2*math.Pi*u/2460+g.phase1)
 	return round1(math.Max(120, v))
 }
 
-// buildEnvelope construit la réponse pour l'instant t.
+// buildEnvelope builds the response for instant t.
 func (g *generator) buildEnvelope(t time.Time, withMeter bool, statusCode int, reason string) envelope {
 	snap := g.snapshotAt(t)
 
@@ -250,15 +250,15 @@ func (g *generator) buildEnvelope(t time.Time, withMeter bool, statusCode int, r
 		selfConsumed := math.Min(pv, load)
 		site.PLoad = new(load)
 		site.PGrid = new(grid)
-		// Un ratio dont le dénominateur est nul est indéfini : on émet null
-		// plutôt qu'un zéro inventé, conformément à l'invariant du modèle.
+		// A ratio whose denominator is zero is undefined: we emit null
+		// rather than an invented zero, in accordance with the model invariant.
 		if pv > 0 {
 			site.RelSelfConsumption = new(round1(100 * selfConsumed / pv))
 		}
 		if load > 0 {
 			site.RelAutonomy = new(round1(100 * selfConsumed / load))
 		}
-		// P_Akku reste null : le simulateur ne modélise aucune batterie.
+		// P_Akku stays null: the simulator models no battery.
 	}
 
 	inv := inverterJSON{
@@ -282,8 +282,8 @@ func (g *generator) buildEnvelope(t time.Time, withMeter bool, statusCode int, r
 	}
 }
 
-// marshalEnvelope sérialise l'enveloppe de façon stable (indentation fixe,
-// ordre des champs fixe, une seule clé d'onduleur).
+// marshalEnvelope serializes the envelope in a stable way (fixed indentation,
+// fixed field order, a single inverter key).
 func marshalEnvelope(env envelope) ([]byte, error) {
 	b, err := json.MarshalIndent(env, "", "  ")
 	if err != nil {

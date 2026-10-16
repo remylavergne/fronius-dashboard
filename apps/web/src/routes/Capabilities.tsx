@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useT } from '@/i18n'
 import { useCapabilities } from '@/lib/queries'
 
-/** Page Capacités : source de vérité de ce qui est réellement supervisable. */
+/** Capabilities page: source of truth for what is actually monitorable. */
 export function CapabilitiesPage() {
   const { t } = useT()
   const capabilities = useCapabilities()

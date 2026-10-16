@@ -3,16 +3,16 @@ import { render, screen } from '@testing-library/react'
 import { EmptyState } from './EmptyState'
 
 describe('EmptyState', () => {
-  it('affiche un titre et une explication', () => {
-    render(<EmptyState title="Aucune donnée" hint="Aucune mesure n’a encore été enregistrée." />)
+  it('shows a title and an explanation', () => {
+    render(<EmptyState title="No data" hint="No measurement has been recorded yet." />)
 
-    expect(screen.getByText('Aucune donnée')).toBeInTheDocument()
-    expect(screen.getByText('Aucune mesure n’a encore été enregistrée.')).toBeInTheDocument()
+    expect(screen.getByText('No data')).toBeInTheDocument()
+    expect(screen.getByText('No measurement has been recorded yet.')).toBeInTheDocument()
   })
 
-  it('n’affiche aucune valeur numérique', () => {
-    const { container } = render(<EmptyState title="Aucune donnée" hint="En attente du premier cycle de collecte." />)
-    // Un état vide ne doit proposer ni « 0 W » ni « 0 kWh ».
+  it('shows no numeric value', () => {
+    const { container } = render(<EmptyState title="No data" hint="Waiting for the first collection cycle." />)
+    // An empty state must offer neither "0 W" nor "0 kWh".
     expect(container.textContent).not.toMatch(/\d/)
   })
 })

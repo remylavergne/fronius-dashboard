@@ -1,10 +1,10 @@
-// Package model contient le modèle normalisé de la supervision.
+// Package model contains the normalized model of the supervision.
 //
-// Invariant central : une valeur absente est nil, jamais 0. L'absence de Smart
-// Meter ou de batterie ne doit jamais produire de consommation, d'import/export
-// ni de taux d'autoconsommation nuls — ces grandeurs seraient fausses et
-// indiscernables d'une vraie mesure nulle. Les capacités (capabilities.go)
-// portent l'explication destinée à l'utilisateur.
+// Central invariant: an absent value is nil, never 0. The absence of a Smart
+// Meter or of a battery must never produce zero consumption, zero import/export
+// or a zero self-consumption ratio — these quantities would be false and
+// indistinguishable from a real zero measurement. The capabilities
+// (capabilities.go) carry the explanation intended for the user.
 package model
 
 import (
@@ -14,29 +14,29 @@ import (
 	"fronius-supervisor/internal/fronius/solarapi"
 )
 
-// Quality qualifie la provenance d'une valeur ou d'un échantillon.
+// Quality qualifies the provenance of a value or a sample.
 type Quality string
 
 const (
-	// QualityMeasured : valeur issue de l'appareil, horodatée par l'appareil.
+	// QualityMeasured: value from the device, timestamped by the device.
 	QualityMeasured Quality = "measured"
-	// QualityEstimated : valeur mesurée mais horodatée par le collecteur,
-	// faute d'horodatage exploitable dans la réponse.
+	// QualityEstimated: measured value but timestamped by the collector,
+	// for lack of a usable timestamp in the response.
 	QualityEstimated Quality = "estimated"
-	// QualityMissing : aucune valeur exploitable pour la grandeur considérée.
+	// QualityMissing: no usable value for the quantity considered.
 	QualityMissing Quality = "missing"
 )
 
-// Origine de l'horodatage de l'échantillon.
+// Origin of the sample timestamp.
 const (
 	TSSourceDevice    = "device"
 	TSSourceCollector = "collector"
 )
 
-// SourceSolarAPI identifie les échantillons acquis via la Solar API.
+// SourceSolarAPI identifies the samples acquired via the Solar API.
 const SourceSolarAPI = "solar_api"
 
-// InverterSample est la mesure normalisée d'un onduleur.
+// InverterSample is the normalized measurement of an inverter.
 type InverterSample struct {
 	ID          string
 	DT          int
@@ -44,14 +44,14 @@ type InverterSample struct {
 	EnergyDayWh *float64
 }
 
-// Sample est un échantillon normalisé, prêt pour la persistance et l'API.
+// Sample is a normalized sample, ready for persistence and the API.
 //
-// Unités : puissances en W, énergies en Wh, ratios en pourcents — unités de
-// base SI, conservées telles quelles en base. La conversion vers kW et kWh est
-// faite à la frontière d'affichage (units.go).
+// Units: powers in W, energies in Wh, ratios in percent — base SI units, kept
+// as they are in the database. Conversion to kW and kWh is done at the display
+// boundary (units.go).
 type Sample struct {
-	TS       time.Time // toujours en UTC
-	TSSource string    // TSSourceDevice ou TSSourceCollector
+	TS       time.Time // always in UTC
+	TSSource string    // TSSourceDevice or TSSourceCollector
 	Source   string    // SourceSolarAPI
 	Quality  Quality
 	Mode     string
@@ -71,11 +71,11 @@ type Sample struct {
 	Inverters []InverterSample
 }
 
-// FromPowerFlow normalise une réponse de GetPowerFlowRealtimeData.fcgi.
+// FromPowerFlow normalizes a GetPowerFlowRealtimeData.fcgi response.
 //
-// now n'est utilisé que si l'appareil ne fournit pas d'horodatage exploitable ;
-// l'échantillon est alors marqué QualityEstimated pour qu'aucun graphique ne
-// présente une heure reconstruite comme une heure mesurée.
+// now is only used if the device does not provide a usable timestamp; the
+// sample is then marked QualityEstimated so that no chart presents a
+// reconstructed time as a measured time.
 func FromPowerFlow(env solarapi.PowerFlowEnvelope, now time.Time) Sample {
 	site := env.Body.Data.Site
 	s := Sample{
@@ -97,8 +97,8 @@ func FromPowerFlow(env solarapi.PowerFlowEnvelope, now time.Time) Sample {
 		s.TSSource = TSSourceDevice
 		s.Quality = QualityMeasured
 		if !s.hasAnyValue() {
-			// L'appareil répond mais ne fournit aucune mesure : un échantillon
-			// vide n'est pas « mesuré ».
+			// The device answers but provides no measurement: an empty sample
+			// is not `measured`.
 			s.Quality = QualityMissing
 		}
 	} else {
@@ -117,15 +117,15 @@ func FromPowerFlow(env solarapi.PowerFlowEnvelope, now time.Time) Sample {
 				EnergyDayWh: inv.E_Day,
 			})
 		}
-		// Ordre stable : les identifiants sont des chaînes du protocole
-		// (« 1 », « 2 », …), triées lexicographiquement pour être déterministes.
+		// Stable order: the identifiers are protocol strings
+		// ("1", "2", …), sorted lexicographically to be deterministic.
 		sort.Slice(s.Inverters, func(i, j int) bool { return s.Inverters[i].ID < s.Inverters[j].ID })
 	}
 
 	return s
 }
 
-// hasAnyValue indique si au moins une mesure du site est présente.
+// hasAnyValue indicates whether at least one site measurement is present.
 func (s Sample) hasAnyValue() bool {
 	for _, v := range []*float64{
 		s.PowerPVW, s.EnergyDayWh, s.EnergyYearWh, s.EnergyTotalWh,

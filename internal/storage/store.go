@@ -12,49 +12,49 @@ import (
 	"fronius-supervisor/internal/model"
 )
 
-// ErrNoData signale une base vide pour la requête demandée.
-var ErrNoData = errors.New("storage: aucune donnée")
+// ErrNoData signals an empty database for the requested query.
+var ErrNoData = errors.New("storage: no data")
 
-// RunRecord trace une exécution du collecteur.
+// RunRecord traces a collector run.
 type RunRecord struct {
 	ID         int64
 	StartedUTC time.Time
 	DurationMS int64
 	OK         bool
-	// HTTPStatus vaut 0 lorsqu'aucun code HTTP n'est disponible (panne réseau
-	// avant réponse) ; la colonne correspondante reste alors NULL.
+	// HTTPStatus is 0 when no HTTP status is available (network failure
+	// before a response); the corresponding column then stays NULL.
 	HTTPStatus int
 	ErrorKind  string
 	Error      string
 }
 
-// TimeSeriesQuery décrit une demande de série temporelle agrégée.
+// TimeSeriesQuery describes an aggregated time-series request.
 type TimeSeriesQuery struct {
-	From time.Time // inclus
-	To   time.Time // exclu
+	From time.Time // inclusive
+	To   time.Time // exclusive
 	Step time.Duration
 }
 
-// Bucket est un point agrégé sur un pas de temps aligné sur l'epoch.
+// Bucket is a point aggregated over a time step aligned on the epoch.
 type Bucket struct {
 	Start       time.Time
 	PowerPVAvgW *float64
 	PowerPVMinW *float64
 	PowerPVMaxW *float64
 	Count       int
-	Missing     int // nombre d'échantillons du bucket sans valeur de puissance PV
+	Missing     int // number of samples in the bucket without a PV power value
 }
 
-// DailyEnergy est l'énergie d'une journée locale.
+// DailyEnergy is the energy of one local day.
 type DailyEnergy struct {
-	Date     string // YYYY-MM-DD en fuseau local
+	Date     string // YYYY-MM-DD in local timezone
 	EnergyWh *float64
 }
 
-// EventsQuery décrit une lecture d'événements.
+// EventsQuery describes an event read.
 type EventsQuery struct {
 	Limit    int
-	From, To time.Time // valeur nulle = pas de borne
+	From, To time.Time // zero value = no bound
 }
 
 const sampleColumns = `ts_utc, source, ts_source, quality, mode,
@@ -62,8 +62,8 @@ const sampleColumns = `ts_utc, source, ts_source, quality, mode,
 	power_grid_w, power_load_w, power_battery_w,
 	rel_autonomy_pct, rel_self_consumption_pct, inverters_json`
 
-// inverterJSON est la forme persistée des mesures d'onduleur. Les champs
-// absents ne sont pas écrits, donc lus à nil : l'absence reste discernable.
+// inverterJSON is the persisted shape of inverter measurements. Fields that
+// are absent are not written, so read back as nil: the absence stays discernible.
 type inverterJSON struct {
 	ID          string   `json:"id"`
 	DT          int      `json:"dt"`
@@ -71,13 +71,13 @@ type inverterJSON struct {
 	EnergyDayWh *float64 `json:"energy_day_wh,omitempty"`
 }
 
-// InsertSample enregistre un échantillon. L'écriture est idempotente sur la
-// clé (ts_utc, source) : rejouer un backfill met à jour la ligne au lieu de la
-// dupliquer.
+// InsertSample records a sample. The write is idempotent on the
+// key (ts_utc, source): replaying a backfill updates the row instead of
+// duplicating it.
 func (s *Store) InsertSample(ctx context.Context, sm model.Sample) error {
 	inverters, err := json.Marshal(toInverterJSON(sm.Inverters))
 	if err != nil {
-		return fmt.Errorf("sérialisation des onduleurs: %w", err)
+		return fmt.Errorf("serialising inverters: %w", err)
 	}
 
 	const q = `INSERT INTO samples (` + sampleColumns + `)
@@ -104,17 +104,17 @@ func (s *Store) InsertSample(ctx context.Context, sm model.Sample) error {
 		sm.RelAutonomyPct, sm.RelSelfConsumptionPct, string(inverters),
 	)
 	if err != nil {
-		return fmt.Errorf("insertion de l'échantillon %s: %w", formatTS(sm.TS), err)
+		return fmt.Errorf("inserting sample %s: %w", formatTS(sm.TS), err)
 	}
-	// Une mesure plus ancienne que la borne d'eau doit être reprise par la
-	// passe d'agrégation suivante (import d'un backfill après coup, horloge de
-	// l'appareil en retard) : sans cet abaissement, la lecture la croirait déjà
-	// agrégée et l'omettrait. Le coût est une instruction sans effet sur une
-	// table de quelques lignes.
+	// A measurement older than the watermark must be picked up by the
+	// next aggregation pass (import of a backfill after the fact, device
+	// clock running late): without this lowering, the read would believe it
+	// already aggregated and omit it. The cost is a no-op statement on a
+	// table of a few rows.
 	return s.lowerWatermark(ctx, sm.TS)
 }
 
-// LatestSample retourne l'échantillon le plus récent, toutes sources confondues.
+// LatestSample returns the most recent sample, all sources combined.
 func (s *Store) LatestSample(ctx context.Context) (model.Sample, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT `+sampleColumns+` FROM samples ORDER BY ts_utc DESC LIMIT 1`)
@@ -125,32 +125,32 @@ func (s *Store) LatestSample(ctx context.Context) (model.Sample, error) {
 	return sm, err
 }
 
-// SampleCount retourne le nombre d'échantillons conservés.
+// SampleCount returns the number of retained samples.
 func (s *Store) SampleCount(ctx context.Context) (int64, error) {
 	var n int64
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM samples`).Scan(&n); err != nil {
-		return 0, fmt.Errorf("comptage des échantillons: %w", err)
+		return 0, fmt.Errorf("counting samples: %w", err)
 	}
 	return n, nil
 }
 
-// TimeSeries retourne les buckets non vides de [From, To[.
+// TimeSeries returns the non-empty buckets of [From, To[.
 //
-// Les buckets sont alignés sur l'epoch et un bucket sans aucune ligne n'est pas
-// émis : aucune interpolation n'est faite, l'absence de donnée doit rester
-// visible côté interface.
+// The buckets are aligned on the epoch and a bucket with no row at all is not
+// emitted: no interpolation is done, the absence of data must stay
+// visible on the interface side.
 //
-// Les pas multiples d'une heure sont servis par les agrégats horaires
-// (aggregate.go) lorsqu'ils existent ; les autres pas parcourent les mesures
-// brutes. Le résultat est le même dans les deux cas : la moyenne se recompose
-// depuis la somme et l'effectif, le minimum et le maximum sont associatifs.
+// Steps that are multiples of one hour are served by the hourly aggregates
+// (aggregate.go) when they exist; the other steps walk the raw measurements.
+// The result is the same in both cases: the average is recomposed from the sum
+// and the count, the minimum and the maximum are associative.
 func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, error) {
 	if q.Step <= 0 {
-		return nil, fmt.Errorf("pas de temps invalide: %v", q.Step)
+		return nil, fmt.Errorf("invalid time step: %v", q.Step)
 	}
 	step := int64(q.Step.Seconds())
 	if step <= 0 {
-		return nil, fmt.Errorf("pas de temps trop fin pour un stockage à la seconde: %v", q.Step)
+		return nil, fmt.Errorf("time step too fine for second-level storage: %v", q.Step)
 	}
 
 	acc := map[int64]*bucketAcc{}
@@ -164,7 +164,7 @@ func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, er
 			if err := s.aggBucketsInto(ctx, acc, aggFrom, aggTo, step); err != nil {
 				return nil, err
 			}
-			// Entête partielle et heure ouverte : mesures brutes.
+			// Partial header and open hour: raw measurements.
 			if err := s.rawBucketsInto(ctx, acc, q.From, aggFrom, step); err != nil {
 				return nil, err
 			}
@@ -182,21 +182,21 @@ func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, er
 	return bucketsFromAcc(acc), nil
 }
 
-// DailyEnergy retourne l'énergie d'une journée locale, calculée comme le
-// maximum de E_Day observé dans la journée.
+// DailyEnergy returns the energy of one local day, computed as the
+// maximum of E_Day observed during the day.
 //
-// Le maximum est pris par heure UTC puis par date locale : les maxima horaires
-// sont invariants d'offset, donc le résultat reste correct lors des passages à
-// l'été ou à l'hiver (journées de 23 h et 25 h). Prendre le maximum par date
-// évite qu'une remise à zéro du compteur à minuit ne soit interprétée comme une
-// énergie négative.
+// The maximum is taken per UTC hour then per local date: hourly maxima
+// are offset-invariant, so the result stays correct across the transitions to
+// summer or winter time (23 h and 25 h days). Taking the maximum per date
+// avoids a meter reset at midnight being interpreted as a
+// negative energy.
 //
-// Les heures entières closes sont lues dans les agrégats horaires
-// (aggregate.go) : le maximum d'une union est le maximum des maximums. L'entête
-// partielle, l'heure ouverte — ou la plage entière tant qu'aucune borne d'eau
-// n'existe — restent lues sur les mesures brutes.
+// Whole closed hours are read from the hourly aggregates
+// (aggregate.go): the maximum of a union is the maximum of the maximums. The
+// partial header, the open hour — or the whole range as long as no watermark
+// exists — are read from the raw measurements.
 func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEnergy, error) {
-	hours := map[string]float64{} // heure UTC « 2006-01-02T15 » → maximum
+	hours := map[string]float64{} // UTC hour "2006-01-02T15" -> maximum
 
 	closed, hasWM, err := s.aggWatermark(ctx)
 	if err != nil {
@@ -233,7 +233,7 @@ func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEne
 		v := hours[hour]
 		hourUTC, err := time.ParseInLocation("2006-01-02T15", hour, time.UTC)
 		if err != nil {
-			return nil, fmt.Errorf("heure UTC inattendue %q: %w", hour, err)
+			return nil, fmt.Errorf("unexpected UTC hour %q: %w", hour, err)
 		}
 		date := hourUTC.In(s.loc).Format("2006-01-02")
 		a, ok := byDate[date]
@@ -257,18 +257,18 @@ func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEne
 	return out, nil
 }
 
-// InsertEvent enregistre un événement local.
+// InsertEvent records a local event.
 func (s *Store) InsertEvent(ctx context.Context, e model.Event) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO events (ts_utc, kind, severity, message, detail) VALUES (?,?,?,?,?)`,
 		formatTS(e.TS), e.Kind, string(e.Severity), e.Message, e.Detail)
 	if err != nil {
-		return fmt.Errorf("insertion de l'événement %s: %w", e.Kind, err)
+		return fmt.Errorf("inserting event %s: %w", e.Kind, err)
 	}
 	return nil
 }
 
-// Events retourne les événements du plus récent au plus ancien.
+// Events returns the events from most recent to oldest.
 func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error) {
 	sqlQ := `SELECT ts_utc, kind, severity, message, detail FROM events WHERE 1=1`
 	args := []any{}
@@ -288,7 +288,7 @@ func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error
 
 	rows, err := s.db.QueryContext(ctx, sqlQ, args...)
 	if err != nil {
-		return nil, fmt.Errorf("lecture des événements: %w", err)
+		return nil, fmt.Errorf("reading events: %w", err)
 	}
 	defer rows.Close()
 
@@ -298,7 +298,7 @@ func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error
 			ts, kind, severity, message, detail string
 		)
 		if err := rows.Scan(&ts, &kind, &severity, &message, &detail); err != nil {
-			return nil, fmt.Errorf("lecture d'un événement: %w", err)
+			return nil, fmt.Errorf("reading an event: %w", err)
 		}
 		parsed, err := parseTS(ts)
 		if err != nil {
@@ -313,12 +313,12 @@ func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("parcours des événements: %w", err)
+		return nil, fmt.Errorf("iterating events: %w", err)
 	}
 	return out, nil
 }
 
-// InsertRun enregistre une exécution du collecteur.
+// InsertRun records a collector run.
 func (s *Store) InsertRun(ctx context.Context, r RunRecord) error {
 	var httpStatus any
 	if r.HTTPStatus != 0 {
@@ -333,13 +333,13 @@ func (s *Store) InsertRun(ctx context.Context, r RunRecord) error {
 		 VALUES (?,?,?,?,?,?)`,
 		formatTS(r.StartedUTC), r.DurationMS, ok, httpStatus, r.ErrorKind, r.Error)
 	if err != nil {
-		return fmt.Errorf("insertion du cycle de collecte: %w", err)
+		return fmt.Errorf("inserting collector cycle: %w", err)
 	}
 	return nil
 }
 
-// LatestRun retourne le dernier cycle de collecte. Le second retour vaut false
-// si aucun cycle n'a encore été enregistré.
+// LatestRun returns the last collector cycle. The second return is false
+// if no cycle has been recorded yet.
 func (s *Store) LatestRun(ctx context.Context) (RunRecord, bool, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT started_utc, duration_ms, ok, http_status, error_kind, error
@@ -356,7 +356,7 @@ func (s *Store) LatestRun(ctx context.Context) (RunRecord, bool, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return RunRecord{}, false, nil
 		}
-		return RunRecord{}, false, fmt.Errorf("lecture du dernier cycle: %w", err)
+		return RunRecord{}, false, fmt.Errorf("reading the last cycle: %w", err)
 	}
 	parsed, err := parseTS(started)
 	if err != nil {
@@ -372,22 +372,22 @@ func (s *Store) LatestRun(ctx context.Context) (RunRecord, bool, error) {
 	}, true, nil
 }
 
-// SetState écrit une valeur d'état du collecteur.
+// SetState writes a collector state value.
 func (s *Store) SetState(ctx context.Context, k, v string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO collector_state (k, v) VALUES (?,?)
 		 ON CONFLICT(k) DO UPDATE SET v = excluded.v`, k, v)
 	if err != nil {
-		return fmt.Errorf("écriture de l'état %q: %w", k, err)
+		return fmt.Errorf("writing state %q: %w", k, err)
 	}
 	return nil
 }
 
-// State retourne l'état du collecteur (jamais nil).
+// State returns the collector state (never nil).
 func (s *Store) State(ctx context.Context) (map[string]string, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT k, v FROM collector_state`)
 	if err != nil {
-		return nil, fmt.Errorf("lecture de l'état du collecteur: %w", err)
+		return nil, fmt.Errorf("reading collector state: %w", err)
 	}
 	defer rows.Close()
 
@@ -395,31 +395,31 @@ func (s *Store) State(ctx context.Context) (map[string]string, error) {
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
-			return nil, fmt.Errorf("lecture d'une entrée d'état: %w", err)
+			return nil, fmt.Errorf("reading a state entry: %w", err)
 		}
 		out[k] = v
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("parcours de l'état: %w", err)
+		return nil, fmt.Errorf("iterating state: %w", err)
 	}
 	return out, nil
 }
 
-// DeviceRecord est l'état d'identité et de détection de l'appareil.
+// DeviceRecord is the identity and detection state of the device.
 //
-// Les quatre états de détection sont conservés tels quels (et non aplatis en
-// booléens) : « non déterminé » n'est pas « absent ».
+// The four detection states are kept as they are (and not flattened into
+// booleans): "unknown" is not "absent".
 //
-// Une chaîne vide signifie « non trouvé dans la réponse » : la conversion en
-// null est faite à la frontière de l'API (internal/api/dto.go), jamais ici.
+// An empty string means "not found in the response": the conversion to
+// null is done at the API boundary (internal/api/dto.go), never here.
 type DeviceRecord struct {
 	ReadAtUTC    time.Time
 	Source       string
 	Model        string
 	Firmware     string
 	SerialNumber string
-	// Chaque état porte sa cause : « non déterminé » sans motif n'est pas
-	// exploitable, et reconstituer la cause à la lecture serait l'inventer.
+	// Each state carries its cause: "unknown" without a reason is not
+	// usable, and reconstructing the cause at read time would be inventing it.
 	IdentityState      model.DetectionState
 	IdentityReason     string
 	MeterState         model.DetectionState
@@ -432,8 +432,8 @@ type DeviceRecord struct {
 	DeviceEventsReason string
 }
 
-// SaveDevice enregistre l'état de l'appareil. L'écriture est idempotente : la
-// ligne unique (id = 1) est remplacée, jamais dupliquée.
+// SaveDevice records the device state. The write is idempotent: the
+// single row (id = 1) is replaced, never duplicated.
 func (s *Store) SaveDevice(ctx context.Context, d DeviceRecord) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO device (
@@ -465,14 +465,14 @@ func (s *Store) SaveDevice(ctx context.Context, d DeviceRecord) error {
 		string(d.BatteryState), d.BatterySource, d.BatteryReason,
 		string(d.DeviceEventsState), d.DeviceEventsReason)
 	if err != nil {
-		return fmt.Errorf("écriture de l'état de l'appareil: %w", err)
+		return fmt.Errorf("writing device state: %w", err)
 	}
 	return nil
 }
 
-// Device retourne l'état enregistré. Le second retour vaut false si aucune
-// lecture d'identité n'a encore abouti : « non déterminé » n'est pas un
-// enregistrement vide.
+// Device returns the recorded state. The second return is false if no
+// identity read has succeeded yet: "unknown" is not an empty
+// record.
 func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 	row := s.db.QueryRowContext(ctx,
 		`SELECT read_at_utc, source, model, firmware, serial_number,
@@ -496,7 +496,7 @@ func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return DeviceRecord{}, false, nil
 		}
-		return DeviceRecord{}, false, fmt.Errorf("lecture de l'état de l'appareil: %w", err)
+		return DeviceRecord{}, false, fmt.Errorf("reading device state: %w", err)
 	}
 	parsed, err := parseTS(readAt)
 	if err != nil {
@@ -521,33 +521,33 @@ func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 	}, true, nil
 }
 
-// MarkDeviceEventSeen mémorise la clé d'un événement matériel.
+// MarkDeviceEventSeen remembers the key of a hardware event.
 //
-// Le second retour vaut true si la clé est neuve (l'événement doit être
-// enregistré), false si elle était déjà connue (il a déjà été vu : aucune
-// écriture). C'est le mécanisme d'anti-duplication des événements de l'appareil,
-// dont le flux est republié en entier à chaque interrogation.
+// The second return is true if the key is new (the event must be
+// recorded), false if it was already known (it has already been seen: no
+// write). This is the anti-duplication mechanism for device events,
+// whose stream is republished in full on every poll.
 func (s *Store) MarkDeviceEventSeen(ctx context.Context, key string, seenAt time.Time) (bool, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO device_events_seen (key, seen_at_utc) VALUES (?,?)
 		 ON CONFLICT(key) DO NOTHING`,
 		key, formatTS(seenAt))
 	if err != nil {
-		return false, fmt.Errorf("marquage de l'événement %q: %w", key, err)
+		return false, fmt.Errorf("marking event %q: %w", key, err)
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("comptage des lignes marquées: %w", err)
+		return false, fmt.Errorf("counting marked rows: %w", err)
 	}
 	return affected > 0, nil
 }
 
-// DeviceEventsSeenCount retourne le nombre de clés d'événements matériels
-// mémorisées.
+// DeviceEventsSeenCount returns the number of hardware event keys
+// remembered.
 func (s *Store) DeviceEventsSeenCount(ctx context.Context) (int64, error) {
 	var n int64
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM device_events_seen`).Scan(&n); err != nil {
-		return 0, fmt.Errorf("comptage des événements matériels vus: %w", err)
+		return 0, fmt.Errorf("counting seen hardware events: %w", err)
 	}
 	return n, nil
 }
@@ -559,11 +559,11 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// PurgeBefore supprime les données antérieures à t.
+// PurgeBefore deletes the data older than t.
 //
-// La purge porte sur les mesures, les événements et les cycles de collecte.
-// Elle retourne le nombre d'échantillons supprimés, qui est la mesure de
-// référence de la rétention.
+// The purge covers the measurements, the events and the collector cycles.
+// It returns the number of deleted samples, which is the reference measure
+// of the retention.
 func (s *Store) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {
 	limit := formatTS(t)
 
@@ -575,46 +575,46 @@ func (s *Store) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {
 
 	res, err := tx.ExecContext(ctx, `DELETE FROM samples WHERE ts_utc < ?`, limit)
 	if err != nil {
-		return 0, fmt.Errorf("purge des mesures: %w", err)
+		return 0, fmt.Errorf("purging measurements: %w", err)
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("comptage des mesures purgées: %w", err)
+		return 0, fmt.Errorf("counting purged measurements: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM events WHERE ts_utc < ?`, limit); err != nil {
-		return 0, fmt.Errorf("purge des événements: %w", err)
+		return 0, fmt.Errorf("purging events: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM collector_runs WHERE started_utc < ?`, limit); err != nil {
-		return 0, fmt.Errorf("purge des cycles de collecte: %w", err)
+		return 0, fmt.Errorf("purging collector cycles: %w", err)
 	}
-	// Les marques d'anti-duplication suivent les événements qu'elles
-	// dédupliquent : une marque qui survivrait à son événement empêcherait
-	// définitivement de le revoir, pour un gain nul.
+	// The anti-duplication marks follow the events they
+	// deduplicate: a mark that outlived its event would
+	// permanently prevent seeing it again, for no gain.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM device_events_seen WHERE seen_at_utc < ?`, limit); err != nil {
-		return 0, fmt.Errorf("purge des marques d'événements matériels: %w", err)
+		return 0, fmt.Errorf("purging hardware event marks: %w", err)
 	}
-	// Les agrégats suivent exactement la même borne que les mesures : une
-	// ligne d'agrégat qui mord sur la partie purgée décrit des mesures qui
-	// n'existent plus, et la lecture la croirait complète. La borne de purge
-	// étant alignée sur l'heure (voir internal/maintenance), les deux tables
-	// restent cohérentes à l'heure près.
+	// The aggregates follow exactly the same bound as the measurements: a
+	// aggregate row that overlaps the purged part describes measurements that
+	// no longer exist, and the read would believe it complete. The purge bound
+	// being aligned on the hour (see internal/maintenance), the two tables
+	// stay consistent to the nearest hour.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM agg_hour WHERE bucket_utc < ?`, limit); err != nil {
-		return 0, fmt.Errorf("purge des agrégats: %w", err)
+		return 0, fmt.Errorf("purging aggregates: %w", err)
 	}
-	// La borne d'eau ne peut pas rester antérieure à la borne de purge :
-	// les heures qu'elle recouvre n'ont ni mesures ni agrégats.
+	// The watermark cannot stay earlier than the purge bound:
+	// the hours it covers have neither measurements nor aggregates.
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE collector_state SET v = ? WHERE k = ? AND v < ?`,
 		limit, aggStateKey, limit); err != nil {
-		return 0, fmt.Errorf("borne d'eau après purge: %w", err)
+		return 0, fmt.Errorf("watermark after purge: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("validation de la purge: %w", err)
+		return 0, fmt.Errorf("committing purge: %w", err)
 	}
 	return deleted, nil
 }
 
-// scanSample lit une ligne de `samples`.
+// scanSample reads a row of `samples`.
 func scanSample(row interface{ Scan(...any) error }) (model.Sample, error) {
 	var (
 		ts, source, tsSource, quality, mode, invertersJSON string
@@ -627,7 +627,7 @@ func scanSample(row interface{ Scan(...any) error }) (model.Sample, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Sample{}, err
 		}
-		return model.Sample{}, fmt.Errorf("lecture d'un échantillon: %w", err)
+		return model.Sample{}, fmt.Errorf("reading a sample: %w", err)
 	}
 
 	parsed, err := parseTS(ts)
@@ -655,7 +655,7 @@ func scanSample(row interface{ Scan(...any) error }) (model.Sample, error) {
 	if invertersJSON != "" && invertersJSON != "[]" {
 		var stored []inverterJSON
 		if err := json.Unmarshal([]byte(invertersJSON), &stored); err != nil {
-			return model.Sample{}, fmt.Errorf("désérialisation des onduleurs: %w", err)
+			return model.Sample{}, fmt.Errorf("deserialising inverters: %w", err)
 		}
 		sm.Inverters = make([]model.InverterSample, 0, len(stored))
 		for _, inv := range stored {

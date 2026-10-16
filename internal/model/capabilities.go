@@ -2,50 +2,50 @@ package model
 
 import "strings"
 
-// Prérequis matériels ou logiciels d'une capacité.
+// Hardware or software prerequisites of a capability.
 const (
 	RequiresSmartMeter  = "smart_meter"
 	RequiresBattery     = "battery"
 	RequiresInternalAPI = "adapter:internalapi"
 )
 
-// Niveaux de preuve associés à une capacité.
+// Evidence levels associated with a capability.
 const (
-	// EvidenceConversation : valeur rapportée lors de l'analyse, non rejouée.
+	// EvidenceConversation: value reported during the analysis, not replayed.
 	EvidenceConversation = "conversation"
-	// EvidenceSimulator : comportement reproduit par le simulateur local.
+	// EvidenceSimulator: behaviour reproduced by the local simulator.
 	EvidenceSimulator = "simulator"
-	// EvidenceLocal : propriété de l'application elle-même, vérifiable ici.
+	// EvidenceLocal: property of the application itself, verifiable here.
 	EvidenceLocal = "local"
-	// EvidenceBundle : chemin et enveloppe relevés dans le client officiel
-	// (references/fronius-original.js). Ce n'est PAS une permission firmware :
-	// c'est la preuve qu'un chemin existe et sous quelle forme.
+	// EvidenceBundle: path and envelope extracted from the official client
+	// (references/fronius-original.js). This is NOT a firmware permission:
+	// it is the proof that a path exists and in what form.
 	EvidenceBundle = "bundle"
 )
 
-// Motifs et réserves, réutilisés tels quels par l'API et l'interface.
+// Reasons and caveats, reused as-is by the API and the interface.
 const (
-	// ReasonUnverifiedSchema est une réserve permanente : elle signale que la
-	// forme du JSON n'a pas été observée sur le firmware de l'installation.
-	ReasonUnverifiedSchema = "Schéma non validé sur firmware 1.19.7-1"
-	ReasonNoSmartMeter     = "Aucun Fronius Smart Meter détecté"
-	ReasonNoBattery        = "Aucune batterie installée"
-	ReasonBatteryReadout   = "Batterie détectée : lecture de l'état de charge non implémentée (phase ultérieure)"
-	ReasonUnavailable      = "Indisponible"
-	// causeInconnue est le repli lorsque la détection n'a pas su nommer sa
-	// cause : le motif reste explicite et ne se termine jamais par « : ».
-	causeInconnue = "cause inconnue"
+	// ReasonUnverifiedSchema is a permanent caveat: it signals that the
+	// JSON shape has not been observed on the installation's firmware.
+	ReasonUnverifiedSchema = "Schema not validated on firmware 1.19.7-1"
+	ReasonNoSmartMeter     = "No Fronius Smart Meter detected"
+	ReasonNoBattery        = "No battery installed"
+	ReasonBatteryReadout   = "Battery detected: state-of-charge readout not implemented (later phase)"
+	ReasonUnavailable      = "Unavailable"
+	// causeInconnue is the fallback when the detection could not name its
+	// cause: the reason stays explicit and never ends with ":".
+	causeInconnue = "unknown cause"
 )
 
-// Capability décrit ce que la supervision peut réellement restituer.
+// Capability describes what the supervision can really restitute.
 //
-// Une capacité indisponible n'est jamais représentée par une valeur numérique
-// nulle : elle porte Available = false et un Reason non vide, ce que reflètent
-// les endpoints /api/v1/capabilities et les cartes de l'interface.
+// An unavailable capability is never represented by a zero numeric
+// value: it carries Available = false and a non-empty Reason, which the
+// /api/v1/capabilities endpoints and the interface cards reflect.
 //
-// Reason a deux usages distincts, jamais simultanés : un motif d'indisponibilité
-// quand Available est faux, une réserve quand la capacité est disponible mais
-// non vérifiée sur le matériel (production.*).
+// Reason has two distinct uses, never simultaneous: an unavailability reason
+// when Available is false, a caveat when the capability is available but
+// not verified on the hardware (production.*).
 type Capability struct {
 	ID        string
 	Label     string
@@ -58,104 +58,105 @@ type Capability struct {
 	Reason    string
 }
 
-// capSpec décrit une capacité avant arbitrage entre motif et réserve.
+// capSpec describes a capability before arbitration between reason and caveat.
 type capSpec struct {
 	id, label string
-	// available décide à partir des détections réelles : aucune capacité n'est
-	// plus déduite d'un booléen de configuration.
+	// available decides from the real detections: no capability is
+	// derived from a configuration boolean any more.
 	available func(Detection) bool
 	requires  []string
-	// reason retourne le motif applicable : motif d'indisponibilité si la
-	// capacité est indisponible, réserve si elle est disponible.
+	// reason returns the applicable reason: unavailability reason if the
+	// capability is unavailable, caveat if it is available.
 	reason   func(Detection) string
 	verified bool
 	evidence []string
 }
 
-// Capabilities retourne l'état des capacités, dans un ordre stable.
+// Capabilities returns the state of the capabilities, in a stable order.
 //
-// La décision repose sur la détection interne (internal/detect) : « non
-// déterminé » n'est pas « absent », et une capacité indisponible porte toujours
-// le motif qui l'explique.
+// The decision relies on the internal detection (internal/detect): `unknown`
+// is not `absent`, and an unavailable capability always carries
+// the reason that explains it.
 func Capabilities(d Detection) []Capability {
 	specs := []capSpec{
 		{
-			id: "production.power", label: "Production instantanée",
+			id: "production.power", label: "Instantaneous production",
 			available: always, reason: alwaysReason(ReasonUnverifiedSchema),
 			evidence: []string{EvidenceConversation, EvidenceSimulator},
 		},
 		{
-			id: "production.energy_day", label: "Énergie du jour",
+			id: "production.energy_day", label: "Daily energy",
 			available: always, reason: alwaysReason(ReasonUnverifiedSchema),
 			evidence: []string{EvidenceConversation, EvidenceSimulator},
 		},
 		{
-			id: "production.energy_total", label: "Énergie totale",
+			id: "production.energy_total", label: "Total energy",
 			available: always, reason: alwaysReason(ReasonUnverifiedSchema),
 			evidence: []string{EvidenceConversation, EvidenceSimulator},
 		},
 		{
-			id: "grid.import_export", label: "Import / export réseau",
+			id: "grid.import_export", label: "Grid import / export",
 			available: detectionIs(StatePresent, func(d Detection) ResourceDetection { return d.Meter }),
 			requires:  []string{RequiresSmartMeter},
 			reason: detectionReason(
 				func(d Detection) ResourceDetection { return d.Meter },
-				"Présence d'un Smart Meter non déterminée",
+				"Smart Meter presence not determined",
 				ReasonNoSmartMeter),
 			evidence: []string{EvidenceConversation},
 		},
 		{
-			id: "load.consumption", label: "Consommation",
+			id: "load.consumption", label: "Consumption",
 			available: detectionIs(StatePresent, func(d Detection) ResourceDetection { return d.Meter }),
 			requires:  []string{RequiresSmartMeter},
 			reason: detectionReason(
 				func(d Detection) ResourceDetection { return d.Meter },
-				"Présence d'un Smart Meter non déterminée",
+				"Smart Meter presence not determined",
 				ReasonNoSmartMeter),
 			evidence: []string{EvidenceConversation},
 		},
 		{
-			id: "autoconsumption.ratio", label: "Taux d'autoconsommation",
+			id: "autoconsumption.ratio", label: "Self-consumption ratio",
 			available: detectionIs(StatePresent, func(d Detection) ResourceDetection { return d.Meter }),
 			requires:  []string{RequiresSmartMeter},
 			reason: detectionReason(
 				func(d Detection) ResourceDetection { return d.Meter },
-				"Présence d'un Smart Meter non déterminée",
+				"Smart Meter presence not determined",
 				ReasonNoSmartMeter),
 			evidence: []string{EvidenceConversation},
 		},
 		{
-			// Détecter une batterie ne prouve pas qu'une mesure d'état de charge
-			// existe côté API : l'annoncer disponible sans source serait
-			// exactement l'inverse de l'invariant « pas de zéro inventé ».
-			id: "battery.soc", label: "État de charge de la batterie",
+			// Detecting a battery does not prove that a state-of-charge
+			// measurement exists on the API side: announcing it as available
+			// without a source would be exactly the opposite of the
+			// "no invented zero" invariant.
+			id: "battery.soc", label: "Battery state of charge",
 			available: never,
 			requires:  []string{RequiresBattery},
 			reason:    batteryReason(),
 			evidence:  []string{EvidenceConversation},
 		},
 		{
-			id: "device.identity", label: "Identité de l'onduleur",
+			id: "device.identity", label: "Inverter identity",
 			available: detectionIs(StatePresent, func(d Detection) ResourceDetection { return d.Identity }),
 			requires:  []string{RequiresInternalAPI},
 			reason: detectionReason(
 				func(d Detection) ResourceDetection { return d.Identity },
-				"Identité de l'onduleur non déterminée",
+				"Inverter identity not determined",
 				""),
 			evidence: []string{EvidenceBundle, EvidenceSimulator},
 		},
 		{
-			id: "device.events", label: "Événements de l'appareil",
+			id: "device.events", label: "Device events",
 			available: detectionIs(StatePresent, func(d Detection) ResourceDetection { return d.DeviceEvents }),
 			requires:  []string{RequiresInternalAPI},
 			reason: detectionReason(
 				func(d Detection) ResourceDetection { return d.DeviceEvents },
-				"Événements de l'appareil non déterminés",
+				"Device events not determined",
 				""),
 			evidence: []string{EvidenceBundle, EvidenceSimulator},
 		},
 		{
-			id: "system.collector", label: "Collecteur local",
+			id: "system.collector", label: "Local collector",
 			available: always, reason: alwaysReason(""),
 			verified: true, evidence: []string{EvidenceLocal},
 		},
@@ -191,21 +192,21 @@ func always(Detection) bool { return true }
 
 func never(Detection) bool { return false }
 
-// detectionIs fabrique un prédicat « cette ressource est dans l'état voulu ».
+// detectionIs builds a predicate "this resource is in the desired state".
 func detectionIs(state DetectionState, pick func(Detection) ResourceDetection) func(Detection) bool {
 	return func(d Detection) bool { return pick(d).State == state }
 }
 
-// alwaysReason retourne un motif constant, indépendant des détections.
+// alwaysReason returns a constant reason, independent of the detections.
 func alwaysReason(reason string) func(Detection) string {
 	return func(Detection) string { return reason }
 }
 
-// detectionReason construit le motif d'une capacité liée à une détection.
+// detectionReason builds the reason of a capability tied to a detection.
 //
-// présent  → "" (ou absentReason si la lecture n'est pas implémentée)
-// absent   → absentReason, ou le préfixe suivi de la cause si celle-ci en dit plus
-// inconnu   → préfixe suivi de la cause
+// present  → "" (or absentReason if the read is not implemented)
+// absent   → absentReason, or the prefix followed by the cause if the cause says more
+// unknown  → prefix followed by the cause
 func detectionReason(pick func(Detection) ResourceDetection, prefix, absentReason string) func(Detection) string {
 	return func(d Detection) string {
 		r := pick(d)
@@ -223,8 +224,8 @@ func detectionReason(pick func(Detection) ResourceDetection, prefix, absentReaso
 	}
 }
 
-// batteryReason : la batterie détectée ne débloque pas la lecture de l'état de
-// charge, qui n'est pas implémentée en phase 2. Le motif le dit explicitement.
+// batteryReason: the detected battery does not unlock the state-of-charge
+// readout, which is not implemented in phase 2. The reason says so explicitly.
 func batteryReason() func(Detection) string {
 	return func(d Detection) string {
 		switch d.Battery.State {
@@ -233,17 +234,17 @@ func batteryReason() func(Detection) string {
 		case StateAbsent:
 			return ReasonNoBattery
 		default:
-			return withCause("Présence d'une batterie non déterminée", d.Battery.Reason)
+			return withCause("Battery presence not determined", d.Battery.Reason)
 		}
 	}
 }
 
-// withCause assemble un motif et sa cause sans jamais produire un motif qui se
-// termine par « : ».
+// withCause assembles a reason and its cause without ever producing a reason
+// that ends with ":".
 func withCause(prefix, cause string) string {
 	cause = strings.TrimSpace(cause)
 	if cause == "" {
 		cause = causeInconnue
 	}
-	return prefix + " : " + cause
+	return prefix + ": " + cause
 }

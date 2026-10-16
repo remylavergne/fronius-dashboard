@@ -2,6 +2,6 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-// Les globales vitest sont désactivées : le nettoyage automatique de RTL ne
-// s'installe donc pas tout seul. Sans cela, les rendus s'accumulent entre tests.
+// Vitest globals are disabled: RTL's automatic cleanup therefore does not
+// install itself. Without it, renders accumulate between tests.
 afterEach(cleanup)

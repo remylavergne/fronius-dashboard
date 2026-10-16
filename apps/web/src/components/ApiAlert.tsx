@@ -6,16 +6,16 @@ export type ApiAlertProps = {
   title: string
   message: string
   hint?: string | undefined
-  /** Libellé du bouton de nouvelle tentative. */
+  /** Label of the retry button. */
   retryLabel: string
   onRetry: () => void
 }
 
 /**
- * Bandeau affiché lorsque l'API de supervision est injoignable.
+ * Banner shown when the monitoring API is unreachable.
  *
- * Le frontend ne parle qu'à `/api` : si cette requête échoue en `network`, c'est
- * que `froniusd` ne répond pas — jamais que l'onduleur est absent.
+ * The frontend only talks to `/api`: if this request fails with `network`, it
+ * means `froniusd` is not answering — never that the inverter is absent.
  */
 export function ApiAlert({ title, message, hint, retryLabel, onRetry }: ApiAlertProps) {
   return (

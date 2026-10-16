@@ -12,7 +12,7 @@ import (
 	"fronius-supervisor/internal/storage"
 )
 
-// fakeStore enregistre les appels de maintenance et permet de les faire échouer.
+// fakeStore records the maintenance calls and allows making them fail.
 type fakeStore struct {
 	mu        sync.Mutex
 	rollups   []time.Time
@@ -62,7 +62,7 @@ func (f *fakeStore) purgeInstants() []time.Time {
 	return append([]time.Time(nil), f.purges...)
 }
 
-// clock est une horloge pilotée par le test.
+// clock is a test-driven clock.
 type clock struct {
 	mu sync.Mutex
 	t  time.Time
@@ -89,7 +89,7 @@ func brussels(t *testing.T) *time.Location {
 	return loc
 }
 
-// waitFor attend qu'une condition devienne vraie, avec une échéance.
+// waitFor waits for a condition to become true, with a deadline.
 func waitFor(t *testing.T, msg string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -99,12 +99,12 @@ func waitFor(t *testing.T, msg string, cond func() bool) {
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	t.Fatalf("condition jamais satisfaite : %s", msg)
+	t.Fatalf("condition never satisfied: %s", msg)
 }
 
-// TestRetentionLimitAlignsToHour : la borne de purge est minuit local arrondi à
-// l'heure pleine supérieure, sans quoi les agrégats et les mesures ne
-// partageraient pas la même frontière.
+// TestRetentionLimitAlignsToHour: the purge bound is local midnight rounded up
+// to the next whole hour, without which the aggregates and the measurements would
+// not share the same boundary.
 func TestRetentionLimitAlignsToHour(t *testing.T) {
 	loc := brussels(t)
 	now := time.Date(2026, 10, 16, 14, 37, 0, 0, loc)
@@ -112,38 +112,38 @@ func TestRetentionLimitAlignsToHour(t *testing.T) {
 	got := retentionLimit(now, loc, 7)
 	want := time.Date(2026, 10, 9, 0, 0, 0, 0, loc)
 	if !got.Equal(want) {
-		t.Fatalf("borne = %v, attendu %v", got, want)
+		t.Fatalf("bound = %v, wanted %v", got, want)
 	}
 	if got.UTC().Truncate(time.Hour).Before(got) {
-		t.Fatalf("borne %v non alignée sur l'heure UTC", got.UTC())
+		t.Fatalf("bound %v not aligned on the UTC hour", got.UTC())
 	}
 
-	// Fuseau décalé d'une demi-heure : minuit local n'est pas aligné sur
-	// l'heure UTC, l'arrondi doit remonter d'une heure.
+	// Timezone offset by half an hour: local midnight is not aligned on
+	// the UTC hour, the rounding must go up by one hour.
 	kolkata, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		t.Fatalf("LoadLocation: %v", err)
 	}
 	got = retentionLimit(time.Date(2026, 10, 16, 14, 0, 0, 0, kolkata), kolkata, 1)
 	if got.UTC().Truncate(time.Hour).Before(got.UTC()) {
-		t.Fatalf("borne %v non alignée sur l'heure UTC", got.UTC())
+		t.Fatalf("bound %v not aligned on the UTC hour", got.UTC())
 	}
 	if want := time.Date(2026, 10, 15, 0, 0, 0, 0, kolkata); got.Before(want) {
-		t.Fatalf("borne %v antérieure à minuit local %v", got, want)
+		t.Fatalf("bound %v earlier than local midnight %v", got, want)
 	}
 	if d := got.Sub(time.Date(2026, 10, 15, 0, 0, 0, 0, kolkata)); d >= time.Hour {
-		t.Fatalf("borne %v trop éloignée de minuit local (%v)", got, d)
+		t.Fatalf("bound %v too far from local midnight (%v)", got, d)
 	}
 
-	// Rétention nulle : minuit local du jour même.
+	// Zero retention: local midnight of the same day.
 	got = retentionLimit(now, loc, 0)
 	if want := time.Date(2026, 10, 16, 0, 0, 0, 0, loc); !got.Equal(want) {
-		t.Fatalf("borne = %v, attendu %v", got, want)
+		t.Fatalf("bound = %v, wanted %v", got, want)
 	}
 }
 
-// TestRunPurgesOncePerLocalDay vérifie qu'une purge a lieu au démarrage, puis
-// une seule fois par journée locale, à partir de 3 h.
+// TestRunPurgesOncePerLocalDay checks that a purge takes place at startup, then
+// once per local day, from 3 h.
 func TestRunPurgesOncePerLocalDay(t *testing.T) {
 	loc := brussels(t)
 	store := &fakeStore{}
@@ -160,26 +160,26 @@ func TestRunPurgesOncePerLocalDay(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 
-	// Purge au démarrage (comportement conservé de la phase 1).
-	waitFor(t, "purge au démarrage", func() bool { _, p := store.counts(); return p == 1 })
+	// Purge at startup (behaviour retained from phase 1).
+	waitFor(t, "purge at startup", func() bool { _, p := store.counts(); return p == 1 })
 
-	// Même journée, avant 3 h puis après : aucune purge supplémentaire.
+	// Same day, before 3 h then after: no additional purge.
 	time.Sleep(20 * time.Millisecond)
 	c.set(time.Date(2026, 10, 16, 3, 5, 0, 0, loc))
 	time.Sleep(20 * time.Millisecond)
 	if _, p := store.counts(); p != 1 {
-		t.Fatalf("%d purges le jour du démarrage, attendu 1", p)
+		t.Fatalf("%d purges on the startup day, wanted 1", p)
 	}
 
-	// Journée suivante après 3 h : une purge.
+	// Next day after 3 h: one purge.
 	c.set(time.Date(2026, 10, 17, 3, 0, 0, 0, loc))
-	waitFor(t, "purge du lendemain", func() bool { _, p := store.counts(); return p == 2 })
+	waitFor(t, "purge of the next day", func() bool { _, p := store.counts(); return p == 2 })
 
-	// La borne appliquée est bien celle de la rétention configurée.
+	// The applied bound is indeed that of the configured retention.
 	if got, want := store.purgeInstants()[1], retentionLimit(c.now(), loc, 30); !got.Equal(want) {
-		t.Fatalf("borne purgée = %v, attendu %v", got, want)
+		t.Fatalf("purged bound = %v, wanted %v", got, want)
 	}
-	// L'événement de purge est enregistré.
+	// The purge event is recorded.
 	store.mu.Lock()
 	events := len(store.events)
 	kind := ""
@@ -188,22 +188,22 @@ func TestRunPurgesOncePerLocalDay(t *testing.T) {
 	}
 	store.mu.Unlock()
 	if events == 0 || kind != string(model.EventPurge) {
-		t.Fatalf("événements de purge = %d (premier %q)", events, kind)
+		t.Fatalf("purge events = %d (first %q)", events, kind)
 	}
 
 	cancel()
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Run = %v, attendu nil", err)
+			t.Fatalf("Run = %v, wanted nil", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run n'a pas rendu la main après annulation")
+		t.Fatal("Run did not return after cancellation")
 	}
 }
 
-// TestRunWithoutRetentionNeverPurges : sans rétention configurée, aucune purge
-// n'a lieu, mais l'agrégation continue.
+// TestRunWithoutRetentionNeverPurges: without a configured retention, no purge
+// takes place, but the aggregation continues.
 func TestRunWithoutRetentionNeverPurges(t *testing.T) {
 	store := &fakeStore{}
 	r := &Runner{Store: store, Loc: time.UTC, RetentionDays: 0, Tick: 5 * time.Millisecond}
@@ -212,22 +212,22 @@ func TestRunWithoutRetentionNeverPurges(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 
-	waitFor(t, "agrégations répétées", func() bool {
+	waitFor(t, "repeated aggregations", func() bool {
 		rollups, _ := store.counts()
 		return rollups >= 2
 	})
 	if _, p := store.counts(); p != 0 {
-		t.Fatalf("%d purges malgré une rétention illimitée", p)
+		t.Fatalf("%d purges despite unlimited retention", p)
 	}
 	cancel()
 	if err := <-done; err != nil {
-		t.Fatalf("Run = %v, attendu nil", err)
+		t.Fatalf("Run = %v, wanted nil", err)
 	}
 }
 
-// TestRunSurvivesErrors : une panne d'un travail n'arrête pas la boucle.
+// TestRunSurvivesErrors: a failure of one job does not stop the loop.
 func TestRunSurvivesErrors(t *testing.T) {
-	store := &fakeStore{rollupErr: errors.New("base occupée"), purgeErr: errors.New("disque plein")}
+	store := &fakeStore{rollupErr: errors.New("database busy"), purgeErr: errors.New("disk full")}
 	r := &Runner{
 		Store:         store,
 		Loc:           time.UTC,
@@ -239,18 +239,18 @@ func TestRunSurvivesErrors(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 
-	waitFor(t, "agrégations malgré l'erreur", func() bool {
+	waitFor(t, "aggregations despite the error", func() bool {
 		rollups, _ := store.counts()
 		return rollups >= 3
 	})
 	cancel()
 	if err := <-done; err != nil {
-		t.Fatalf("Run = %v, attendu nil", err)
+		t.Fatalf("Run = %v, wanted nil", err)
 	}
 }
 
-// TestRollupOnceWithRealStore vérifie le câblage réel : la passe écrit des
-// agrégats dans la base.
+// TestRollupOnceWithRealStore checks the real wiring: the pass writes
+// aggregates into the database.
 func TestRollupOnceWithRealStore(t *testing.T) {
 	loc := brussels(t)
 	store, err := storage.Open(filepath.Join(t.TempDir(), "fronius.db"), loc)
@@ -275,13 +275,13 @@ func TestRollupOnceWithRealStore(t *testing.T) {
 	r := &Runner{Store: store, Loc: loc, Now: func() time.Time { return base.Add(7 * time.Hour) }}
 	res := r.RollupOnce(ctx)
 	if res.Buckets == 0 {
-		t.Fatal("aucun agrégat écrit par la passe réelle")
+		t.Fatal("no aggregate written by the real pass")
 	}
 	var rows int
 	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM agg_hour`).Scan(&rows); err != nil {
-		t.Fatalf("comptage: %v", err)
+		t.Fatalf("counting: %v", err)
 	}
 	if rows == 0 {
-		t.Fatal("agg_hour vide après la passe")
+		t.Fatal("agg_hour empty after the pass")
 	}
 }

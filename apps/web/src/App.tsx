@@ -15,12 +15,12 @@ function NotFound() {
 const router = createBrowserRouter([
   { path: '/', element: <AppShell><Overview /></AppShell> },
   { path: '/system', element: <AppShell><SystemPage /></AppShell> },
-  { path: '/capacites', element: <AppShell><CapabilitiesPage /></AppShell> },
-  { path: '/parametres', element: <AppShell><SettingsPage /></AppShell> },
+  { path: '/capabilities', element: <AppShell><CapabilitiesPage /></AppShell> },
+  { path: '/settings', element: <AppShell><SettingsPage /></AppShell> },
   { path: '*', element: <AppShell><NotFound /></AppShell> },
 ])
 
-/** Racine de l'application : routage client, sans état global. */
+/** Application root: client routing, no global state. */
 export function App() {
   return <RouterProvider router={router} />
 }

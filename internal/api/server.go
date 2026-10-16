@@ -23,18 +23,18 @@ import (
 )
 
 const (
-	// autoMaxBuckets borne le nombre de points renvoyés par step=auto.
+	// autoMaxBuckets bounds the number of points returned by step=auto.
 	autoMaxBuckets = 1500
-	// maxRangeDays borne l'amplitude d'une requête de série temporelle.
+	// maxRangeDays bounds the span of a time-series request.
 	maxRangeDays = 366
-	// defaultEventsLimit / maxEventsLimit bornent la pagination des événements.
+	// defaultEventsLimit / maxEventsLimit bound the pagination of events.
 	defaultEventsLimit = 100
 	maxEventsLimit     = 500
-	// defaultDailyDays est la profondeur par défaut de l'énergie journalière.
+	// defaultDailyDays is the default depth of daily energy.
 	defaultDailyDays = 30
 )
 
-// stepOptions liste les pas acceptés, du plus fin au plus grossier.
+// stepOptions lists the accepted steps, from finest to coarsest.
 var stepOptions = []struct {
 	name string
 	d    time.Duration
@@ -46,7 +46,7 @@ var stepOptions = []struct {
 	{"1d", 24 * time.Hour},
 }
 
-// Server sert l'API REST.
+// Server serves the REST API.
 type Server struct {
 	store   *storage.Store
 	cfg     config.Config
@@ -56,7 +56,7 @@ type Server struct {
 	now     func() time.Time
 }
 
-// New construit le serveur d'API.
+// New builds the API server.
 func New(store *storage.Store, cfg config.Config, version string, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.Default()
@@ -71,7 +71,7 @@ func New(store *storage.Store, cfg config.Config, version string, log *slog.Logg
 	}
 }
 
-// Handler retourne le routeur, éventuellement enveloppé du service statique.
+// Handler returns the router, possibly wrapped with the static service.
 func (s *Server) Handler() http.Handler {
 	api := s.apiMux()
 	if s.cfg.WebDir == "" {
@@ -83,14 +83,14 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) apiMux() http.Handler {
 	mux := http.NewServeMux()
 
-	// Go 1.22 sélectionne le motif le plus spécifique : « GET /x » gagne pour un
-	// GET, tandis que « /x » capte les autres méthodes et produit un 405 JSON.
+	// Go 1.22 selects the most specific pattern: "GET /x" wins for a
+	// GET, while "/x" catches the other methods and produces a JSON 405.
 	register := func(path string, h http.HandlerFunc) {
 		mux.HandleFunc("GET "+path, h)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Allow", http.MethodGet)
 			s.writeError(w, http.StatusMethodNotAllowed, CodeMethodNotAllowed,
-				fmt.Sprintf("méthode %s non autorisée sur %s", r.Method, path))
+				fmt.Sprintf("method %s not allowed on %s", r.Method, path))
 		})
 	}
 
@@ -102,18 +102,18 @@ func (s *Server) apiMux() http.Handler {
 	register("/api/v1/events", s.handleEvents)
 	register("/api/v1/capabilities", s.handleCapabilities)
 
-	// Tout le reste : 404 JSON.
+	// Everything else: JSON 404.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusNotFound, CodeNotFound,
-			fmt.Sprintf("chemin inconnu : %s", r.URL.Path))
+			fmt.Sprintf("unknown path: %s", r.URL.Path))
 	})
 
 	return mux
 }
 
-// withStaticWeb sert les assets du frontend, avec repli SPA sur index.html.
+// withStaticWeb serves the frontend assets, with an SPA fallback to index.html.
 //
-// Aucun go:embed en phase 1 : l'intégration des assets est prévue en phase 5
+// No go:embed in phase 1: the asset integration is planned for phase 5
 // (ADR 0007).
 func (s *Server) withStaticWeb(api http.Handler) http.Handler {
 	fileServer := http.FileServer(http.Dir(s.cfg.WebDir))
@@ -130,7 +130,7 @@ func (s *Server) withStaticWeb(api http.Handler) http.Handler {
 		}
 		index := filepath.Join(s.cfg.WebDir, "index.html")
 		if _, err := os.Stat(index); err != nil {
-			api.ServeHTTP(w, r) // sans assets : comportement API (404 JSON)
+			api.ServeHTTP(w, r) // without assets: API behaviour (JSON 404)
 			return
 		}
 		http.ServeFile(w, r, index)
@@ -150,10 +150,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	count, err := s.store.SampleCount(ctx)
 	if err != nil {
-		// Le message d'erreur brut peut contenir un chemin de fichier : il reste
-		// dans les logs, pas dans la réponse.
-		s.log.Error("health: comptage des échantillons impossible", "error", err)
-		out.DB = dbHealthDTO{OK: false, Error: "lecture de la base impossible"}
+		// The raw error message may contain a file path: it stays
+		// in the logs, not in the response.
+		s.log.Error("health: counting samples failed", "error", err)
+		out.DB = dbHealthDTO{OK: false, Error: "reading the database failed"}
 		out.Status = "error"
 	} else {
 		out.DB = dbHealthDTO{OK: true}
@@ -162,14 +162,14 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	degraded := false
 	if state, err := s.store.State(ctx); err != nil {
-		s.log.Error("health: lecture de l'état du collecteur impossible", "error", err)
+		s.log.Error("health: reading collector state failed", "error", err)
 	} else {
 		out.Collector.LastSuccessUTC = state["last_success_utc"]
 		out.Collector.LastError = state["last_error"]
 	}
 
 	if run, ok, err := s.store.LatestRun(ctx); err != nil {
-		s.log.Error("health: lecture du dernier cycle impossible", "error", err)
+		s.log.Error("health: reading the last cycle failed", "error", err)
 	} else if ok {
 		out.Collector.LastRunMS = run.DurationMS
 		degraded = !run.OK
@@ -206,22 +206,22 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 	s.writeData(w, http.StatusOK, out, s.baseMeta())
 }
 
-// deviceAndDetection construit l'identité et l'état des détections à partir de
-// la dernière lecture enregistrée.
+// deviceAndDetection builds the identity and the detection state from the
+// last recorded read.
 //
-// Sans ligne en base, `device` reste null (« non déterminé » n'est pas un objet
-// vide) et les quatre détections valent inconnu avec leur motif. Aucun état
-// n'est déduit d'un champ absent : les états sont ceux qui ont été lus.
+// Without a row in the database, `device` stays null ("unknown" is not an empty
+// object) and the four detections are unknown with their reason. No state
+// is deduced from an absent field: the states are those that were read.
 func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detectionDTO) {
 	record, hasRecord, err := s.store.Device(ctx)
 	if err != nil {
-		s.log.Error("lecture de l'état de l'appareil impossible", "error", err)
+		s.log.Error("reading device state failed", "error", err)
 		return nil, detectionFrom(storage.DeviceRecord{}, false, "")
 	}
 
 	state, err := s.store.State(ctx)
 	if err != nil {
-		s.log.Error("lecture de l'état du collecteur impossible", "error", err)
+		s.log.Error("reading collector state failed", "error", err)
 		state = map[string]string{}
 	}
 
@@ -238,7 +238,7 @@ func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detection
 	}, out
 }
 
-// detectionFrom traduit un enregistrement en DTO de détection.
+// detectionFrom translates a record into a detection DTO.
 func detectionFrom(record storage.DeviceRecord, hasRecord bool, lastError string) *detectionDTO {
 	out := &detectionDTO{LastError: lastError}
 	if !hasRecord {
@@ -275,18 +275,18 @@ func detectionFrom(record storage.DeviceRecord, hasRecord bool, lastError string
 	return out
 }
 
-// detectionForCapabilities restaure la détection telle qu'elle a été persistée :
-// les capacités et l'endpoint /system décrivent le même état, sans le recalculer.
+// detectionForCapabilities restores the detection as it was persisted:
+// the capabilities and the /system endpoint describe the same state, without recomputing it.
 func (s *Server) detectionForCapabilities(ctx context.Context) model.Detection {
 	record, hasRecord, err := s.store.Device(ctx)
 	if err != nil {
-		s.log.Error("lecture de l'état de l'appareil impossible", "error", err)
+		s.log.Error("reading device state failed", "error", err)
 		return unknownDetection(detect.ReasonNoReadYet)
 	}
 	return detectionModel(record, hasRecord)
 }
 
-// detectionModel traduit l'enregistrement persisté en détection du modèle.
+// detectionModel translates the persisted record into the model detection.
 func detectionModel(record storage.DeviceRecord, hasRecord bool) model.Detection {
 	if !hasRecord {
 		return unknownDetection(detect.ReasonNoReadYet)
@@ -312,8 +312,8 @@ func unknownDetection(reason string) model.Detection {
 	return model.Detection{Identity: r, Meter: r, Battery: r, DeviceEvents: r}
 }
 
-// nullableString retourne nil pour une chaîne vide : « non trouvé dans la
-// réponse » doit arriver en null côté client, jamais en "".
+// nullableString returns nil for an empty string: "not found in the
+// response" must arrive as null on the client side, never as "".
 func nullableString(s string) *string {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -327,18 +327,18 @@ func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 
 	sm, err := s.store.LatestSample(ctx)
 	if errors.Is(err, storage.ErrNoData) {
-		// Base vide : état légitime d'une installation neuve. Le corps porte
-		// data=null et error.code=no_data, avec un statut 200 pour que le client
-		// puisse distinguer « pas encore de donnée » d'une panne d'API.
+		// Empty database: a legitimate state of a fresh installation. The body
+		// carries data=null and error.code=no_data, with a 200 status so the client
+		// can distinguish "no data yet" from an API failure.
 		s.writeEnvelope(w, http.StatusOK, envelope{
 			Data:  nil,
 			Meta:  m,
-			Error: &apiError{Code: CodeNoData, Message: "aucun échantillon enregistré"},
+			Error: &apiError{Code: CodeNoData, Message: "no sample recorded"},
 		})
 		return
 	}
 	if err != nil {
-		s.internalError(w, "lecture du dernier échantillon", err)
+		s.internalError(w, "reading the latest sample", err)
 		return
 	}
 
@@ -353,22 +353,22 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 	from, okFrom, err := timeParam(q, "from")
 	if err != nil || !okFrom {
 		s.writeError(w, http.StatusBadRequest, CodeInvalidRange,
-			"paramètre from requis et au format RFC3339")
+			"from parameter required and in RFC3339 format")
 		return
 	}
 	to, okTo, err := timeParam(q, "to")
 	if err != nil || !okTo {
 		s.writeError(w, http.StatusBadRequest, CodeInvalidRange,
-			"paramètre to requis et au format RFC3339")
+			"to parameter required and in RFC3339 format")
 		return
 	}
 	if !to.After(from) {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to doit être strictement postérieur à from")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to must be strictly after from")
 		return
 	}
 	if to.Sub(from) > maxRangeDays*24*time.Hour {
 		s.writeError(w, http.StatusBadRequest, CodeInvalidRange,
-			fmt.Sprintf("plage maximale : %d jours", maxRangeDays))
+			fmt.Sprintf("maximum range: %d days", maxRangeDays))
 		return
 	}
 
@@ -380,7 +380,7 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 
 	buckets, err := s.store.TimeSeries(ctx, storage.TimeSeriesQuery{From: from, To: to, Step: step})
 	if err != nil {
-		s.internalError(w, "lecture de la série temporelle", err)
+		s.internalError(w, "reading the time series", err)
 		return
 	}
 
@@ -390,13 +390,13 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 	s.writeData(w, http.StatusOK, bucketsToDTO(buckets), m)
 }
 
-// handleDailyEnergy expose l'énergie par journée locale.
+// handleDailyEnergy exposes the energy per local day.
 //
-// Le calcul regroupe par heure UTC puis par date locale (internal/storage) :
-// une journée locale n'apparaît donc que si la fenêtre demandée contient au
-// moins un échantillon de cette journée, et la valeur renvoyée est alors le
-// maximum observé, qui peut être partiel si la fenêtre ne couvre qu'une partie
-// de la journée. Les journées de 23 h et 25 h sont correctement comptées.
+// The computation groups by UTC hour then by local date (internal/storage):
+// a local day therefore appears only if the requested window contains at
+// least one sample of that day, and the returned value is then the
+// observed maximum, which may be partial if the window covers only part
+// of the day. The 23 h and 25 h days are counted correctly.
 func (s *Server) handleDailyEnergy(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := r.URL.Query()
@@ -407,30 +407,30 @@ func (s *Server) handleDailyEnergy(w http.ResponseWriter, r *http.Request) {
 	to := time.Date(today.Year(), today.Month(), today.Day()+1, 0, 0, 0, 0, loc)
 
 	if v, ok, err := timeParam(q, "from"); err != nil {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "paramètre from au format RFC3339 attendu")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "from parameter expected in RFC3339 format")
 		return
 	} else if ok {
 		from = v
 	}
 	if v, ok, err := timeParam(q, "to"); err != nil {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "paramètre to au format RFC3339 attendu")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to parameter expected in RFC3339 format")
 		return
 	} else if ok {
 		to = v
 	}
 	if !to.After(from) {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to doit être strictement postérieur à from")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to must be strictly after from")
 		return
 	}
 	if to.Sub(from) > maxRangeDays*24*time.Hour {
 		s.writeError(w, http.StatusBadRequest, CodeInvalidRange,
-			fmt.Sprintf("plage maximale : %d jours", maxRangeDays))
+			fmt.Sprintf("maximum range: %d days", maxRangeDays))
 		return
 	}
 
 	daily, err := s.store.DailyEnergy(ctx, from, to)
 	if err != nil {
-		s.internalError(w, "lecture de l'énergie journalière", err)
+		s.internalError(w, "reading daily energy", err)
 		return
 	}
 
@@ -448,7 +448,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > maxEventsLimit {
 			s.writeError(w, http.StatusBadRequest, CodeInvalidRange,
-				fmt.Sprintf("limit doit être un entier entre 1 et %d", maxEventsLimit))
+				fmt.Sprintf("limit must be an integer between 1 and %d", maxEventsLimit))
 			return
 		}
 		limit = n
@@ -456,50 +456,50 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	query := storage.EventsQuery{Limit: limit}
 	if v, ok, err := timeParam(q, "from"); err != nil {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "paramètre from au format RFC3339 attendu")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "from parameter expected in RFC3339 format")
 		return
 	} else if ok {
 		query.From = v
 	}
 	if v, ok, err := timeParam(q, "to"); err != nil {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "paramètre to au format RFC3339 attendu")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to parameter expected in RFC3339 format")
 		return
 	} else if ok {
 		query.To = v
 	}
 	if !query.From.IsZero() && !query.To.IsZero() && !query.To.After(query.From) {
-		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to doit être strictement postérieur à from")
+		s.writeError(w, http.StatusBadRequest, CodeInvalidRange, "to must be strictly after from")
 		return
 	}
 
 	events, err := s.store.Events(ctx, query)
 	if err != nil {
-		s.internalError(w, "lecture des événements", err)
+		s.internalError(w, "reading events", err)
 		return
 	}
 	s.writeData(w, http.StatusOK, eventsToDTO(events), s.baseMeta())
 }
 
-// handleCapabilities expose ce que la supervision peut restituer.
+// handleCapabilities exposes what the supervision can return.
 //
-// La décision repose sur la dernière détection persistée (internal/detect) :
-// « non déterminé » n'est pas « absent », et une capacité indisponible porte un
-// motif et aucune valeur numérique.
+// The decision relies on the last persisted detection (internal/detect):
+// "unknown" is not "absent", and an unavailable capability carries a
+// reason and no numeric value.
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	caps := model.Capabilities(s.detectionForCapabilities(r.Context()))
 	s.writeData(w, http.StatusOK, capabilitiesToDTO(caps), s.baseMeta())
 }
 
 // ---------------------------------------------------------------------------
-// Enveloppe, méta, erreurs
+// Envelope, meta, errors
 // ---------------------------------------------------------------------------
 
 func (s *Server) baseMeta() *meta {
 	return &meta{GeneratedAt: formatTime(s.now())}
 }
 
-// applyFreshness renseigne sampled_at / stale / stale_after_s pour un instant
-// de mesure connu.
+// applyFreshness fills sampled_at / stale / stale_after_s for a known
+// measurement instant.
 func (s *Server) applyFreshness(m *meta, sampledAt time.Time) {
 	ts := formatTime(sampledAt)
 	m.SampledAt = &ts
@@ -509,15 +509,15 @@ func (s *Server) applyFreshness(m *meta, sampledAt time.Time) {
 	m.StaleAfterS = &after
 }
 
-// freshnessMeta fait de même à partir du dernier échantillon en base, sans
-// échouer si la base est vide (les champs restent alors absents).
+// freshnessMeta does the same from the latest sample in the database, without
+// failing if the database is empty (the fields then stay absent).
 func (s *Server) freshnessMeta(ctx context.Context, m *meta) {
 	sm, err := s.store.LatestSample(ctx)
 	if errors.Is(err, storage.ErrNoData) {
 		return
 	}
 	if err != nil {
-		s.log.Error("lecture du dernier échantillon impossible", "error", err)
+		s.log.Error("reading the latest sample failed", "error", err)
 		return
 	}
 	s.applyFreshness(m, sm.TS)
@@ -532,8 +532,8 @@ func (s *Server) writeError(w http.ResponseWriter, status int, code, message str
 }
 
 func (s *Server) internalError(w http.ResponseWriter, what string, err error) {
-	s.log.Error("erreur interne", "operation", what, "error", err)
-	s.writeError(w, http.StatusInternalServerError, CodeInternal, "erreur interne")
+	s.log.Error("internal error", "operation", what, "error", err)
+	s.writeError(w, http.StatusInternalServerError, CodeInternal, "internal error")
 }
 
 func (s *Server) writeEnvelope(w http.ResponseWriter, status int, body any) {
@@ -543,8 +543,8 @@ func (s *Server) writeEnvelope(w http.ResponseWriter, status int, body any) {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(body); err != nil {
-		// L'en-tête est déjà envoyé : il ne reste que la trace dans les logs.
-		s.log.Error("écriture de la réponse impossible", "error", err)
+		// The header is already sent: all that is left is the trace in the logs.
+		s.log.Error("writing the response failed", "error", err)
 	}
 }
 
@@ -552,7 +552,7 @@ func (s *Server) writeEnvelope(w http.ResponseWriter, status int, body any) {
 // Validation
 // ---------------------------------------------------------------------------
 
-// timeParam lit un horodatage RFC3339. Le second retour indique sa présence.
+// timeParam reads an RFC3339 timestamp. The second return indicates its presence.
 func timeParam(q url.Values, key string) (time.Time, bool, error) {
 	raw := q.Get(key)
 	if raw == "" {
@@ -565,7 +565,7 @@ func timeParam(q url.Values, key string) (time.Time, bool, error) {
 	return t.UTC(), true, nil
 }
 
-// parseStep résout le paramètre step, en choisissant le pas pour « auto ».
+// parseStep resolves the step parameter, choosing the step for "auto".
 func parseStep(raw string, span time.Duration) (time.Duration, error) {
 	if raw == "" || raw == "auto" {
 		for _, opt := range stepOptions {
@@ -585,5 +585,5 @@ func parseStep(raw string, span time.Duration) (time.Duration, error) {
 	for _, opt := range stepOptions {
 		names = append(names, opt.name)
 	}
-	return 0, fmt.Errorf("step %q inconnu : valeurs admises %s", raw, strings.Join(names, ", "))
+	return 0, fmt.Errorf("unknown step %q: accepted values %s", raw, strings.Join(names, ", "))
 }

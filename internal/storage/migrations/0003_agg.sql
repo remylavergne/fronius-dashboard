@@ -1,23 +1,23 @@
--- Migration 0003 : agrégats horaires (phase 3, ADR 0006).
+-- Migration 0003: hourly aggregates (phase 3, ADR 0006).
 --
--- `agg_hour` matérialise exactement ce dont les deux lectures agrégées de
--- l'API ont besoin, sans perte :
---   * /api/v1/timeseries (pas multiple d'une heure) : moyenne, minimum, maximum
---     de la puissance PV, nombre d'échantillons et nombre de valeurs absentes.
---     La moyenne se recompose depuis `sum_pv_w` et `count_pv` (moyenne des
---     moyennes pondérée par le nombre de valeurs non nulles), le minimum et le
---     maximum sont associatifs.
---   * /api/v1/energy/daily : maximum de `energy_day_wh` par heure UTC, regroupé
---     ensuite par date locale en Go (le maximum d'une union est le maximum des
+-- `agg_hour` materialises exactly what the two aggregated reads of the
+-- API need, without loss:
+--   * /api/v1/timeseries (step that is a multiple of one hour): average, minimum, maximum
+--     of the PV power, number of samples and number of missing values.
+--     The average is recomposed from `sum_pv_w` and `count_pv` (average of
+--     averages weighted by the number of non-null values), the minimum and the
+--     maximum are associative.
+--   * /api/v1/energy/daily: maximum of `energy_day_wh` per UTC hour, then grouped
+--     by local date in Go (the maximum of a union is the maximum of the
 --     maximums).
 --
--- `bucket_utc` est le début d'heure UTC, au même format texte que `ts_utc` :
--- l'ordre lexicographique reste l'ordre chronologique et les fonctions de date
--- de SQLite le lisent directement. Il est toujours aligné sur l'heure (voir
--- l'invariant documenté dans aggregate.go).
+-- `bucket_utc` is the start of the UTC hour, in the same text format as `ts_utc`:
+-- the lexicographic order stays chronological and SQLite's date functions
+-- read it directly. It is always aligned on the hour (see
+-- the invariant documented in aggregate.go).
 --
--- `min_pv_w` et `max_pv_w` restent NULLables : une heure sans mesure de
--- puissance reste NULL, jamais 0.
+-- `min_pv_w` and `max_pv_w` stay NULLable: an hour without a power
+-- measurement stays NULL, never 0.
 
 CREATE TABLE agg_hour (
   bucket_utc TEXT PRIMARY KEY,

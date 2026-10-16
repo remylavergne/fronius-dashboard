@@ -1,10 +1,10 @@
-// Command fronius-sim sert une imitation locale de la Fronius Solar API v1.
+// Command fronius-sim serves a local imitation of the Fronius Solar API v1.
 //
-// Usage :
+// Usage:
 //
 //	go run ./cmd/fronius-sim [flags]
 //
-// Le simulateur n'émet aucune requête sortante et n'écrit rien sur disque.
+// The simulator sends no outgoing request and writes nothing to disk.
 package main
 
 import (
@@ -23,9 +23,9 @@ import (
 
 const powerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 
-// faultModes liste les pannes injectables. Les six dernières ne concernent que
-// les chemins internes (authentification Digest) ; les neuf premières
-// s'appliquent à tous les endpoints.
+// faultModes lists the injectable faults. The last six concern only
+// the internal paths (Digest authentication); the first nine
+// apply to all endpoints.
 var faultModes = []string{
 	"", "500", "503", "401", "404", "timeout", "invalid_json", "empty", "status7",
 	faultNoChallenge, faultStandardOnly, faultNoQop, faultOpaque, faultStaleNonce, faultBadDigest,
@@ -40,7 +40,7 @@ type options struct {
 	tz        string
 	logLevel  string
 
-	// Chemins internes (authentification Digest).
+	// Internal paths (Digest authentication).
 	apiUser               string
 	apiPassword           string
 	withBattery           bool
@@ -54,25 +54,25 @@ type simulator struct {
 	opt          options
 	log          *slog.Logger
 	requests     atomic.Int64
-	faultTimeout time.Duration // durée du faux timeout, surchargeable en test
+	faultTimeout time.Duration // duration of the fake timeout, overridable in tests
 	auth         *digestAuth
 }
 
 func main() {
 	var opt options
-	flag.StringVar(&opt.addr, "addr", "127.0.0.1:8081", "adresse d'écoute")
-	flag.Uint64Var(&opt.seed, "seed", 42, "graine de la courbe synthétique")
-	flag.Float64Var(&opt.nominalW, "nominal-w", 3680, "puissance crête du champ PV, en W")
-	fault := flag.String("fault", "", "panne globale à injecter ("+strings.Join(faultModes[1:], ", ")+")")
-	flag.BoolVar(&opt.withMeter, "with-meter", false, "simule un Fronius Smart Meter (P_Grid, P_Load, rel_* renseignés ; P_Akku reste null)")
-	flag.StringVar(&opt.tz, "tz", "Europe/Brussels", "fuseau local de l'installation")
-	flag.StringVar(&opt.logLevel, "log-level", "info", "niveau de log (debug, info, warn, error)")
-	flag.StringVar(&opt.apiUser, "api-user", "", "utilisateur des chemins internes ; vide = aucune authentification exigée")
-	flag.StringVar(&opt.apiPassword, "api-password", "", "mot de passe Digest des chemins internes")
-	flag.BoolVar(&opt.withBattery, "with-battery", false, "simule une batterie (/components/BatteryManagementSystem/readable)")
-	flag.IntVar(&opt.deviceEvents, "device-events", 1, "nombre d'événements actifs simulés dans /status/activeEvents")
-	flag.BoolVar(&opt.emitStandardChallenge, "emit-standard-challenge", false, "émet aussi le défi Digest dans l'en-tête standard www-authenticate (pour curl --digest)")
-	flag.StringVar(&opt.challengeRealm, "challenge-realm", "Webinterface area", "realm du défi Digest")
+	flag.StringVar(&opt.addr, "addr", "127.0.0.1:8081", "listen address")
+	flag.Uint64Var(&opt.seed, "seed", 42, "seed of the synthetic curve")
+	flag.Float64Var(&opt.nominalW, "nominal-w", 3680, "peak power of the PV array, in W")
+	fault := flag.String("fault", "", "global fault to inject ("+strings.Join(faultModes[1:], ", ")+")")
+	flag.BoolVar(&opt.withMeter, "with-meter", false, "simulates a Fronius Smart Meter (P_Grid, P_Load, rel_* filled in; P_Akku stays null)")
+	flag.StringVar(&opt.tz, "tz", "Europe/Brussels", "local time zone of the installation")
+	flag.StringVar(&opt.logLevel, "log-level", "info", "log level (debug, info, warn, error)")
+	flag.StringVar(&opt.apiUser, "api-user", "", "user of the internal paths; empty = no authentication required")
+	flag.StringVar(&opt.apiPassword, "api-password", "", "Digest password of the internal paths")
+	flag.BoolVar(&opt.withBattery, "with-battery", false, "simulates a battery (/components/BatteryManagementSystem/readable)")
+	flag.IntVar(&opt.deviceEvents, "device-events", 1, "number of active events simulated in /status/activeEvents")
+	flag.BoolVar(&opt.emitStandardChallenge, "emit-standard-challenge", false, "also emits the Digest challenge in the standard www-authenticate header (for curl --digest)")
+	flag.StringVar(&opt.challengeRealm, "challenge-realm", "Webinterface area", "realm of the Digest challenge")
 	flag.Parse()
 	opt.fault = *fault
 
@@ -84,24 +84,24 @@ func main() {
 
 func run(opt options) error {
 	if !slices.Contains(faultModes, opt.fault) {
-		return fmt.Errorf("panne inconnue %q (valeurs : %s)", opt.fault, strings.Join(nonEmpty(faultModes), ", "))
+		return fmt.Errorf("unknown fault %q (values: %s)", opt.fault, strings.Join(nonEmpty(faultModes), ", "))
 	}
 	if opt.nominalW < 0 {
-		return fmt.Errorf("--nominal-w doit être positif, reçu %v", opt.nominalW)
+		return fmt.Errorf("--nominal-w must be positive, got %v", opt.nominalW)
 	}
 	if opt.deviceEvents < 0 {
-		return fmt.Errorf("--device-events doit être positif ou nul, reçu %d", opt.deviceEvents)
+		return fmt.Errorf("--device-events must be positive or zero, got %d", opt.deviceEvents)
 	}
 	if strings.TrimSpace(opt.challengeRealm) == "" {
-		return fmt.Errorf("--challenge-realm ne peut pas être vide")
+		return fmt.Errorf("--challenge-realm cannot be empty")
 	}
 	if opt.apiUser == "" && opt.apiPassword != "" {
-		return fmt.Errorf("--api-password est défini sans --api-user : les deux vont ensemble")
+		return fmt.Errorf("--api-password is set without --api-user: both go together")
 	}
 
 	loc, err := time.LoadLocation(opt.tz)
 	if err != nil {
-		return fmt.Errorf("fuseau %q: %w", opt.tz, err)
+		return fmt.Errorf("time zone %q: %w", opt.tz, err)
 	}
 
 	level, err := parseLevel(opt.logLevel)
@@ -117,7 +117,7 @@ func run(opt options) error {
 		Handler:           sim.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	logger.Info("fronius-sim démarré",
+	logger.Info("fronius-sim started",
 		"addr", opt.addr, "seed", opt.seed, "nominal_w", opt.nominalW,
 		"tz", opt.tz, "fault", opt.fault, "with_meter", opt.withMeter,
 		"with_battery", opt.withBattery, "device_events", opt.deviceEvents,
@@ -139,7 +139,7 @@ func newSimulator(opt options, loc *time.Location, log *slog.Logger) *simulator 
 	}
 }
 
-// Handler retourne le routeur du simulateur.
+// Handler returns the simulator's router.
 func (s *simulator) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(powerFlowPath, s.logged(s.handlePowerFlow))
@@ -148,15 +148,15 @@ func (s *simulator) Handler() http.Handler {
 	return mux
 }
 
-// genericFault applique les pannes communes à tous les endpoints et retourne
-// true lorsque la requête a été traitée.
+// genericFault applies the faults common to all endpoints and returns
+// true when the request has been handled.
 //
-// « status7 » en est exclue : cette panne modifie l'enveloppe Solar API, elle
-// n'a pas de sens sur un endpoint interne.
+// "status7" is excluded from it: this fault modifies the Solar API envelope,
+// it makes no sense on an internal endpoint.
 func (s *simulator) genericFault(w http.ResponseWriter, r *http.Request, fault string) bool {
 	switch fault {
 	case "timeout":
-		// Dort puis ferme sans réponse.
+		// Sleeps then closes without a response.
 		select {
 		case <-time.After(s.faultTimeout):
 		case <-r.Context().Done():
@@ -183,7 +183,7 @@ func (s *simulator) genericFault(w http.ResponseWriter, r *http.Request, fault s
 	case "invalid_json":
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		// Corps tronqué : décodage JSON impossible côté client.
+		// Truncated body: JSON decoding impossible on the client side.
 		_, _ = w.Write([]byte(`{"Body":{"Data":{"Site":{"P_PV":`))
 		return true
 	}
@@ -214,7 +214,7 @@ func (s *simulator) logged(next http.HandlerFunc) http.HandlerFunc {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
 		next(sw, r)
-		s.log.Info("requête",
+		s.log.Info("request",
 			"method", r.Method, "path", r.URL.Path, "query", r.URL.RawQuery,
 			"status", sw.status, "duration_ms", time.Since(start).Milliseconds())
 	}
@@ -249,7 +249,7 @@ func (s *simulator) handlePowerFlow(w http.ResponseWriter, r *http.Request) {
 		parsed, err := time.Parse(time.RFC3339, at)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": "paramètre 'at' invalide : format RFC3339 attendu",
+				"error": "invalid 'at' parameter: RFC3339 format expected",
 			})
 			return
 		}
@@ -272,7 +272,7 @@ func (s *simulator) handlePowerFlow(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// faultFor retourne la panne applicable : l'en-tête X-Sim-Fault prime sur le flag.
+// faultFor returns the applicable fault: the X-Sim-Fault header takes precedence over the flag.
 func (s *simulator) faultFor(r *http.Request) string {
 	if v := strings.TrimSpace(r.Header.Get("X-Sim-Fault")); v != "" {
 		return v
@@ -307,7 +307,7 @@ func parseLevel(s string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("niveau de log inconnu %q", s)
+		return 0, fmt.Errorf("unknown log level %q", s)
 	}
 }
 

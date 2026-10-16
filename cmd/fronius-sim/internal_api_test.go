@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-// authOpts construit des options avec authentification Digest.
+// authOpts builds options with Digest authentication.
 func authOpts() options {
 	o := baseOpts()
 	o.apiUser = "sim"
@@ -22,13 +22,13 @@ func authOpts() options {
 	return o
 }
 
-// simMD5Test recalcule indépendamment le digest attendu.
+// simMD5Test recomputes the expected digest independently.
 func simMD5Test(s string) string {
 	sum := md5.Sum([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
 
-// authHeader construit un en-tête Authorization valide pour le simulateur.
+// authHeader builds a valid Authorization header for the simulator.
 func authHeader(user, password, realm, nonce, method, uri string, nc int, cnonce string) string {
 	qop := "auth"
 	ha1 := simMD5Test(user + ":" + realm + ":" + password)
@@ -40,7 +40,7 @@ func authHeader(user, password, realm, nonce, method, uri string, nc int, cnonce
 		user, realm, nonce, uri, response, qop, ncValue, cnonce)
 }
 
-// paramOf extrait une valeur d'un en-tête de défi.
+// paramOf extracts a value from a challenge header.
 func paramOf(header, key string) string {
 	for _, part := range strings.Split(header, ", ") {
 		k, v, ok := strings.Cut(strings.TrimPrefix(part, "Digest "), "=")
@@ -51,9 +51,9 @@ func paramOf(header, key string) string {
 	return ""
 }
 
-// TestInternalPathsWithoutAuth : sans --api-user, les quatre chemins répondent
-// sans authentification — c'est le comportement de la phase 1 et celui du
-// service d'état du client officiel (module yTJA).
+// TestInternalPathsWithoutAuth: without --api-user, the four paths respond
+// without authentication — that is the phase 1 behaviour and that of the
+// status service of the official client (module yTJA).
 func TestInternalPathsWithoutAuth(t *testing.T) {
 	sim := testSim(t, baseOpts())
 	srv := httptest.NewServer(sim.Handler())
@@ -62,10 +62,10 @@ func TestInternalPathsWithoutAuth(t *testing.T) {
 	for _, path := range internalPaths {
 		code, hdr, body := get(t, srv, path, nil)
 		if code != http.StatusOK {
-			t.Fatalf("%s : status = %d (%s)", path, code, body)
+			t.Fatalf("%s: status = %d (%s)", path, code, body)
 		}
 		if hdr.Get(nonStandardChallengeHeader) != "" || hdr.Get(standardChallengeHeader) != "" {
-			t.Fatalf("%s : aucun défi ne doit être émis", path)
+			t.Fatalf("%s: no challenge must be issued", path)
 		}
 	}
 }
@@ -84,23 +84,23 @@ func TestVersionBody(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if got.SerialNumber != simulatedSerial || got.DeviceGroup != "GEN24PRIMO" || got.NumberOfPhases != 3 {
-		t.Fatalf("corps = %+v", got)
+		t.Fatalf("body = %+v", got)
 	}
 	if got.ModelName == "" || got.FirmwareVersion == "" {
-		t.Fatalf("les clés candidates doivent être présentes : %+v", got)
+		t.Fatalf("the candidate keys must be present: %+v", got)
 	}
-	// Le numéro de série réel de l'installation ne doit jamais apparaître.
+	// The real serial number of the installation must never appear.
 	if strings.Contains(string(body), "33319328") {
-		t.Fatalf("numéro de série réel présent : %s", body)
+		t.Fatalf("real serial number present: %s", body)
 	}
-	// Déterminisme.
+	// Determinism.
 	_, _, again := get(t, srv, versionPath, nil)
 	if string(again) != string(body) {
-		t.Fatalf("corps non déterministe :\n%s\n%s", body, again)
+		t.Fatalf("non-deterministic body:\n%s\n%s", body, again)
 	}
 }
 
-// TestComponentPresenceBodies : Body.Data vide signifie « composant absent ».
+// TestComponentPresenceBodies: an empty Body.Data means "component absent".
 func TestComponentPresenceBodies(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -109,10 +109,10 @@ func TestComponentPresenceBodies(t *testing.T) {
 		wantMeter   bool
 		wantBattery bool
 	}{
-		{name: "aucun composant"},
-		{name: "compteur seul", withMeter: true, wantMeter: true},
-		{name: "batterie seule", withBattery: true, wantBattery: true},
-		{name: "les deux", withMeter: true, withBattery: true, wantMeter: true, wantBattery: true},
+		{name: "no component"},
+		{name: "meter only", withMeter: true, wantMeter: true},
+		{name: "battery only", withBattery: true, wantBattery: true},
+		{name: "both", withMeter: true, withBattery: true, wantMeter: true, wantBattery: true},
 	}
 
 	for _, tc := range cases {
@@ -127,7 +127,7 @@ func TestComponentPresenceBodies(t *testing.T) {
 			for path, want := range map[string]bool{powerMeterPath: tc.wantMeter, batteryPath: tc.wantBattery} {
 				code, _, body := get(t, srv, path, nil)
 				if code != http.StatusOK {
-					t.Fatalf("%s : status = %d", path, code)
+					t.Fatalf("%s: status = %d", path, code)
 				}
 				var env struct {
 					Body struct {
@@ -135,13 +135,13 @@ func TestComponentPresenceBodies(t *testing.T) {
 					} `json:"Body"`
 				}
 				if err := json.Unmarshal(body, &env); err != nil {
-					t.Fatalf("%s : Unmarshal: %v", path, err)
+					t.Fatalf("%s: Unmarshal: %v", path, err)
 				}
 				if env.Body.Data == nil {
-					t.Fatalf("%s : Body.Data doit être un objet, pas null : %s", path, body)
+					t.Fatalf("%s: Body.Data must be an object, not null: %s", path, body)
 				}
 				if got := len(env.Body.Data) > 0; got != want {
-					t.Fatalf("%s : présence = %v, attendue %v (%s)", path, got, want, body)
+					t.Fatalf("%s: presence = %v, want %v (%s)", path, got, want, body)
 				}
 			}
 		})
@@ -155,7 +155,7 @@ func TestActiveEventsBodies(t *testing.T) {
 		{count: 0}, {count: 1}, {count: 2},
 	}
 	for _, tc := range cases {
-		t.Run(fmt.Sprintf("%d événements", tc.count), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%d events", tc.count), func(t *testing.T) {
 			opt := baseOpts()
 			opt.deviceEvents = tc.count
 			sim := testSim(t, opt)
@@ -175,15 +175,15 @@ func TestActiveEventsBodies(t *testing.T) {
 				t.Fatalf("Unmarshal: %v", err)
 			}
 			if len(env.Body.Data) != tc.count {
-				t.Fatalf("événements = %d, attendu %d (%s)", len(env.Body.Data), tc.count, body)
+				t.Fatalf("events = %d, want %d (%s)", len(env.Body.Data), tc.count, body)
 			}
 			for i := range tc.count {
 				ev, ok := env.Body.Data[fmt.Sprint(i)]
 				if !ok {
-					t.Fatalf("clé %d absente : %s", i, body)
+					t.Fatalf("key %d absent: %s", i, body)
 				}
 				if ev.Code != fmt.Sprintf("SIM-%d", i) || ev.State != "active" || ev.Message == "" {
-					t.Fatalf("événement %d = %+v", i, ev)
+					t.Fatalf("event %d = %+v", i, ev)
 				}
 			}
 		})
@@ -198,24 +198,24 @@ func TestInternalPathsRequireDigest(t *testing.T) {
 	for _, path := range internalPaths {
 		code, hdr, _ := get(t, srv, path, nil)
 		if code != http.StatusUnauthorized {
-			t.Fatalf("%s : status = %d, attendu 401", path, code)
+			t.Fatalf("%s: status = %d, want 401", path, code)
 		}
 		ch := hdr.Get(nonStandardChallengeHeader)
 		if ch == "" {
-			t.Fatalf("%s : défi absent de %s", path, nonStandardChallengeHeader)
+			t.Fatalf("%s: challenge absent from %s", path, nonStandardChallengeHeader)
 		}
 		if paramOf(ch, "realm") != "Webinterface area" {
-			t.Fatalf("%s : realm = %q", path, paramOf(ch, "realm"))
+			t.Fatalf("%s: realm = %q", path, paramOf(ch, "realm"))
 		}
 		if !strings.HasPrefix(paramOf(ch, "nonce"), "sim-nonce-") {
-			t.Fatalf("%s : nonce = %q", path, paramOf(ch, "nonce"))
+			t.Fatalf("%s: nonce = %q", path, paramOf(ch, "nonce"))
 		}
 		if paramOf(ch, "qop") != "auth" {
-			t.Fatalf("%s : qop = %q", path, paramOf(ch, "qop"))
+			t.Fatalf("%s: qop = %q", path, paramOf(ch, "qop"))
 		}
-		// L'en-tête standard n'est pas émis par défaut.
+		// The standard header is not issued by default.
 		if v := hdr.Get(standardChallengeHeader); v != "" {
-			t.Fatalf("%s : %s ne doit pas être émis par défaut (%q)", path, standardChallengeHeader, v)
+			t.Fatalf("%s: %s must not be issued by default (%q)", path, standardChallengeHeader, v)
 		}
 	}
 }
@@ -225,10 +225,10 @@ func TestDigestAccepted(t *testing.T) {
 	srv := httptest.NewServer(sim.Handler())
 	defer srv.Close()
 
-	// Défi.
+	// Challenge.
 	code, hdr, _ := get(t, srv, versionPath, nil)
 	if code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, attendu 401", code)
+		t.Fatalf("status = %d, want 401", code)
 	}
 	challenge := hdr.Get(nonStandardChallengeHeader)
 	nonce := paramOf(challenge, "nonce")
@@ -236,14 +236,14 @@ func TestDigestAccepted(t *testing.T) {
 	auth := authHeader("sim", "simpass", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "0123456789abcdef")
 	code, _, body := get(t, srv, versionPath, map[string]string{"Authorization": auth})
 	if code != http.StatusOK {
-		t.Fatalf("status = %d (%s), attendu 200", code, body)
+		t.Fatalf("status = %d (%s), want 200", code, body)
 	}
 	var got versionJSON
 	if err := json.Unmarshal(body, &got); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if got.SerialNumber != simulatedSerial {
-		t.Fatalf("corps = %+v", got)
+		t.Fatalf("body = %+v", got)
 	}
 }
 
@@ -259,24 +259,24 @@ func TestDigestRejectsReplayAndBadSecrets(t *testing.T) {
 		name   string
 		header string
 	}{
-		{"mot de passe erroné", authHeader("sim", "mauvais", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "aaaa")},
-		{"utilisateur inconnu", authHeader("autre", "simpass", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "aaaa")},
-		{"realm différent", authHeader("sim", "simpass", "autre realm", nonce, http.MethodGet, versionPath, 1, "aaaa")},
-		{"nonce inconnu", authHeader("sim", "simpass", "Webinterface area", "sim-nonce-999", http.MethodGet, versionPath, 1, "aaaa")},
-		{"uri incohérente", authHeader("sim", "simpass", "Webinterface area", nonce, http.MethodGet, "/autre/chemin", 1, "aaaa")},
+		{"wrong password", authHeader("sim", "wrong", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "aaaa")},
+		{"unknown user", authHeader("other", "simpass", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "aaaa")},
+		{"different realm", authHeader("sim", "simpass", "other realm", nonce, http.MethodGet, versionPath, 1, "aaaa")},
+		{"unknown nonce", authHeader("sim", "simpass", "Webinterface area", "sim-nonce-999", http.MethodGet, versionPath, 1, "aaaa")},
+		{"inconsistent uri", authHeader("sim", "simpass", "Webinterface area", nonce, http.MethodGet, "/other/path", 1, "aaaa")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			code, _, _ := get(t, srv, versionPath, map[string]string{"Authorization": tc.header})
 			if code != http.StatusUnauthorized {
-				t.Fatalf("status = %d, attendu 401", code)
+				t.Fatalf("status = %d, want 401", code)
 			}
 		})
 	}
 }
 
-// TestNonceCountMustIncrease : le simulateur rejoue la protection contre la
-// répétition, ce qui exerce réellement le compteur du client.
+// TestNonceCountMustIncrease: the simulator implements replay protection,
+// which genuinely exercises the client's counter.
 func TestNonceCountMustIncrease(t *testing.T) {
 	sim := testSim(t, authOpts())
 	srv := httptest.NewServer(sim.Handler())
@@ -290,16 +290,16 @@ func TestNonceCountMustIncrease(t *testing.T) {
 	}
 
 	if code, _, _ := get(t, srv, versionPath, map[string]string{"Authorization": auth(1)}); code != http.StatusOK {
-		t.Fatalf("nc=1 : status = %d, attendu 200", code)
+		t.Fatalf("nc=1: status = %d, want 200", code)
 	}
 	if code, _, _ := get(t, srv, versionPath, map[string]string{"Authorization": auth(1)}); code != http.StatusUnauthorized {
-		t.Fatalf("nc=1 rejoué : status = %d, attendu 401", code)
+		t.Fatalf("nc=1 replayed: status = %d, want 401", code)
 	}
 	if code, _, _ := get(t, srv, versionPath, map[string]string{"Authorization": auth(3)}); code != http.StatusOK {
-		t.Fatalf("nc=3 : status = %d, attendu 200", code)
+		t.Fatalf("nc=3: status = %d, want 200", code)
 	}
 	if code, _, _ := get(t, srv, versionPath, map[string]string{"Authorization": auth(2)}); code != http.StatusUnauthorized {
-		t.Fatalf("nc=2 après nc=3 : status = %d, attendu 401", code)
+		t.Fatalf("nc=2 after nc=3: status = %d, want 401", code)
 	}
 }
 
@@ -317,13 +317,13 @@ func TestStandardChallengeIsEmittedOnDemand(t *testing.T) {
 	nonStandard := hdr.Get(nonStandardChallengeHeader)
 	standard := hdr.Get(standardChallengeHeader)
 	if nonStandard == "" || standard == "" {
-		t.Fatalf("les deux en-têtes sont attendus : %q / %q", nonStandard, standard)
+		t.Fatalf("both headers are expected: %q / %q", nonStandard, standard)
 	}
 	if nonStandard != standard {
-		t.Fatalf("les deux défis doivent être identiques : %q / %q", nonStandard, standard)
+		t.Fatalf("both challenges must be identical: %q / %q", nonStandard, standard)
 	}
 	if paramOf(standard, "nonce") == "" || paramOf(standard, "realm") != "Webinterface area" {
-		t.Fatalf("défi standard incomplet : %q", standard)
+		t.Fatalf("incomplete standard challenge: %q", standard)
 	}
 }
 
@@ -342,7 +342,7 @@ func TestInternalFaultModes(t *testing.T) {
 					t.Fatalf("status = %d", code)
 				}
 				if hdr.Get(nonStandardChallengeHeader) != "" || hdr.Get(standardChallengeHeader) != "" {
-					t.Fatalf("aucun défi ne doit être émis : %q / %q",
+					t.Fatalf("no challenge must be issued: %q / %q",
 						hdr.Get(nonStandardChallengeHeader), hdr.Get(standardChallengeHeader))
 				}
 			},
@@ -355,10 +355,10 @@ func TestInternalFaultModes(t *testing.T) {
 					t.Fatalf("status = %d", code)
 				}
 				if hdr.Get(nonStandardChallengeHeader) != "" {
-					t.Fatalf("%s ne doit pas être émis", nonStandardChallengeHeader)
+					t.Fatalf("%s must not be issued", nonStandardChallengeHeader)
 				}
 				if hdr.Get(standardChallengeHeader) == "" {
-					t.Fatalf("%s attendu", standardChallengeHeader)
+					t.Fatalf("%s expected", standardChallengeHeader)
 				}
 			},
 		},
@@ -371,10 +371,10 @@ func TestInternalFaultModes(t *testing.T) {
 				}
 				ch := hdr.Get(nonStandardChallengeHeader)
 				if strings.Contains(ch, "qop") {
-					t.Fatalf("défi sans qop attendu : %q", ch)
+					t.Fatalf("challenge without qop expected: %q", ch)
 				}
 				if paramOf(ch, "nonce") == "" {
-					t.Fatalf("nonce manquant : %q", ch)
+					t.Fatalf("missing nonce: %q", ch)
 				}
 			},
 		},
@@ -391,9 +391,9 @@ func TestInternalFaultModes(t *testing.T) {
 			},
 		},
 		{
-			// Le drapeau stale=true n'apparaît que sur la tentative
-			// authentifiée : TestStaleNonceFaultRecovers le vérifie. Ici, la
-			// requête nue reçoit le défi ordinaire.
+			// The stale=true flag appears only on the authenticated attempt:
+			// TestStaleNonceFaultRecovers verifies it. Here, the bare
+			// request receives the ordinary challenge.
 			name: "401-stale-nonce", fault: faultStaleNonce, apiUser: "sim",
 			check: func(t *testing.T, code int, hdr http.Header) {
 				t.Helper()
@@ -401,7 +401,7 @@ func TestInternalFaultModes(t *testing.T) {
 					t.Fatalf("status = %d", code)
 				}
 				if paramOf(hdr.Get(nonStandardChallengeHeader), "nonce") == "" {
-					t.Fatalf("défi sans nonce : %q", hdr.Get(nonStandardChallengeHeader))
+					t.Fatalf("challenge without nonce: %q", hdr.Get(nonStandardChallengeHeader))
 				}
 			},
 		},
@@ -413,18 +413,18 @@ func TestInternalFaultModes(t *testing.T) {
 					t.Fatalf("status = %d", code)
 				}
 				if hdr.Get(nonStandardChallengeHeader) == "" {
-					t.Fatal("le défi doit accompagner le refus")
+					t.Fatal("the challenge must accompany the refusal")
 				}
 			},
 		},
 		{
-			name: "sans identifiants configurés, aucune panne", fault: faultBadDigest, apiUser: "",
+			name: "no credentials configured, no fault", fault: faultBadDigest, apiUser: "",
 			check: func(t *testing.T, code int, _ http.Header) {
 				t.Helper()
-				// Sans --api-user, l'authentification n'est pas exigée : la panne
-				// Digest n'a pas de prise.
+				// Without --api-user, authentication is not required: the Digest
+				// fault has no grip.
 				if code != http.StatusOK {
-					t.Fatalf("status = %d, attendu 200", code)
+					t.Fatalf("status = %d, want 200", code)
 				}
 			},
 		},
@@ -447,8 +447,8 @@ func TestInternalFaultModes(t *testing.T) {
 	}
 }
 
-// TestStaleNonceFaultRecovers : la première tentative authentifiée est refusée
-// avec stale=true, la suivante est acceptée.
+// TestStaleNonceFaultRecovers: the first authenticated attempt is refused
+// with stale=true, the next one is accepted.
 func TestStaleNonceFaultRecovers(t *testing.T) {
 	opt := authOpts()
 	sim := testSim(t, opt)
@@ -456,25 +456,25 @@ func TestStaleNonceFaultRecovers(t *testing.T) {
 	srv := httptest.NewServer(sim.Handler())
 	defer srv.Close()
 
-	// Premier cycle : défi, puis refus stale.
+	// First cycle: challenge, then stale refusal.
 	_, hdr, _ := get(t, srv, versionPath, nil)
 	nonce := paramOf(hdr.Get(nonStandardChallengeHeader), "nonce")
 	auth := authHeader("sim", "simpass", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "cccc")
 	code, hdr, _ := get(t, srv, versionPath, map[string]string{"Authorization": auth})
 	if code != http.StatusUnauthorized {
-		t.Fatalf("première tentative authentifiée : status = %d, attendu 401", code)
+		t.Fatalf("first authenticated attempt: status = %d, want 401", code)
 	}
 	if ch := hdr.Get(nonStandardChallengeHeader); !strings.Contains(ch, "stale=true") {
-		t.Fatalf("défi stale attendu après la première tentative authentifiée : %q", ch)
+		t.Fatalf("stale challenge expected after the first authenticated attempt: %q", ch)
 	}
 
-	// Second cycle : nouveau défi, digest accepté.
+	// Second cycle: new challenge, digest accepted.
 	_, hdr, _ = get(t, srv, versionPath, nil)
 	nonce = paramOf(hdr.Get(nonStandardChallengeHeader), "nonce")
 	auth = authHeader("sim", "simpass", "Webinterface area", nonce, http.MethodGet, versionPath, 1, "dddd")
 	code, _, body := get(t, srv, versionPath, map[string]string{"Authorization": auth})
 	if code != http.StatusOK {
-		t.Fatalf("seconde tentative : status = %d (%s), attendu 200", code, body)
+		t.Fatalf("second attempt: status = %d (%s), want 200", code, body)
 	}
 }
 
@@ -489,19 +489,19 @@ func TestInternalPathMethodAndUnknownPath(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("POST %s : status = %d, attendu 405", versionPath, resp.StatusCode)
+		t.Fatalf("POST %s: status = %d, want 405", versionPath, resp.StatusCode)
 	}
 
-	// Un chemin interne qui n'est pas dans la liste blanche n'existe pas.
+	// An internal path that is not in the allowlist does not exist.
 	for _, path := range []string{"/status/events", "/status/devices", "/components/DataManager/readable"} {
 		if code, _, _ := get(t, srv, path, nil); code != http.StatusNotFound {
-			t.Fatalf("%s : status = %d, attendu 404", path, code)
+			t.Fatalf("%s: status = %d, want 404", path, code)
 		}
 	}
 }
 
-// TestInternalBodyIsDeterministicUnderConcurrentRequests : le corps ne porte
-// jamais le nonce ; deux appels simultanés renvoient le même octet.
+// TestInternalBodyIsDeterministicUnderConcurrentRequests: the body never
+// carries the nonce; two simultaneous calls return the same byte.
 func TestInternalBodyIsDeterministicUnderConcurrentRequests(t *testing.T) {
 	sim := testSim(t, authOpts())
 	srv := httptest.NewServer(sim.Handler())
@@ -542,35 +542,35 @@ func TestInternalBodyIsDeterministicUnderConcurrentRequests(t *testing.T) {
 	wg.Wait()
 
 	if len(bodies) == 0 {
-		t.Fatal("aucune réponse valide")
+		t.Fatal("no valid response")
 	}
 	for _, b := range bodies {
 		if strings.Contains(b, "sim-nonce") {
-			t.Fatalf("le nonce ne doit pas figurer dans le corps : %s", b)
+			t.Fatalf("the nonce must not appear in the body: %s", b)
 		}
 		if b != bodies[0] {
-			t.Fatalf("corps non déterministe :\n%s\n%s", bodies[0], b)
+			t.Fatalf("non-deterministic body:\n%s\n%s", bodies[0], b)
 		}
 	}
 }
 
-// TestFaultModesListIsComplete : les modes annoncés par le drapeau doivent
-// tous être injectables et reconnus.
+// TestFaultModesListIsComplete: the modes announced by the flag must
+// all be injectable and recognised.
 func TestFaultModesListIsComplete(t *testing.T) {
 	required := []string{
 		faultNoChallenge, faultStandardOnly, faultNoQop, faultOpaque, faultStaleNonce, faultBadDigest,
 	}
 	for _, want := range required {
 		if !containsString(faultModes, want) {
-			t.Fatalf("%q absent de faultModes", want)
+			t.Fatalf("%q absent from faultModes", want)
 		}
 	}
 	if opt := baseOpts(); opt.apiUser != "" {
-		t.Fatal("baseOpts ne doit pas exiger d'authentification")
+		t.Fatal("baseOpts must not require authentication")
 	}
-	// Un mode inconnu reste refusé.
-	if err := run(options{tz: "Europe/Brussels", fault: "pas-une-panne"}); err == nil {
-		t.Fatal("une panne inconnue doit être refusée")
+	// An unknown mode stays refused.
+	if err := run(options{tz: "Europe/Brussels", fault: "not-a-fault"}); err == nil {
+		t.Fatal("an unknown fault must be refused")
 	}
 }
 

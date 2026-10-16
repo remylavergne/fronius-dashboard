@@ -10,38 +10,38 @@ permissions:
 
 jobs:
   go:
-    name: Go — vet, tests, build statique
+    name: Go — vet, tests, static build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with:
-          # La version de Go suit go.mod : une seule source de vérité.
+          # The Go version follows go.mod: a single source of truth.
           go-version-file: go.mod
           cache: true
 
-      - name: Aucun mot de passe d'appareil versionné
-        # Un mot de passe non vide ne doit jamais être commité : .env.example
-        # porte une valeur vide et .env est ignoré par git.
-        # Le nom est assemblé pour que cette étape ne se détecte pas elle-même.
-        # Le motif complet ne doit pas non plus apparaître tel quel dans la
-        # documentation : il déclencherait cette étape.
+      - name: No versioned device password
+        # A non-empty password must never be committed: .env.example
+        # carries an empty value and .env is ignored by git.
+        # The name is assembled so this step does not detect itself.
+        # The full pattern must also not appear verbatim in the
+        # documentation: it would trigger this step.
         run: |
           nom='FRONIUS_DEVICE_PASSWORD'
           if git grep -nE "${nom}=.+"; then
-            echo "::error::mot de passe d'appareil non vide versionné"
+            echo "::error::non-empty device password versioned"
             exit 1
           fi
-          echo "aucun mot de passe d'appareil versionné"
+          echo "no versioned device password"
 
-      - name: Analyse statique
+      - name: Static analysis
         run: go vet ./...
 
-      - name: Tests (détecteur de courses)
+      - name: Tests (race detector)
         run: go test ./... -race
 
-      - name: Build sans CGO (binaires statiques)
+      - name: Build without CGO (static binaries)
         run: CGO_ENABLED=0 go build ./...
 
   web:
@@ -63,7 +63,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: apps/web/pnpm-lock.yaml
 
-      - name: Installation figée
+      - name: Frozen install
         run: pnpm install --frozen-lockfile
 
       - name: Lint
@@ -72,5 +72,5 @@ jobs:
       - name: Tests
         run: pnpm test --run
 
-      - name: Build (typecheck strict inclus)
+      - name: Build (strict typecheck included)
         run: pnpm build

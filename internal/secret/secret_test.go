@@ -9,21 +9,21 @@ import (
 	"testing"
 )
 
-// secretValue est une valeur reconnaissable, utilisée pour détecter toute fuite.
-const secretValue = "s3cr3t-à-ne-pas-divulguer"
+// secretValue is a recognizable value, used to detect any leak.
+const secretValue = "s3cr3t-not-to-be-disclosed"
 
 func TestRevealReturnsValue(t *testing.T) {
 	s := New(secretValue)
 	if got := s.Reveal(); got != secretValue {
-		t.Fatalf("Reveal() = %q, attendu %q", got, secretValue)
+		t.Fatalf("Reveal() = %q, want %q", got, secretValue)
 	}
 }
 
 func TestFormattingNeverLeaksValue(t *testing.T) {
 	s := New(secretValue)
 
-	// Le champ est aussi imbriqué dans une structure : fmt.Formater/reflect
-	// parcourt alors les champs un par un, un chemin de fuite classique.
+	// The field is also nested in a struct: fmt.Formater/reflect then walks the
+	// fields one by one, a classic leak path.
 	type holder struct {
 		User     string
 		Password String
@@ -42,10 +42,10 @@ func TestFormattingNeverLeaksValue(t *testing.T) {
 	}
 	for name, out := range formats {
 		if strings.Contains(out, secretValue) {
-			t.Fatalf("%s a divulgué la valeur : %q", name, out)
+			t.Fatalf("%s leaked the value: %q", name, out)
 		}
 		if !strings.Contains(out, redactedText) {
-			t.Fatalf("%s ne porte pas la mention d'expurgation : %q", name, out)
+			t.Fatalf("%s does not carry the redaction marker: %q", name, out)
 		}
 	}
 }
@@ -55,16 +55,16 @@ func TestSlogNeverLeaksValue(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	s := New(secretValue)
-	logger.Info("connexion", "password", s)
-	logger.Info("connexion", slog.Any("password", s))
-	logger.With("password", s).Warn("échec")
+	logger.Info("connection", "password", s)
+	logger.Info("connection", slog.Any("password", s))
+	logger.With("password", s).Warn("failure")
 
 	out := buf.String()
 	if strings.Contains(out, secretValue) {
-		t.Fatalf("slog a divulgué la valeur :\n%s", out)
+		t.Fatalf("slog leaked the value:\n%s", out)
 	}
 	if !strings.Contains(out, redactedText) {
-		t.Fatalf("slog ne porte pas la mention d'expurgation :\n%s", out)
+		t.Fatalf("slog does not carry the redaction marker:\n%s", out)
 	}
 }
 
@@ -74,17 +74,17 @@ func TestMarshalJSONRedacts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	// encoding/json échappe « < » et « > » : la forme brute est
-	// "\u003credacted\u003e". C'est la valeur décodée qui compte.
+	// encoding/json escapes "<" and ">": the raw form is
+	// "\u003credacted\u003e". The decoded value is what matters.
 	var decoded string
 	if err := json.Unmarshal(b, &decoded); err != nil {
 		t.Fatalf("Unmarshal(%s): %v", b, err)
 	}
 	if decoded != redactedText {
-		t.Fatalf("Marshal = %s (décodé %q)", b, decoded)
+		t.Fatalf("Marshal = %s (decoded %q)", b, decoded)
 	}
 
-	// Sérialisation d'une structure : le champ sensible reste masqué.
+	// Serialization of a struct: the sensitive field stays masked.
 	b, err = json.Marshal(struct {
 		User     string `json:"user"`
 		Password String `json:"password"`
@@ -93,18 +93,18 @@ func TestMarshalJSONRedacts(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 	if strings.Contains(string(b), secretValue) {
-		t.Fatalf("Marshal a divulgué la valeur : %s", b)
+		t.Fatalf("Marshal leaked the value: %s", b)
 	}
 }
 
 func TestIsZero(t *testing.T) {
 	if !New("").IsZero() {
-		t.Fatal("un secret vide doit être nul")
+		t.Fatal("an empty secret must be zero")
 	}
 	if New("x").IsZero() {
-		t.Fatal("un secret non vide ne doit pas être nul")
+		t.Fatal("a non-empty secret must not be zero")
 	}
 	if !(String("")).IsZero() {
-		t.Fatal("la forme zéro du type doit être nulle")
+		t.Fatal("the zero form of the type must be zero")
 	}
 }

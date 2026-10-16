@@ -39,7 +39,7 @@
     "source": "fronius-sim",
     "seed": 42,
     "instant": "2026-06-21T12:00:00+02:00",
-    "confidence": "HYPOTHÈSE",
-    "note": "forme du JSON non validée sur firmware 1.19.7-1"
+    "confidence": "HYPOTHESIS",
+    "note": "JSON shape not validated on firmware 1.19.7-1"
   }
 }

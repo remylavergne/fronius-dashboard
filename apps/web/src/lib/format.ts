@@ -1,15 +1,14 @@
 /**
- * Mise en forme des valeurs pour l'affichage.
+ * Formatting of values for display.
  *
- * L'API expose des unités SI de base (W, Wh, %) ; la conversion en kW et kWh
- * est faite ici, à la frontière d'affichage, jamais dans le modèle ni en base.
- * Locale : fr-BE (virgule décimale, espace insécable comme séparateur de
- * milliers).
+ * The API exposes base SI units (W, Wh, %); conversion to kW and kWh is done
+ * here, at the display boundary, never in the model nor in the database.
+ * Locale: en-GB (decimal point, comma as thousands separator, 24-hour clock).
  */
 
-const decimal0 = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 0 })
-const decimal1 = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: 1 })
-const decimal2 = new Intl.NumberFormat('fr-BE', {
+const decimal0 = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 })
+const decimal1 = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 1 })
+const decimal2 = new Intl.NumberFormat('en-GB', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
@@ -19,15 +18,15 @@ const MINUTE = 60 * SECOND
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-/** Valeur formatée plus son unité, pour éviter toute ambiguïté d'échelle. */
+/** Formatted value plus its unit, to avoid any scale ambiguity. */
 export type Formatted = { value: string; unit: string }
 
 /**
- * Puissance : kW au-delà de 1 kW, sinon W.
+ * Power: kW beyond 1 kW, otherwise W.
  *
- * Une valeur absente (`null` ou `undefined`) n'est jamais rendue « 0 » :
- * l'appelant reçoit un tiret, ce qui préserve l'invariant « pas de zéro
- * inventé » jusqu'à l'écran.
+ * An absent value (`null` or `undefined`) is never rendered as "0": the caller
+ * receives a dash, which preserves the "no invented zero" invariant all the way
+ * to the screen.
  */
 export function formatW(watts: number | null | undefined): Formatted {
   if (watts === null || watts === undefined || !Number.isFinite(watts)) {
@@ -39,7 +38,7 @@ export function formatW(watts: number | null | undefined): Formatted {
   return { value: decimal0.format(watts), unit: 'W' }
 }
 
-/** Énergie : kWh au-delà de 1 kWh, sinon Wh. */
+/** Energy: kWh beyond 1 kWh, otherwise Wh. */
 export function formatKWh(wattHours: number | null | undefined): Formatted {
   if (wattHours === null || wattHours === undefined || !Number.isFinite(wattHours)) {
     return { value: '—', unit: '' }
@@ -50,7 +49,7 @@ export function formatKWh(wattHours: number | null | undefined): Formatted {
   return { value: decimal0.format(wattHours), unit: 'Wh' }
 }
 
-/** Pourcentage. */
+/** Percentage. */
 export function formatPct(pct: number | null | undefined): string {
   if (pct === null || pct === undefined || !Number.isFinite(pct)) {
     return '—'
@@ -59,9 +58,9 @@ export function formatPct(pct: number | null | undefined): string {
 }
 
 /**
- * Âge d'un horodatage, en français.
+ * Age of a timestamp.
  *
- * Une chaîne vide (dernier succès jamais enregistré) ou illisible donne « — ».
+ * An empty string (last success never recorded) or an unreadable one gives "—".
  */
 export function formatAge(isoTimestamp: string | null | undefined, now: Date = new Date()): string {
   if (!isoTimestamp) {
@@ -75,25 +74,25 @@ export function formatAge(isoTimestamp: string | null | undefined, now: Date = n
 
   const age = now.getTime() - time
   if (age < 0) {
-    // Horloge locale en retard sur l'appareil : ne pas afficher d'âge négatif.
-    return 'à l’instant'
+    // Local clock behind the device: do not display a negative age.
+    return 'just now'
   }
   if (age < 5 * SECOND) {
-    return 'à l’instant'
+    return 'just now'
   }
   if (age < MINUTE) {
-    return `il y a ${Math.round(age / SECOND)} s`
+    return `${Math.round(age / SECOND)} s ago`
   }
   if (age < HOUR) {
-    return `il y a ${Math.round(age / MINUTE)} min`
+    return `${Math.round(age / MINUTE)} min ago`
   }
   if (age < DAY) {
-    return `il y a ${Math.round(age / HOUR)} h`
+    return `${Math.round(age / HOUR)} h ago`
   }
-  return `il y a ${Math.round(age / DAY)} j`
+  return `${Math.round(age / DAY)} d ago`
 }
 
-/** Horodatage local complet, pour les infobulles et les pages de détail. */
+/** Full local timestamp, for tooltips and detail pages. */
 export function formatDateTime(isoTimestamp: string | null | undefined): string {
   if (!isoTimestamp) {
     return '—'
@@ -102,13 +101,13 @@ export function formatDateTime(isoTimestamp: string | null | undefined): string 
   if (Number.isNaN(date.getTime())) {
     return '—'
   }
-  return new Intl.DateTimeFormat('fr-BE', {
+  return new Intl.DateTimeFormat('en-GB', {
     dateStyle: 'short',
     timeStyle: 'medium',
   }).format(date)
 }
 
-/** Durée en millisecondes, en français court. */
+/** Duration in milliseconds, in short form. */
 export function formatDuration(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) {
     return '—'

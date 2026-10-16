@@ -10,7 +10,7 @@ apps/web/.vite/
 coverage/
 bin/
 
-# Binaires produits par `go build ./...` (chaque paquet main à la racine)
+# Binaries produced by `go build ./...` (each main package at the root)
 /fronius-sim
 /froniusd
 /fronius-probe

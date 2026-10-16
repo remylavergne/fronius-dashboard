@@ -1,17 +1,18 @@
-// Transport HTTP Digest (RFC 2617) en lecture seule, en réponse à un 401.
+// HTTP Digest transport (RFC 2617), read-only, in response to a 401.
 //
-// NOTE MD5 : `crypto/md5` est imposé par le protocole, pas choisi. Le client
-// officiel du fabricant calcule exactement HA1/HA2/response avec MD5 (module
-// `xeXE` du bundle) ; c'est la seule fonction que l'appareil accepte. Ce n'est
-// donc pas une faiblesse introduite ici, et il n'existe aucune alternative.
+// MD5 NOTE: `crypto/md5` is imposed by the protocol, not chosen. The vendor's
+// official client computes exactly HA1/HA2/response with MD5 (bundle module
+// `xeXE`); it is the only function the device accepts. So this is not a
+// weakness introduced here, and there is no alternative.
 //
-// Invariants (voir docs/ARCHITECTURE.md) :
-//   - aucun en-tête Authorization n'est envoyé préemptivement : le transport
-//     envoie d'abord la requête nue, et ne s'authentifie qu'en réponse à un 401 ;
-//   - l'en-tête n'est jamais envoyé vers un hôte autre que celui de l'URL de
-//     base configurée ;
-//   - le mot de passe ne sort du type secret.String que pour le calcul de HA1 ;
-//   - le corps de toute réponse abandonnée est fermé (sinon la connexion fuit).
+// Invariants (see docs/ARCHITECTURE.md):
+//   - no Authorization header is sent preemptively: the transport first sends
+//     the bare request, and only authenticates in response to a 401;
+//   - the header is never sent to a host other than that of the configured
+//     base URL;
+//   - the password leaves the secret.String type only for the HA1 computation;
+//   - the body of any abandoned response is closed (otherwise the connection
+//     leaks).
 package digest
 
 import (
@@ -32,65 +33,65 @@ import (
 	"fronius-supervisor/internal/secret"
 )
 
-// ErrForeignHost : la requête ne vise pas l'hôte de l'URL de base. Garde de
-// programmation, pas panne d'appareil.
-var ErrForeignHost = errors.New("digest: hôte hors du périmètre configuré")
+// ErrForeignHost: the request does not target the base URL host. A programming
+// guard, not a device failure.
+var ErrForeignHost = errors.New("digest: host outside the configured scope")
 
-// ErrRetryExhausted : la seconde tentative authentifiée a encore reçu un 401.
-// Aucune troisième tentative n'est faite.
-var ErrRetryExhausted = errors.New("digest: authentification refusée après la seconde tentative")
+// ErrRetryExhausted: the second authenticated attempt again received a 401.
+// No third attempt is made.
+var ErrRetryExhausted = errors.New("digest: authentication refused after the second attempt")
 
-// challengeHeaders liste les en-têtes où chercher le défi, dans l'ordre.
+// challengeHeaders lists the headers to look for the challenge in, in order.
 //
-// L'en-tête non standard « x-www-authenticate » vient en premier : c'est celui
-// que lit le client officiel (sept occurrences dans le bundle, aucune de
-// « www-authenticate » seul).
+// The non-standard "x-www-authenticate" header comes first: it is the one the
+// official client reads (seven occurrences in the bundle, none of
+// "www-authenticate" alone).
 var challengeHeaders = []string{"x-www-authenticate", "www-authenticate"}
 
-// Credentials est une paire d'identifiants de l'appareil.
+// Credentials is a pair of device credentials.
 type Credentials struct {
 	Username string
 	Password secret.String
 }
 
-// IsZero indique qu'aucune authentification ne peut être tentée : une paire
-// incomplète n'authentifie rien, elle est traitée comme absente plutôt que
-// d'émettre un en-tête voué au 401.
+// IsZero reports that no authentication can be attempted: an incomplete pair
+// authenticates nothing, it is treated as absent rather than emitting a header
+// doomed to a 401.
 func (c Credentials) IsZero() bool { return c.Username == "" || c.Password.IsZero() }
 
-// nonceEntry est un défi accepté, avec son compteur de répétition.
+// nonceEntry is an accepted challenge, with its retry counter.
 type nonceEntry struct {
 	challenge Challenge
 	nc        uint32
 }
 
-// Transport authentifie les requêtes en Digest après un premier 401.
+// Transport authenticates requests with Digest after a first 401.
 type Transport struct {
 	Inner fronius.Doer
 	Cred  Credentials
 	Log   *slog.Logger
-	// Rand alimente le cnonce. Défaut : crypto/rand.Reader.
+	// Rand feeds the cnonce. Default: crypto/rand.Reader.
 	Rand io.Reader
 
 	baseHost string
 
 	mu    sync.Mutex
-	cache map[string]nonceEntry // clé : hôte + "\x00" + realm
+	cache map[string]nonceEntry // key: host + "\x00" + realm
 }
 
-// New construit le transport. inner peut être nil (un client HTTP par défaut
-// est alors utilisé) ; baseURL fixe le seul hôte vers lequel l'en-tête
-// Authorization peut être émis.
+// New builds the transport. inner may be nil (a default HTTP client is then
+// used); baseURL sets the only host to which the Authorization header may be
+// sent.
 func New(inner fronius.Doer, baseURL string, cred Credentials, log *slog.Logger) (*Transport, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("URL de base %q: %w", baseURL, err)
+		return nil, fmt.Errorf("base URL %q: %w", baseURL, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("URL de base %q : schéma http(s) attendu", baseURL)
+		return nil, fmt.Errorf("base URL %q: http(s) scheme expected", baseURL)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("URL de base %q : hôte manquant", baseURL)
+		return nil, fmt.Errorf("base URL %q: missing host", baseURL)
 	}
 	if inner == nil {
 		inner = &http.Client{}
@@ -108,28 +109,28 @@ func New(inner fronius.Doer, baseURL string, cred Credentials, log *slog.Logger)
 	}, nil
 }
 
-// Do envoie req, en n'ajoutant l'en-tête Authorization qu'en réponse à un 401.
+// Do sends req, adding the Authorization header only in response to a 401.
 //
-// req doit être une requête GET sans corps : le corps n'est lu qu'une fois par
-// envoi, et la réémission réutilise la même requête. Cette contrainte est
-// garantie par fronius.ReadOnly, placé devant ce transport.
+// req must be a GET request without a body: the body is read only once per
+// send, and the re-send reuses the same request. This constraint is guaranteed
+// by fronius.ReadOnly, placed in front of this transport.
 func (t *Transport) Do(req *http.Request) (*http.Response, error) {
 	if req == nil {
-		return nil, errors.New("digest: requête nulle")
+		return nil, errors.New("digest: nil request")
 	}
 	if req.URL == nil || req.URL.Host != t.baseHost {
 		host := ""
 		if req.URL != nil {
 			host = req.URL.Host
 		}
-		return nil, fmt.Errorf("%w : %q, périmètre %q", ErrForeignHost, host, t.baseHost)
+		return nil, fmt.Errorf("%w: %q, scope %q", ErrForeignHost, host, t.baseHost)
 	}
 	if t.Cred.IsZero() {
-		// Phase 1 préservée : aucun identifiant, aucun en-tête, aucun retry.
+		// Phase 1 preserved: no credentials, no header, no retry.
 		return t.Inner.Do(req)
 	}
 
-	// Tentative avec le défi déjà connu, s'il y en a un pour cet hôte.
+	// Attempt with the already-known challenge, if there is one for this host.
 	if entry, key, ok := t.cachedEntry(req.URL.Host); ok {
 		resp, err := t.sendWithChallenge(req, entry)
 		if err != nil {
@@ -138,14 +139,14 @@ func (t *Transport) Do(req *http.Request) (*http.Response, error) {
 		if resp.StatusCode != http.StatusUnauthorized {
 			return resp, nil
 		}
-		// Nonce périmé : on jette cette réponse et on repart sur le chemin
-		// complet (requête nue → 401 → défi frais → réémission unique).
+		// Stale nonce: we discard this response and start over on the full path
+		// (bare request → 401 → fresh challenge → single re-send).
 		drain(resp)
 		t.forget(key)
 	}
 
-	// Requête nue : c'est le cas normal des chemins internes qui répondent
-	// sans authentification (module yTJA du bundle).
+	// Bare request: this is the normal case for internal paths that respond
+	// without authentication (bundle module yTJA).
 	resp, err := t.Inner.Do(req)
 	if err != nil {
 		return nil, err
@@ -199,15 +200,15 @@ func (t *Transport) Do(req *http.Request) (*http.Response, error) {
 	return retried, nil
 }
 
-// sendWithChallenge clone req, l'authentifie et l'envoie.
+// sendWithChallenge clones req, authenticates it and sends it.
 func (t *Transport) sendWithChallenge(req *http.Request, entry nonceEntry) (*http.Response, error) {
 	clone := req.Clone(req.Context())
 	clone.Header.Set("Authorization", t.headerFor(clone, entry))
 	return t.Inner.Do(clone)
 }
 
-// headerFor construit l'en-tête Authorization et incrémente le compteur de
-// répétition de l'entrée sous verrou.
+// headerFor builds the Authorization header and increments the retry counter
+// of the entry under lock.
 func (t *Transport) headerFor(req *http.Request, entry nonceEntry) string {
 	uri := req.URL.RequestURI()
 	cnonce := t.newCnonce()
@@ -225,11 +226,11 @@ func (t *Transport) headerFor(req *http.Request, entry nonceEntry) string {
 	return headerValue(entry.challenge, req.Method, uri, t.Cred, entry.nc, cnonce)
 }
 
-// cachedEntry retourne l'entrée connue pour cet hôte, si elle existe.
+// cachedEntry returns the known entry for this host, if it exists.
 //
-// L'hôte est le seul axe de recherche : baseHost est le seul hôte autorisé, donc
-// l'index contient au plus un défi vivant, et un changement de realm côté
-// appareil se traduit par un 401 puis une réauthentification.
+// The host is the only search axis: baseHost is the only allowed host, so the
+// index contains at most one live challenge, and a realm change on the device
+// side results in a 401 followed by a re-authentication.
 func (t *Transport) cachedEntry(host string) (nonceEntry, string, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -242,11 +243,11 @@ func (t *Transport) cachedEntry(host string) (nonceEntry, string, bool) {
 	return nonceEntry{}, "", false
 }
 
-// remember mémorise un défi frais et retourne l'entrée à utiliser.
+// remember stores a fresh challenge and returns the entry to use.
 //
-// Le compteur de répétition n'est conservé que si le nonce est inchangé : il
-// compte les envois faits avec CE nonce, et le remettre à zéro sur un nonce
-// neuf évite de réutiliser un numéro déjà employé auprès d'un autre défi.
+// The retry counter is kept only if the nonce is unchanged: it counts the sends
+// made with THIS nonce, and resetting it on a fresh nonce avoids reusing a
+// number already used with another challenge.
 func (t *Transport) remember(host string, ch Challenge) nonceEntry {
 	key := cacheKey(host, ch.Realm)
 	t.mu.Lock()
@@ -270,18 +271,18 @@ func (t *Transport) forget(key string) {
 func (t *Transport) newCnonce() string {
 	buf := make([]byte, 8)
 	if _, err := io.ReadFull(t.Rand, buf); err != nil {
-		// Jamais de cnonce constant : un échec de la source aléatoire est une
-		// panne, pas une raison d'émettre une valeur fixe.
-		t.Log.Error("digest: lecture du générateur aléatoire impossible", "error", err)
+		// Never a constant cnonce: a failure of the random source is a failure,
+		// not a reason to emit a fixed value.
+		t.Log.Error("digest: cannot read the random generator", "error", err)
 		return ""
 	}
 	return hex.EncodeToString(buf)
 }
 
-// cacheKey compose la clé d'une entrée de cache.
+// cacheKey composes the key of a cache entry.
 func cacheKey(host, realm string) string { return host + "\x00" + realm }
 
-// drain vide et ferme un corps de réponse qu'on abandonne.
+// drain empties and closes a response body that is being abandoned.
 func drain(resp *http.Response) {
 	if resp == nil || resp.Body == nil {
 		return
@@ -290,18 +291,18 @@ func drain(resp *http.Response) {
 	_ = resp.Body.Close()
 }
 
-// headerValue construit la valeur de l'en-tête Authorization.
+// headerValue builds the value of the Authorization header.
 //
-// Fonction pure : elle seule fixe la forme exacte de l'en-tête, identique à
-// celle du client officiel (module xeXE, l. 182425-182428) :
+// Pure function: it alone fixes the exact form of the header, identical to that
+// of the official client (module xeXE, l. 182425-182428):
 //
 //	Digest username="U", realm="R", nonce="N", uri="URI", response="RESP"
 //	[, opaque="O"] [, qop=QOP, nc=NC, cnonce="CNONCE"]
 //
-// qop et nc ne sont pas entre guillemets, cnonce l'est, et « algorithm » n'est
-// jamais émis — l'appareil ne le demande pas et le client officiel ne l'envoie
-// pas non plus. nc est décimal zéro-complété sur huit chiffres, comme le
-// compteur du client officiel (String(++NC) complété par NC_PAD).
+// qop and nc are not quoted, cnonce is, and "algorithm" is never emitted — the
+// device does not ask for it and the official client does not send it either.
+// nc is decimal zero-padded to eight digits, like the official client's counter
+// (String(++NC) padded by NC_PAD).
 func headerValue(ch Challenge, method, uri string, cred Credentials, nc uint32, cnonce string) string {
 	ha1 := md5Hex(cred.Username + ":" + ch.Realm + ":" + cred.Password.Reveal())
 	ha2 := md5Hex(strings.ToUpper(method) + ":" + uri)
@@ -342,9 +343,9 @@ func headerValue(ch Challenge, method, uri string, cred Credentials, nc uint32, 
 	return b.String()
 }
 
-// withoutQuotes retire les guillemets d'une valeur insérée entre guillemets :
-// un guillemet dans un realm ou un nonce casserait l'en-tête. C'est le nettoyage
-// que le bundle applique déjà aux valeurs du défi.
+// withoutQuotes strips the quotes from a value inserted between quotes: a quote
+// in a realm or a nonce would break the header. This is the cleanup the bundle
+// already applies to the challenge values.
 func withoutQuotes(s string) string { return quoteStripper.Replace(s) }
 
 func md5Hex(s string) string {

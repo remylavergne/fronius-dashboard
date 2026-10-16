@@ -1,49 +1,49 @@
 # ADR 0002 — Polling vs SSE
 
-## Statut
+## Status
 
-Accepté (phase 1)
+Accepted (phase 1)
 
-## Contexte
+## Context
 
-Deux flux doivent être transportés : la collecte côté serveur (du matériel vers la base) et
-l'affichage côté client (de l'API REST vers le navigateur). La source de vérité est un appareil qui ne
-pousse aucune donnée : l'onduleur est interrogé périodiquement. Le client officiel interroge son
-endpoint de puissance toutes les 5 000 ms, ce qui fixe l'ordre de grandeur de la fraîcheur utile.
+Two streams must be carried: server-side collection (from the hardware to the database) and
+client-side display (from the REST API to the browser). The source of truth is a device that pushes
+no data: the inverter is polled periodically. The official client polls its power endpoint every
+5,000 ms, which sets the order of magnitude of the useful freshness.
 
-Le frontend doit distinguer une donnée fraîche d'une donnée périmée, et ne jamais bloculer l'interface
-sur un flux persistant.
+The frontend must distinguish fresh data from stale data, and never block the interface on a
+persistent stream.
 
-## Décision
+## Decision
 
-- Collecte côté serveur : polling en boucle, intervalle de 5 s plus un jitter (`FRONIUS_POLL_INTERVAL`,
-  `FRONIUS_POLL_JITTER`, défaut 500 ms). En cas d'échec, backoff exponentiel 1 s → 2 s → … → 60 s.
-- Affichage côté client : polling de l'API REST via TanStack Query, `refetchInterval: 5000`,
+- Server-side collection: polling in a loop, interval of 5 s plus a jitter (`FRONIUS_POLL_INTERVAL`,
+  `FRONIUS_POLL_JITTER`, default 500 ms). On failure, exponential backoff 1 s → 2 s → … → 60 s.
+- Client-side display: polling of the REST API through TanStack Query, `refetchInterval: 5000`,
   `staleTime: 4000`, `retry: 1`, `throwOnError: false`.
-- SSE n'est pas implémenté en phase 1.
+- SSE is not implemented in phase 1.
 
-## Conséquences
+## Consequences
 
-- La latence d'affichage est de l'ordre de l'intervalle de collecte (plus le cycle de revalidation),
-  ce qui est cohérent avec la source de données elle-même.
-- Le coût réseau reste faible et prévisible : une requête REST par cycle et par vue active.
-- `meta.stale` est calculé côté serveur (`FRONIUS_STALE_AFTER`, défaut 30 s), accompagné de
-  `meta.sampled_at` et `meta.stale_after_s`, pour que l'UI affiche un badge « données périmées » et un
-  bandeau hors ligne sans heuristique côté client.
-- L'absence d'état serveur supplémentaire simplifie le déploiement et les tests.
+- Display latency is on the order of the collection interval (plus the revalidation cycle), which is
+  consistent with the data source itself.
+- The network cost stays low and predictable: one REST request per cycle and per active view.
+- `meta.stale` is computed server-side (`FRONIUS_STALE_AFTER`, default 30 s), accompanied by
+  `meta.sampled_at` and `meta.stale_after_s`, so that the UI can display a "stale data" badge and an
+  offline banner without a client-side heuristic.
+- The absence of additional server state simplifies deployment and testing.
 
-## Alternatives écartées
+## Rejected alternatives
 
-- **SSE** : ajoute une connexion persistante, un état serveur et des cas de reconnexion à tester, pour un
-  gain de latence marginal sur un producteur de données lui-même interrogé par polling.
-- **WebSocket** : sur-dimensionné ; le canal bidirectionnel est inutile puisque l'écriture matérielle est
-  hors périmètre (voir ADR 0004).
-- **Long polling** : complexité équivalente au polling simple, sans bénéfice mesurable ici.
+- **SSE**: adds a persistent connection, server state and reconnection cases to test, for a marginal
+  latency gain on a data producer that is itself polled.
+- **WebSocket**: oversized; the bidirectional channel is useless since hardware writing is
+  out of scope (see ADR 0004).
+- **Long polling**: complexity equivalent to plain polling, with no measurable benefit here.
 
 ## Sources
 
-- `docs/ARCHITECTURE.md` (flux de données, invariants)
-- `internal/collector` (boucle, jitter, backoff)
+- `docs/ARCHITECTURE.md` (data flow, invariants)
+- `internal/collector` (loop, jitter, backoff)
 - `internal/api` (endpoints `live`, `health`, `meta.stale`, `meta.sampled_at`)
-- `apps/web/src/lib/queries.ts` (réglage TanStack Query)
-- Plan phase 1, étapes 8 et 9
+- `apps/web/src/lib/queries.ts` (TanStack Query settings)
+- Phase 1 plan, steps 8 and 9

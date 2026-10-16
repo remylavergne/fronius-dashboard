@@ -17,7 +17,7 @@ import (
 	"fronius-supervisor/internal/storage"
 )
 
-// fakeReader est une source de détection en mémoire.
+// fakeReader is an in-memory detection source.
 type fakeReader struct {
 	version    internalapi.Version
 	versionErr error
@@ -73,7 +73,7 @@ func (f *fakeReader) calls() (int, int, int) {
 	return f.versionCalls, f.compCalls[internalapi.PowerMeterPath], f.eventCalls
 }
 
-// fakeSink est un magasin en mémoire.
+// fakeSink is an in-memory store.
 type fakeSink struct {
 	mu        sync.Mutex
 	devices   []storage.DeviceRecord
@@ -141,7 +141,7 @@ func (s *fakeSink) snapshot() ([]storage.DeviceRecord, []model.Event, map[string
 	return devices, events, state
 }
 
-// fullyDetected configure une source où tout est présent.
+// fullyDetected configures a source where everything is present.
 func fullyDetected(events ...string) *fakeReader {
 	f := newFakeReader()
 	f.version = internalapi.Version{
@@ -170,7 +170,7 @@ func newDetector(t *testing.T, reader Reader, sink Sink) *Detector {
 }
 
 func TestDetectOnceSuccess(t *testing.T) {
-	reader := fullyDetected(`{"code":"SIM-0","state":"active","severity":"warning","message":"Événement simulé 0"}`)
+	reader := fullyDetected(`{"code":"SIM-0","state":"active","severity":"warning","message":"Simulated event 0"}`)
 	sink := newFakeSink()
 	d := newDetector(t, reader, sink)
 
@@ -180,29 +180,29 @@ func TestDetectOnceSuccess(t *testing.T) {
 	}
 
 	if got.Identity.State != model.StatePresent || got.Identity.Source != internalapi.VersionPath {
-		t.Fatalf("identité = %+v", got.Identity)
+		t.Fatalf("identity = %+v", got.Identity)
 	}
 	if got.Meter.State != model.StatePresent {
-		t.Fatalf("compteur = %+v", got.Meter)
+		t.Fatalf("meter = %+v", got.Meter)
 	}
 	if got.Battery.State != model.StateAbsent {
-		t.Fatalf("batterie = %+v", got.Battery)
+		t.Fatalf("battery = %+v", got.Battery)
 	}
 	if got.DeviceEvents.State != model.StatePresent {
-		t.Fatalf("événements = %+v", got.DeviceEvents)
+		t.Fatalf("events = %+v", got.DeviceEvents)
 	}
 
 	devices, events, state := sink.snapshot()
 	if len(devices) != 1 {
-		t.Fatalf("SaveDevice appelé %d fois, attendu 1", len(devices))
+		t.Fatalf("SaveDevice called %d times, want 1", len(devices))
 	}
 	rec := devices[0]
 	if rec.Model != "Primo GEN24" || rec.Firmware != "1.24.3-sim" || rec.SerialNumber != "SIMULATED-0001" {
-		t.Fatalf("enregistrement = %+v", rec)
+		t.Fatalf("record = %+v", rec)
 	}
 	if rec.MeterState != model.StatePresent || rec.BatteryState != model.StateAbsent ||
 		rec.DeviceEventsState != model.StatePresent || rec.IdentityState != model.StatePresent {
-		t.Fatalf("états enregistrés = %+v", rec)
+		t.Fatalf("recorded states = %+v", rec)
 	}
 	if rec.Source != internalapi.VersionPath ||
 		rec.MeterSource != internalapi.PowerMeterPath ||
@@ -214,19 +214,19 @@ func TestDetectOnceSuccess(t *testing.T) {
 	}
 
 	if len(events) != 1 || events[0].Kind != model.EventDevice {
-		t.Fatalf("événements insérés = %+v", events)
+		t.Fatalf("inserted events = %+v", events)
 	}
-	if events[0].Severity != model.SeverityWarning || events[0].Message != "Événement simulé 0" {
-		t.Fatalf("événement = %+v", events[0])
+	if events[0].Severity != model.SeverityWarning || events[0].Message != "Simulated event 0" {
+		t.Fatalf("event = %+v", events[0])
 	}
 	if !strings.Contains(events[0].Detail, "SIM-0") {
-		t.Fatalf("le détail doit conserver le JSON brut : %q", events[0].Detail)
+		t.Fatalf("the detail must keep the raw JSON: %q", events[0].Detail)
 	}
 	if state[StateLastError] != "" {
 		t.Fatalf("detect_last_error = %q", state[StateLastError])
 	}
 	if state[StateLastReadUTC] == "" {
-		t.Fatal("detect_last_read_utc doit être renseigné")
+		t.Fatal("detect_last_read_utc must be filled in")
 	}
 }
 
@@ -246,25 +246,25 @@ func TestDetectOnceUnauthorizedWithCredentials(t *testing.T) {
 		t.Fatalf("DetectOnce: %v", err)
 	}
 	for name, r := range map[string]model.ResourceDetection{
-		"identité": got.Identity, "compteur": got.Meter, "batterie": got.Battery, "événements": got.DeviceEvents,
+		"identity": got.Identity, "meter": got.Meter, "battery": got.Battery, "events": got.DeviceEvents,
 	} {
 		if r.State != model.StateUnknown {
-			t.Fatalf("%s : état = %q, attendu unknown", name, r.State)
+			t.Fatalf("%s: state = %q, want unknown", name, r.State)
 		}
 		if r.Reason != ReasonUnauthorized {
-			t.Fatalf("%s : motif = %q", name, r.Reason)
+			t.Fatalf("%s: reason = %q", name, r.Reason)
 		}
 	}
 
-	// Avec identifiants, l'état est un vrai doute : les chemins restent interrogés
-	// à chaque cycle (aucun abandon).
+	// With credentials, the state is a real doubt: the paths remain polled
+	// on every cycle (no abandonment).
 	before, _, eventsBefore := reader.calls()
 	if _, err := d.DetectOnce(context.Background()); err != nil {
 		t.Fatalf("DetectOnce: %v", err)
 	}
 	after, _, eventsAfter := reader.calls()
 	if after != before+1 || eventsAfter != eventsBefore+1 {
-		t.Fatalf("les chemins doivent rester interrogés (version %d→%d, événements %d→%d)",
+		t.Fatalf("the paths must remain polled (version %d→%d, events %d→%d)",
 			before, after, eventsBefore, eventsAfter)
 	}
 	_, _, state := sink.snapshot()
@@ -273,8 +273,8 @@ func TestDetectOnceUnauthorizedWithCredentials(t *testing.T) {
 	}
 }
 
-// TestDetectOnceUnauthorizedWithoutCredentialsStopsPolling : un 401 reçu sans
-// identifiants ne doit pas être réémis à chaque cycle.
+// TestDetectOnceUnauthorizedWithoutCredentialsStopsPolling: a 401 received without
+// credentials must not be re-emitted on every cycle.
 func TestDetectOnceUnauthorizedWithoutCredentialsStopsPolling(t *testing.T) {
 	reader := newFakeReader()
 	reader.versionErr = &froniuserr.Error{Kind: froniuserr.KindUnauthorized, HTTPStatus: 401, Endpoint: internalapi.VersionPath}
@@ -290,14 +290,14 @@ func TestDetectOnceUnauthorizedWithoutCredentialsStopsPolling(t *testing.T) {
 		t.Fatalf("DetectOnce: %v", err)
 	}
 	for name, r := range map[string]model.ResourceDetection{
-		"identité": first.Identity, "compteur": first.Meter, "batterie": first.Battery, "événements": first.DeviceEvents,
+		"identity": first.Identity, "meter": first.Meter, "battery": first.Battery, "events": first.DeviceEvents,
 	} {
 		if r.State != model.StateUnknown || r.Reason != ReasonNoCredentials {
-			t.Fatalf("%s : %+v, attendu unknown avec le motif des identifiants absents", name, r)
+			t.Fatalf("%s: %+v, want unknown with the missing-credentials reason", name, r)
 		}
 	}
 
-	// Second cycle : plus aucune requête.
+	// Second cycle: no more requests.
 	before, beforeMeter, beforeEvents := reader.calls()
 	second, err := d.DetectOnce(context.Background())
 	if err != nil {
@@ -305,11 +305,11 @@ func TestDetectOnceUnauthorizedWithoutCredentialsStopsPolling(t *testing.T) {
 	}
 	after, afterMeter, afterEvents := reader.calls()
 	if after != before || afterMeter != beforeMeter || afterEvents != beforeEvents {
-		t.Fatalf("des requêtes ont été réémises (version %d→%d, compteur %d→%d, événements %d→%d)",
+		t.Fatalf("requests were re-emitted (version %d→%d, meter %d→%d, events %d→%d)",
 			before, after, beforeMeter, afterMeter, beforeEvents, afterEvents)
 	}
 	if second.Identity.State != model.StateUnknown || second.Identity.Reason != ReasonNoCredentials {
-		t.Fatalf("seconde identité = %+v", second.Identity)
+		t.Fatalf("second identity = %+v", second.Identity)
 	}
 }
 
@@ -324,17 +324,17 @@ func TestDetectOnceNotFound(t *testing.T) {
 		t.Fatalf("DetectOnce: %v", err)
 	}
 	if got.Identity.State != model.StateUnknown || got.Identity.Reason != ReasonEndpointAbsent {
-		t.Fatalf("identité = %+v", got.Identity)
+		t.Fatalf("identity = %+v", got.Identity)
 	}
 	if got.Identity.Reason == ReasonNoCredentials {
-		t.Fatal("un 404 n'est pas un problème d'identifiants")
+		t.Fatal("a 404 is not a credentials problem")
 	}
 }
 
 func TestDetectOnceTransportError(t *testing.T) {
 	reader := newFakeReader()
-	reader.versionErr = errors.New("connexion refusée")
-	reader.eventsErr = errors.New("délai dépassé")
+	reader.versionErr = errors.New("connection refused")
+	reader.eventsErr = errors.New("deadline exceeded")
 	reader.components[internalapi.PowerMeterPath] = true
 	sink := newFakeSink()
 	d := newDetector(t, reader, sink)
@@ -343,29 +343,29 @@ func TestDetectOnceTransportError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectOnce: %v", err)
 	}
-	if got.Identity.State != model.StateUnknown || !strings.Contains(got.Identity.Reason, "connexion refusée") {
-		t.Fatalf("identité = %+v", got.Identity)
+	if got.Identity.State != model.StateUnknown || !strings.Contains(got.Identity.Reason, "connection refused") {
+		t.Fatalf("identity = %+v", got.Identity)
 	}
 	if got.DeviceEvents.State != model.StateUnknown {
-		t.Fatalf("événements = %+v", got.DeviceEvents)
+		t.Fatalf("events = %+v", got.DeviceEvents)
 	}
 	if got.Meter.State != model.StatePresent {
-		t.Fatalf("le compteur doit rester indépendant de la panne : %+v", got.Meter)
+		t.Fatalf("the meter must remain independent of the failure: %+v", got.Meter)
 	}
 
 	devices, _, state := sink.snapshot()
 	if len(devices) != 1 {
-		t.Fatalf("SaveDevice appelé %d fois", len(devices))
+		t.Fatalf("SaveDevice called %d times", len(devices))
 	}
 	if state[StateLastError] == "" {
-		t.Fatal("detect_last_error doit être renseigné")
+		t.Fatal("detect_last_error must be filled in")
 	}
 }
 
-// TestEventDeduplication : le flux est republié en entier à chaque cycle ; un
-// événement déjà vu ne produit aucune écriture.
+// TestEventDeduplication: the stream is republished in full on every cycle; an
+// already-seen event produces no write.
 func TestEventDeduplication(t *testing.T) {
-	const first = `{"code":"SIM-0","state":"active","severity":"warning","message":"Événement simulé 0"}`
+	const first = `{"code":"SIM-0","state":"active","severity":"warning","message":"Simulated event 0"}`
 	reader := fullyDetected(first)
 	sink := newFakeSink()
 	d := newDetector(t, reader, sink)
@@ -379,12 +379,12 @@ func TestEventDeduplication(t *testing.T) {
 
 	_, events, _ := sink.snapshot()
 	if len(events) != 1 {
-		t.Fatalf("événements insérés = %d, attendu 1 (anti-duplication)", len(events))
+		t.Fatalf("inserted events = %d, want 1 (anti-duplication)", len(events))
 	}
 
-	// Un événement neuf au cycle suivant est inséré.
+	// A new event on the next cycle is inserted.
 	reader.mu.Lock()
-	reader.events = append(reader.events, json.RawMessage(`{"code":"SIM-1","state":"active","message":"Événement simulé 1"}`))
+	reader.events = append(reader.events, json.RawMessage(`{"code":"SIM-1","state":"active","message":"Simulated event 1"}`))
 	reader.mu.Unlock()
 
 	if _, err := d.DetectOnce(context.Background()); err != nil {
@@ -392,16 +392,16 @@ func TestEventDeduplication(t *testing.T) {
 	}
 	_, events, _ = sink.snapshot()
 	if len(events) != 2 {
-		t.Fatalf("événements insérés = %d, attendu 2", len(events))
+		t.Fatalf("inserted events = %d, want 2", len(events))
 	}
 	if events[1].Severity != model.SeverityInfo {
-		t.Fatalf("sévérité de l'événement sans indication = %q", events[1].Severity)
+		t.Fatalf("severity of the event without indication = %q", events[1].Severity)
 	}
 }
 
 func TestEventWithoutTextOrCode(t *testing.T) {
-	// Ni code, ni state, ni message : la clé est l'empreinte du JSON, et le
-	// message est neutre.
+	// Neither code, nor state, nor message: the key is the JSON fingerprint, and
+	// the message is neutral.
 	reader := fullyDetected(`{"state":{"nested":true}}`)
 	sink := newFakeSink()
 	d := newDetector(t, reader, sink)
@@ -411,11 +411,11 @@ func TestEventWithoutTextOrCode(t *testing.T) {
 		t.Fatalf("DetectOnce: %v", err)
 	}
 	if got.DeviceEvents.State != model.StatePresent {
-		t.Fatalf("événements = %+v", got.DeviceEvents)
+		t.Fatalf("events = %+v", got.DeviceEvents)
 	}
 	_, events, _ := sink.snapshot()
 	if len(events) != 1 {
-		t.Fatalf("événements = %d", len(events))
+		t.Fatalf("events = %d", len(events))
 	}
 	if events[0].Message != deviceEventMessage {
 		t.Fatalf("message = %q", events[0].Message)
@@ -425,7 +425,7 @@ func TestEventWithoutTextOrCode(t *testing.T) {
 	keys := len(sink.seen)
 	sink.mu.Unlock()
 	if keys != 1 {
-		t.Fatalf("clés = %d", keys)
+		t.Fatalf("keys = %d", keys)
 	}
 }
 
@@ -439,58 +439,58 @@ func TestNoEventsIsPresentNotUnknown(t *testing.T) {
 		t.Fatalf("DetectOnce: %v", err)
 	}
 	if got.DeviceEvents.State != model.StatePresent {
-		t.Fatalf("aucun événement actif ne doit pas être un doute : %+v", got.DeviceEvents)
+		t.Fatalf("no active event must not be a doubt: %+v", got.DeviceEvents)
 	}
 	devices, events, _ := sink.snapshot()
 	if len(events) != 0 {
-		t.Fatalf("événements = %d, attendu 0", len(events))
+		t.Fatalf("events = %d, want 0", len(events))
 	}
 	if devices[0].DeviceEventsState != model.StatePresent {
-		t.Fatal("la lecture aboutie doit être enregistrée « présent »")
+		t.Fatal("a successful read must be recorded `present`")
 	}
 }
 
 func TestEventKeyPriorities(t *testing.T) {
-	// Priorité observée dans le bundle (docs/ENDPOINTS.md) : `uuid`, puis
-	// `prefix`-`eventID`, puis `code`, puis `state`, puis l'empreinte du JSON.
+	// Priority observed in the bundle (docs/ENDPOINTS.md): `uuid`, then
+	// `prefix`-`eventID`, then `code`, then `state`, then the JSON fingerprint.
 	key, err := eventKey(json.RawMessage(`{"uuid":"evt-1","code":"C1","state":"S1"}`))
 	if err != nil || key != "device:evt-1" {
-		t.Fatalf("clé = %q (err=%v)", key, err)
+		t.Fatalf("key = %q (err=%v)", key, err)
 	}
 	key, err = eventKey(json.RawMessage(`{"prefix":"GEN24","eventID":21,"code":"C1"}`))
 	if err != nil || key != "device:GEN24-21" {
-		t.Fatalf("clé = %q (err=%v)", key, err)
+		t.Fatalf("key = %q (err=%v)", key, err)
 	}
-	// Préfixe absent : pas de clé composite inventée, repli sur l'empreinte.
+	// Prefix absent: no invented composite key, fallback on the fingerprint.
 	key, err = eventKey(json.RawMessage(`{"eventID":21}`))
 	if err != nil || !strings.HasPrefix(key, "device:") || len(key) != len("device:")+16 {
-		t.Fatalf("clé = %q (err=%v)", key, err)
+		t.Fatalf("key = %q (err=%v)", key, err)
 	}
 	key, err = eventKey(json.RawMessage(`{"code":"C1","state":"S1"}`))
 	if err != nil || key != "device:C1" {
-		t.Fatalf("clé = %q (err=%v)", key, err)
+		t.Fatalf("key = %q (err=%v)", key, err)
 	}
 	key, err = eventKey(json.RawMessage(`{"state":"S1","message":"m"}`))
 	if err != nil || key != "device:S1" {
-		t.Fatalf("clé = %q (err=%v)", key, err)
+		t.Fatalf("key = %q (err=%v)", key, err)
 	}
 	key, err = eventKey(json.RawMessage(`{"message":"m","severity":2}`))
 	if err != nil || !strings.HasPrefix(key, "device:") || len(key) != len("device:")+16 {
-		t.Fatalf("clé = %q (err=%v)", key, err)
+		t.Fatalf("key = %q (err=%v)", key, err)
 	}
-	if _, err := eventKey(json.RawMessage(`{pas du json`)); err == nil {
-		t.Fatal("un JSON illisible doit produire une erreur")
+	if _, err := eventKey(json.RawMessage(`{not json`)); err == nil {
+		t.Fatal("an unreadable JSON must produce an error")
 	}
 }
 
-// Deux événements actifs de même `code` mais d'instances différentes doivent être
-// enregistrés tous les deux : une clé de déduplication fondée sur `code` seul en
-// perdait un, puisque `code` désigne un *type* d'événement.
+// Two active events with the same `code` but different instances must both be
+// recorded: a deduplication key based on `code` alone lost one,
+// since `code` designates an event *type*.
 func TestSameCodeDistinctInstancesAreBothRecorded(t *testing.T) {
 	payload := func(uuid string) string {
 		return `{"uuid":"` + uuid + `","severity":2,"viewer":1,"timestamp":1789000000,` +
 			`"activeUntil":0,"category":"GEN24","confirmable":true,` +
-			`"label":"Surchauffe module","sourceID":65549,"prefix":"GEN24","eventID":21,` +
+			`"label":"Module overtemperature","sourceID":65549,"prefix":"GEN24","eventID":21,` +
 			`"code":"SIM-HEAT"}`
 	}
 	reader := fullyDetected(payload("evt-a"), payload("evt-b"))
@@ -502,17 +502,17 @@ func TestSameCodeDistinctInstancesAreBothRecorded(t *testing.T) {
 	}
 	_, events, _ := sink.snapshot()
 	if len(events) != 2 {
-		t.Fatalf("événements = %d, attendu 2 (instances distinctes)", len(events))
+		t.Fatalf("events = %d, want 2 (distinct instances)", len(events))
 	}
 	for _, e := range events {
 		if e.Severity != model.SeverityWarning {
-			t.Fatalf("sévérité entière 2 → %q, attendu %q", e.Severity, model.SeverityWarning)
+			t.Fatalf("integer severity 2 → %q, want %q", e.Severity, model.SeverityWarning)
 		}
-		if e.Message != "Surchauffe module" {
-			t.Fatalf("message = %q, attendu le libellé `label`", e.Message)
+		if e.Message != "Module overtemperature" {
+			t.Fatalf("message = %q, want the `label` text", e.Message)
 		}
 		if !strings.Contains(e.Detail, `"confirmable":true`) {
-			t.Fatalf("le détail brut doit conserver la charge utile : %q", e.Detail)
+			t.Fatalf("the raw detail must keep the payload: %q", e.Detail)
 		}
 	}
 
@@ -521,25 +521,25 @@ func TestSameCodeDistinctInstancesAreBothRecorded(t *testing.T) {
 	_, hasB := sink.seen["device:evt-b"]
 	sink.mu.Unlock()
 	if !hasA || !hasB {
-		t.Fatalf("clés enregistrées = %v, attendu device:evt-a et device:evt-b", sink.seen)
+		t.Fatalf("recorded keys = %v, want device:evt-a and device:evt-b", sink.seen)
 	}
 }
 
 func TestSeverityMapping(t *testing.T) {
 	cases := map[string]model.Severity{
-		// Forme réelle de l'appareil : `severity` est un entier (bundle,
+		// Real device shape: `severity` is an integer (bundle,
 		// `getEventLevel` l. 135728-135733).
 		`{"severity":1}`: model.SeverityError,
 		`{"severity":2}`: model.SeverityWarning,
 		`{"severity":3}`: model.SeverityInfo,
-		// Entier hors barème (0, 4, …) ou non entier : aucune gravité inventée.
+		// Integer out of range (0, 4, …) or non-integer: no invented severity.
 		`{"severity":0}`:   model.SeverityInfo,
 		`{"severity":4}`:   model.SeverityInfo,
 		`{"severity":2.5}`: model.SeverityInfo,
-		// Entier sérialisé en chaîne, par tolérance.
+		// Integer serialized as a string, by tolerance.
 		`{"severity":"1"}`: model.SeverityError,
 		`{"severity":"2"}`: model.SeverityWarning,
-		// Libellés texte (simulateur, fixtures).
+		// Text labels (simulator, fixtures).
 		`{"severity":"warning"}`: model.SeverityWarning,
 		`{"severity":"WARN"}`:    model.SeverityWarning,
 		`{"severity":"error"}`:   model.SeverityError,
@@ -551,7 +551,7 @@ func TestSeverityMapping(t *testing.T) {
 		`{"severity":"notice"}`:  model.SeverityInfo,
 		`{}`:                     model.SeverityInfo,
 		`{"severity":[]}`:        model.SeverityInfo,
-		// La première clé interprétable gagne : `severity` avant `level`.
+		// The first interpretable key wins: `severity` before `level`.
 		`{"severity":2,"level":"error"}`:       model.SeverityWarning,
 		`{"severity":"notice","level":"warn"}`: model.SeverityInfo,
 	}
@@ -561,13 +561,13 @@ func TestSeverityMapping(t *testing.T) {
 			t.Fatalf("Unmarshal(%s): %v", body, err)
 		}
 		if got := severityOf(fields); got != want {
-			t.Fatalf("severityOf(%s) = %q, attendu %q", body, got, want)
+			t.Fatalf("severityOf(%s) = %q, want %q", body, got, want)
 		}
 	}
 }
 
 func TestDetailIsBounded(t *testing.T) {
-	long := `{"code":"SIM-LONG","padding":"` + strings.Repeat("é", 4000) + `"}`
+	long := `{"code":"SIM-LONG","padding":"` + strings.Repeat("Ж", 4000) + `"}`
 	reader := fullyDetected(long)
 	sink := newFakeSink()
 	d := newDetector(t, reader, sink)
@@ -577,32 +577,32 @@ func TestDetailIsBounded(t *testing.T) {
 	}
 	_, events, _ := sink.snapshot()
 	if len(events) != 1 {
-		t.Fatalf("événements = %d", len(events))
+		t.Fatalf("events = %d", len(events))
 	}
 	if len(events[0].Detail) > maxDetailBytes {
-		t.Fatalf("détail = %d octets", len(events[0].Detail))
+		t.Fatalf("detail = %d bytes", len(events[0].Detail))
 	}
 	if strings.ContainsRune(events[0].Detail, '\uFFFD') {
-		t.Fatal("la troncature a cassé un caractère UTF-8")
+		t.Fatal("the truncation broke a UTF-8 character")
 	}
 }
 
 func TestPersistenceErrorsAreReportedNotFatal(t *testing.T) {
 	reader := fullyDetected()
 	sink := newFakeSink()
-	sink.saveErr = errors.New("disque plein")
+	sink.saveErr = errors.New("disk full")
 	d := newDetector(t, reader, sink)
 
 	_, err := d.DetectOnce(context.Background())
 	if err == nil {
-		t.Fatal("une erreur de persistance doit être remontée")
+		t.Fatal("a persistence error must be reported")
 	}
-	if !strings.Contains(err.Error(), "disque plein") {
-		t.Fatalf("erreur = %v", err)
+	if !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
-// TestRunStopsOnContextCancellation : l'arrêt est un cas nominal.
+// TestRunStopsOnContextCancellation: stopping is a nominal case.
 func TestRunStopsOnContextCancellation(t *testing.T) {
 	reader := fullyDetected()
 	sink := newFakeSink()
@@ -613,30 +613,30 @@ func TestRunStopsOnContextCancellation(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- d.Run(ctx) }()
 
-	// Laisse tourner au moins un cycle.
+	// Let at least one cycle run.
 	time.Sleep(20 * time.Millisecond)
 	cancel()
 
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Run a retourné %v, attendu nil", err)
+			t.Fatalf("Run returned %v, want nil", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run ne s'est pas arrêté")
+		t.Fatal("Run did not stop")
 	}
 
 	devices, _, _ := sink.snapshot()
 	if len(devices) == 0 {
-		t.Fatal("au moins un cycle devait s'exécuter")
+		t.Fatal("at least one cycle had to run")
 	}
 }
 
-// TestRunSurvivesPersistenceErrors : une erreur d'un cycle n'arrête pas la boucle.
+// TestRunSurvivesPersistenceErrors: an error in a cycle does not stop the loop.
 func TestRunSurvivesPersistenceErrors(t *testing.T) {
 	reader := fullyDetected()
 	sink := newFakeSink()
-	sink.saveErr = errors.New("disque plein")
+	sink.saveErr = errors.New("disk full")
 	d := newDetector(t, reader, sink)
 	d.Interval = time.Millisecond
 
@@ -651,14 +651,14 @@ func TestRunSurvivesPersistenceErrors(t *testing.T) {
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Run a retourné %v", err)
+			t.Fatalf("Run returned %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run ne s'est pas arrêté")
+		t.Fatal("Run did not stop")
 	}
 
 	count, _, _ := reader.calls()
 	if count < 2 {
-		t.Fatalf("cycles exécutés = %d, attendu au moins 2 (la boucle a dû s'arrêter)", count)
+		t.Fatalf("cycles executed = %d, want at least 2 (the loop must have stopped)", count)
 	}
 }

@@ -4,33 +4,33 @@ import { KpiCard } from './KpiCard'
 import { formatKWh, formatW } from '@/lib/format'
 
 describe('KpiCard', () => {
-  it('affiche la valeur en watts avec son unité', () => {
-    render(<KpiCard label="Production instantanée" value={formatW(450)} hint="il y a 2 s" />)
+  it('shows the value in watts with its unit', () => {
+    render(<KpiCard label="Instantaneous production" value={formatW(450)} hint="2 s ago" />)
 
-    expect(screen.getByText('Production instantanée')).toBeInTheDocument()
+    expect(screen.getByText('Instantaneous production')).toBeInTheDocument()
     expect(screen.getByText('450')).toBeInTheDocument()
     expect(screen.getByText('W')).toBeInTheDocument()
-    expect(screen.getByText('il y a 2 s')).toBeInTheDocument()
+    expect(screen.getByText('2 s ago')).toBeInTheDocument()
   })
 
-  it('bascule en kilowatts au-delà de 1 kW', () => {
-    render(<KpiCard label="Production instantanée" value={formatW(3406.9)} hint="il y a 1 s" />)
+  it('switches to kilowatts beyond 1 kW', () => {
+    render(<KpiCard label="Instantaneous production" value={formatW(3406.9)} hint="1 s ago" />)
 
-    expect(screen.getByText('3,41')).toBeInTheDocument()
+    expect(screen.getByText('3.41')).toBeInTheDocument()
     expect(screen.getByText('kW')).toBeInTheDocument()
-    // La valeur brute en watts ne doit pas apparaître : pas de double échelle.
-    expect(screen.queryByText('3406,9')).not.toBeInTheDocument()
+    // The raw value in watts must not appear: no double scale.
+    expect(screen.queryByText('3406.9')).not.toBeInTheDocument()
   })
 
-  it('affiche les énergies en kWh', () => {
-    render(<KpiCard label="Énergie du jour" value={formatKWh(8747.4)} hint="—" />)
+  it('shows energies in kWh', () => {
+    render(<KpiCard label="Energy of the day" value={formatKWh(8747.4)} hint="—" />)
 
-    expect(screen.getByText('8,75')).toBeInTheDocument()
+    expect(screen.getByText('8.75')).toBeInTheDocument()
     expect(screen.getByText('kWh')).toBeInTheDocument()
   })
 
-  it('n’affiche jamais « 0 » pour une mesure absente', () => {
-    const { container } = render(<KpiCard label="Production instantanée" value={formatW(null)} hint="valeur absente" />)
+  it('never shows "0" for an absent measurement', () => {
+    const { container } = render(<KpiCard label="Instantaneous production" value={formatW(null)} hint="absent value" />)
 
     expect(screen.getByText('—')).toBeInTheDocument()
     expect(container.textContent).not.toContain('0')

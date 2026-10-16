@@ -1,24 +1,24 @@
 /**
- * Accès aux traductions.
+ * Translation access.
  *
- * La phase 1 ne sert qu'une langue. `useT()` lit le dictionnaire de la locale
- * courante et retourne une fonction de traduction typée sur les clés de `fr`.
- * Ajouter une langue revient à fournir un second dictionnaire et à rendre la
- * locale réactive (contexte) — aucun composant n'a à changer.
+ * Phase 1 serves a single language. `useT()` reads the current locale's
+ * dictionary and returns a translation function typed on the keys of `en`.
+ * Adding a language means supplying a second dictionary and making the locale
+ * reactive (context) — no component has to change.
  */
-import { fr } from './fr'
-import type { Dictionary, TranslationKey } from './fr'
+import { en } from './en'
+import type { Dictionary, TranslationKey } from './en'
 
-export type Locale = 'fr'
+export type Locale = 'en'
 
-/** Langues disponibles, prêtes pour l'i18n de la phase 4. */
-export const dictionaries: Record<Locale, Dictionary> = { fr }
+/** Available languages, ready for phase 4 i18n. */
+export const dictionaries: Record<Locale, Dictionary> = { en }
 
-const currentLocale: Locale = 'fr'
+const currentLocale: Locale = 'en'
 
 export type Translator = {
   locale: Locale
-  /** Retourne la traduction, ou la clé elle-même si elle manque (rend l'écart visible). */
+  /** Returns the translation, or the key itself when missing (makes the gap visible). */
   t: (key: TranslationKey) => string
 }
 

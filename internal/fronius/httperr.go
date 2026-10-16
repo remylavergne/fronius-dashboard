@@ -1,9 +1,9 @@
-// Classification des erreurs HTTP/transport partagée par tous les clients
-// Fronius (Solar API et chemins internes).
+// Classification of HTTP/transport errors shared by all Fronius clients
+// (Solar API and internal paths).
 //
-// Un seul endroit décide à quelle nature d'erreur correspond un code HTTP : les
-// deux clients classent donc identiquement, et le collecteur comme le détecteur
-// peuvent réagir par froniuserr.KindOf sans inspecter de chaînes.
+// A single place decides which kind of error an HTTP code maps to: both
+// clients therefore classify identically, and the collector as well as the
+// detector can react through froniuserr.KindOf without inspecting strings.
 package fronius
 
 import (
@@ -15,10 +15,10 @@ import (
 	"fronius-supervisor/internal/fronius/froniuserr"
 )
 
-// ClassifyStatus traduit les codes HTTP non 200.
+// ClassifyStatus translates non-200 HTTP codes.
 //
-// 429 est classé avec les erreurs serveur : l'appareil demande explicitement de
-// ralentir, et le collecteur applique alors son backoff.
+// 429 is classified with the server errors: the device explicitly asks to
+// slow down, and the collector then applies its backoff.
 func ClassifyStatus(endpoint string, status int) error {
 	kind := froniuserr.KindServer
 	switch status {
@@ -30,7 +30,7 @@ func ClassifyStatus(endpoint string, status int) error {
 	return &froniuserr.Error{Kind: kind, Endpoint: endpoint, HTTPStatus: status}
 }
 
-// ClassifyTransport distingue l'expiration du délai des autres pannes réseau.
+// ClassifyTransport distinguishes timeout expiry from other network failures.
 func ClassifyTransport(ctx context.Context, endpoint string, err error) error {
 	kind := froniuserr.KindTransport
 	var netErr net.Error

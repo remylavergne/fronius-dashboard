@@ -22,7 +22,7 @@ SOFTWARE.
 
 ---
 
-Note : le fichier `references/fronius-original.js` est un artefact logiciel du
-fabricant (Fronius International GmbH) conservé comme source primaire de
-documentation technique. Il est explicitement exclu du périmètre de la licence
-MIT ci-dessus ; voir `docs/SOURCES.md`.
+Note: the file `references/fronius-original.js` is a software artefact of the
+manufacturer (Fronius International GmbH) kept as the primary source of
+technical documentation. It is explicitly excluded from the scope of the MIT
+licence above; see `docs/SOURCES.md`.

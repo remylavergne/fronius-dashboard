@@ -1,10 +1,8 @@
-// Package froniuserr définit les erreurs typées partagées par tous les clients
-// Fronius.
+// Package froniuserr defines the typed errors shared by all Fronius clients.
 //
-// Objectif : permettre à l'appelant (collecteur, API REST) de réagir à la
-// nature d'une panne sans inspecter de chaînes de caractères, et garantir
-// qu'aucune erreur ne peut masquer un secret : aucun champ ne contient de
-// valeur d'authentification.
+// Goal: allow the caller (collector, REST API) to react to the nature of a
+// failure without inspecting strings, and guarantee that no error can mask a
+// secret: no field contains an authentication value.
 package froniuserr
 
 import (
@@ -13,38 +11,38 @@ import (
 	"strings"
 )
 
-// Kind classe la nature d'une erreur.
+// Kind classifies the nature of an error.
 type Kind string
 
 const (
-	// KindNotFound : l'endpoint n'existe pas sur ce firmware (HTTP 404).
+	// KindNotFound: the endpoint does not exist on this firmware (HTTP 404).
 	KindNotFound Kind = "not_found"
-	// KindUnauthorized : authentification requise ou refusée (HTTP 401/403).
+	// KindUnauthorized: authentication required or refused (HTTP 401/403).
 	KindUnauthorized Kind = "unauthorized"
-	// KindServer : erreur interne de l'appareil (HTTP 5xx).
+	// KindServer: internal device error (HTTP 5xx).
 	KindServer Kind = "server"
-	// KindDecode : corps illisible, tronqué ou de forme inattendue.
+	// KindDecode: unreadable, truncated or unexpected-shape body.
 	KindDecode Kind = "decode"
-	// KindTimeout : délai d'attente dépassé.
+	// KindTimeout: deadline exceeded.
 	KindTimeout Kind = "timeout"
-	// KindTransport : panne réseau (connexion refusée, DNS, TLS…).
+	// KindTransport: network failure (connection refused, DNS, TLS…).
 	KindTransport Kind = "transport"
-	// KindStatus : l'enveloppe est bien formée mais l'appareil signale une
-	// erreur applicative (Head.Status.Code != 0).
+	// KindStatus: the envelope is well formed but the device reports an
+	// application error (Head.Status.Code != 0).
 	KindStatus Kind = "device_status"
-	// KindReadOnly : une requête non-GET a tenté d'atteindre l'appareil.
+	// KindReadOnly: a non-GET request attempted to reach the device.
 	KindReadOnly Kind = "readonly_violation"
 )
 
-// Error est l'erreur typée des clients Fronius.
+// Error is the typed error of the Fronius clients.
 type Error struct {
 	Kind        Kind
 	Endpoint    string
 	HTTPStatus  int
-	Code        int    // Head.Status.Code du firmware
+	Code        int    // Head.Status.Code from the firmware
 	Reason      string // Head.Status.Reason
 	UserMessage string // Head.Status.UserMessage
-	Err         error  // cause sous-jacente, éventuellement nil
+	Err         error  // underlying cause, possibly nil
 }
 
 func (e *Error) Error() string {
@@ -70,11 +68,11 @@ func (e *Error) Error() string {
 	return "fronius: " + strings.Join(parts, " | ")
 }
 
-// Unwrap expose la cause sous-jacente (errors.Is/As).
+// Unwrap exposes the underlying cause (errors.Is/As).
 func (e *Error) Unwrap() error { return e.Err }
 
-// Is permet à errors.Is de comparer deux erreurs par nature : une KindNotFound
-// peut ainsi être recherchée sans connaître le corps de l'erreur.
+// Is lets errors.Is compare two errors by nature: a KindNotFound can thus be
+// searched for without knowing the body of the error.
 func (e *Error) Is(target error) bool {
 	var other *Error
 	if !errors.As(target, &other) {
@@ -83,7 +81,7 @@ func (e *Error) Is(target error) bool {
 	return e.Kind == other.Kind
 }
 
-// KindOf retourne la nature d'une erreur, même enveloppée.
+// KindOf returns the nature of an error, even wrapped.
 func KindOf(err error) (Kind, bool) {
 	var e *Error
 	if errors.As(err, &e) {

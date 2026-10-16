@@ -5,14 +5,14 @@ import type { TranslationKey } from '@/i18n'
 import { formatAge, formatDateTime } from '@/lib/format'
 import type { Detection, Device, DetectionResource } from '@/lib/schema'
 
-/** Libellés des trois états de détection. */
+/** Labels of the three detection states. */
 const STATE_KEYS: Record<string, TranslationKey> = {
   present: 'state.present',
   absent: 'state.absent',
   unknown: 'state.unknown',
 }
 
-/** Ressources affichées, dans un ordre stable. */
+/** Displayed resources, in a stable order. */
 const RESOURCES: { key: string; label: TranslationKey; pick: (d: Detection) => DetectionResource }[] = [
   { key: 'meter', label: 'system.resource.meter', pick: (d) => d.meter },
   { key: 'battery', label: 'system.resource.battery', pick: (d) => d.battery },
@@ -26,14 +26,15 @@ export type DevicePanelProps = {
 }
 
 /**
- * Identité de l'onduleur et état des détections matérielles.
+ * Inverter identity and hardware detection status.
  *
- * Invariants repris du modèle :
- *  - un champ absent (`null`) est rendu « — », jamais « 0 » ni « inconnu » ;
- *  - « non déterminé » et « absent » sont deux libellés distincts : le premier
- *    dit qu'aucune conclusion n'a été tirée, le second que l'appareil a répondu
- *    et ne signale pas le composant ;
- *  - une détection non « présent » porte toujours son motif, affiché tel quel.
+ * Invariants taken from the model:
+ *  - an absent field (`null`) is rendered "—", never "0" nor "unknown";
+ *  - "unknown" and "absent" are two distinct labels: the first says that no
+ *    conclusion has been drawn, the second that the device answered and does
+ *    not report the component;
+ *  - a detection that is not "present" always carries its reason, displayed
+ *    as-is.
  */
 export function DevicePanel({ device, detection }: DevicePanelProps) {
   const { t } = useT()
@@ -106,7 +107,7 @@ export function DevicePanel({ device, detection }: DevicePanelProps) {
           </dl>
           {detection?.last_error ? (
             <p className="mt-3 text-destructive" data-testid="detection-last-error">
-              {t('system.lastError')} : {detection.last_error}
+              {t('system.lastError')}: {detection.last_error}
             </p>
           ) : null}
         </div>

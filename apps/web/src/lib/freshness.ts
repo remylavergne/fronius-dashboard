@@ -1,15 +1,15 @@
 /**
- * Décision de péremption affichée à l'utilisateur.
+ * Staleness decision displayed to the user.
  *
- * En marche nominale, c'est le serveur qui tranche (`meta.stale`), car lui seul
- * connaît son seuil et son horloge. Mais quand l'API est injoignable, elle ne
- * peut plus rien dire : conserver son dernier verdict afficherait « Données à
- * jour » sur des données qui ne le sont plus depuis longtemps. On applique alors
- * la même règle localement — âge de la dernière mesure comparé au seuil.
+ * In nominal operation, it is the server that decides (`meta.stale`), because
+ * it alone knows its threshold and its clock. But when the API is unreachable,
+ * it can no longer say anything: keeping its last verdict would display "Fresh
+ * data" on data that has not been fresh for a long time. We then apply the same
+ * rule locally — age of the last measurement compared to the threshold.
  */
 import type { Meta } from './schema'
 
-/** Seuil de repli si l'API n'a pas communiqué le sien. */
+/** Fallback threshold if the API has not communicated its own. */
 const FALLBACK_STALE_AFTER_S = 30
 
 export function resolveStale(meta: Meta | undefined, apiUnreachable: boolean, now: number = Date.now()): boolean | undefined {
@@ -19,8 +19,8 @@ export function resolveStale(meta: Meta | undefined, apiUnreachable: boolean, no
 
   const sampledAt = meta?.sampled_at
   if (!sampledAt) {
-    // Aucun instant de référence : impossible d'affirmer quoi que ce soit, mais
-    // l'absence de réponse de l'API est déjà signalée par le bandeau.
+    // No reference instant: impossible to assert anything, but the absence of
+    // an API response is already reported by the banner.
     return undefined
   }
   const sampledMs = Date.parse(sampledAt)

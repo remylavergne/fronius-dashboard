@@ -1,102 +1,99 @@
-# Développement
+# Development
 
-## Prérequis
+## Prerequisites
 
-| Outil | Version | Remarque |
+| Tool | Version | Note |
 |---|---|---|
-| Go | celle de `go.mod` (1.26) | imposée par `modernc.org/sqlite` |
+| Go | that of `go.mod` (1.26) | imposed by `modernc.org/sqlite` |
 | Node | 26 | |
 | pnpm | 10 | |
-| SQLite | 3.x (CLI) | uniquement pour inspecter la base à la main |
+| SQLite | 3.x (CLI) | only to inspect the database by hand |
 
-`CGO_ENABLED=0` doit rester possible : c'est la raison du choix du pilote
-`modernc.org/sqlite` (pur Go). Aucune dépendance C.
+`CGO_ENABLED=0` must remain possible: this is the reason for the choice of the
+`modernc.org/sqlite` driver (pure Go). No C dependency.
 
-## Démarrage
+## Getting started
 
-Trois terminaux, depuis la racine du dépôt :
+Three terminals, from the repository root:
 
 ```bash
-make dev-sim     # simulateur Fronius sur 127.0.0.1:8081
-make dev-api     # froniusd : API sur 127.0.0.1:8080 + collecteur
-make dev-web     # interface Vite sur 127.0.0.1:5173
+make dev-sim     # Fronius simulator on 127.0.0.1:8081
+make dev-api     # froniusd: API on 127.0.0.1:8080 + collector
+make dev-web     # Vite interface on 127.0.0.1:5173
 ```
 
-Pour exercer l'authentification Digest, démarrer le simulateur avec un compte et
-`froniusd` avec les identifiants correspondants :
+To exercise Digest authentication, start the simulator with an account and
+`froniusd` with the matching credentials:
 
 ```bash
 go run ./cmd/fronius-sim --api-user sim --api-password simpass --with-meter
 
-# le mot de passe du simulateur est « simpass », lu sans le laisser dans
-# l'historique du shell
+# the simulator password is "simpass", read without leaving it in the
+# shell history
 export FRONIUS_DEVICE_USER=sim
 read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
 go run ./cmd/froniusd
 ```
 
-Aucun exemple de cette documentation n'écrit de mot de passe après un `=` : la
-CI refuse toute ligne de ce type, et l'historique du shell est un journal comme
-un autre.
+No example in this documentation writes a password after an `=`: CI refuses any
+such line, and the shell history is a log like any other.
 
-`make seed` remplit la base avec 7 jours d'historique du simulateur
-(`froniusd --backfill-days 7`). Le simulateur doit tourner, et l'adresse doit
-être locale : le remplissage d'historique refuse une cible non locale sans
+`make seed` fills the database with 7 days of simulator history
+(`froniusd --backfill-days 7`). The simulator must be running, and the address must
+be local: history filling refuses a non-local target without
 `--force-backfill`.
 
-Puis <http://127.0.0.1:5173>. Le proxy Vite relaie `/api` vers `froniusd` : le
-frontend n'a jamais l'adresse de l'onduleur.
+Then <http://127.0.0.1:5173>. The Vite proxy relays `/api` to `froniusd`: the
+frontend never has the inverter address.
 
-## Commandes
+## Commands
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `make build` | binaires statiques dans `bin/` + build du frontend |
-| `make test` | `go test ./... -race` puis `vitest --run` |
-| `make test-go` / `make test-web` | une seule moitié |
-| `make test-perf` | critère de l'ADR 0006 : un an de mesures (≈6,3 M de lignes) et < 200 ms par requête ; lent, à la demande |
-| `make lint` | `go vet ./...` puis `oxlint` |
+| `make build` | static binaries in `bin/` + frontend build |
+| `make test` | `go test ./... -race` then `vitest --run` |
+| `make test-go` / `make test-web` | only one half |
+| `make test-perf` | criterion of ADR 0006: one year of measurements (≈6.3 M rows) and < 200 ms per request; slow, on demand |
+| `make lint` | `go vet ./...` then `oxlint` |
 | `make fmt` | `go fmt ./...` |
-| `make seed` | 7 jours d'historique simulé |
-| `make clean` | supprime `bin/`, `data/`, `coverage/`, `apps/web/dist` |
+| `make seed` | 7 days of simulated history |
+| `make clean` | removes `bin/`, `data/`, `coverage/`, `apps/web/dist` |
 
 ## Configuration
 
-**Aucun fichier de configuration en phase 1** : uniquement des variables
-d'environnement, toutes documentées dans `.env.example`. `config.Load()` refuse
-au démarrage toute valeur illisible ou incohérente, et liste **toutes** les
-fautes d'un coup.
+**No configuration file in phase 1**: only environment variables, all documented
+in `.env.example`. `config.Load()` refuses at startup any unreadable or inconsistent
+value, and lists **all** faults at once.
 
-Variables principales :
+Main variables:
 
-| Variable | Défaut | Rôle |
+| Variable | Default | Role |
 |---|---|---|
-| `FRONIUS_SOLARAPI_URL` | `http://127.0.0.1:8081` | source des mesures |
-| `FRONIUS_HTTP_ADDR` | `127.0.0.1:8080` | écoute de l'API REST |
-| `FRONIUS_ALLOW_REMOTE` | `0` | lève la garde d'écoute non locale (ADR 0005) |
-| `FRONIUS_DB_PATH` | `./data/fronius.db` | base SQLite |
-| `FRONIUS_TZ` | `Europe/Brussels` | journées locales |
-| `FRONIUS_POLL_INTERVAL` | `5s` | cadence de collecte (minimum 1 s) |
-| `FRONIUS_POLL_JITTER` | `500ms` | amplitude du jitter |
-| `FRONIUS_HTTP_TIMEOUT` | `5s` | délai par requête |
-| `FRONIUS_RETENTION_DAYS` | `0` | `0` = conservation illimitée |
-| `FRONIUS_STALE_AFTER` | `30s` | seuil de péremption affiché |
-| `FRONIUS_WEB_DIR` | *(vide)* | assets statiques servis par `froniusd` |
-| `FRONIUS_DEVICE_USER` | *(vide)* | utilisateur des chemins internes de l'appareil |
-| `FRONIUS_DEVICE_PASSWORD` | *(vide)* | mot de passe Digest, du type `secret.String` (masqué partout sauf au calcul de `HA1`) |
-| `FRONIUS_DETECT_INTERVAL` | `60s` | cadence de détection (identité, compteur, batterie, événements ; minimum 5 s) |
-| `FRONIUS_LOG_LEVEL` / `_FORMAT` | `info` / `text` | journalisation |
+| `FRONIUS_SOLARAPI_URL` | `http://127.0.0.1:8081` | source of measurements |
+| `FRONIUS_HTTP_ADDR` | `127.0.0.1:8080` | REST API listen address |
+| `FRONIUS_ALLOW_REMOTE` | `0` | lifts the non-local listen guard (ADR 0005) |
+| `FRONIUS_DB_PATH` | `./data/fronius.db` | SQLite database |
+| `FRONIUS_TZ` | `Europe/Brussels` | local days |
+| `FRONIUS_POLL_INTERVAL` | `5s` | collection cadence (minimum 1 s) |
+| `FRONIUS_POLL_JITTER` | `500ms` | jitter amplitude |
+| `FRONIUS_HTTP_TIMEOUT` | `5s` | timeout per request |
+| `FRONIUS_RETENTION_DAYS` | `0` | `0` = unlimited retention |
+| `FRONIUS_STALE_AFTER` | `30s` | staleness threshold displayed |
+| `FRONIUS_WEB_DIR` | *(empty)* | static assets served by `froniusd` |
+| `FRONIUS_DEVICE_USER` | *(empty)* | user of the device's internal paths |
+| `FRONIUS_DEVICE_PASSWORD` | *(empty)* | Digest password, of type `secret.String` (masked everywhere except the computation of `HA1`) |
+| `FRONIUS_DETECT_INTERVAL` | `60s` | detection cadence (identity, meter, battery, events; minimum 5 s) |
+| `FRONIUS_LOG_LEVEL` / `_FORMAT` | `info` / `text` | logging |
 
-Les deux identifiants vont ensemble : n'en définir qu'un est refusé au
-démarrage. Ils sont lus par `froniusd` et `fronius-probe`, jamais par le
-frontend ni par l'API REST. Le client officiel interroge ces mêmes chemins toutes
-les 5 s ; 60 s suffisent ici, une identité et une présence changeant rarement.
+The two credentials go together: defining only one is refused at
+startup. They are read by `froniusd` and `fronius-probe`, never by the
+frontend nor by the REST API. The official client queries these same paths every
+5 s; 60 s is enough here, since an identity and a presence rarely change.
 
-La cadence de la maintenance (agrégation horaire toutes les 5 min, purge
-quotidienne à partir de 03:00) n'est **pas** configurable : elle ne dépend
-d'aucun besoin d'exploitation, et l'exposer ajouterait une variable à valider,
-documenter et tester pour aucun gain. Seule la profondeur de rétention
-(`FRONIUS_RETENTION_DAYS`) est réglable (ADR 0006).
+The maintenance cadence (hourly aggregation every 5 min, daily purge
+from 03:00) is **not** configurable: it depends on no operational need,
+and exposing it would add a variable to validate, document and test for no gain.
+Only the retention depth (`FRONIUS_RETENTION_DAYS`) is adjustable (ADR 0006).
 
 ## Tests
 
@@ -105,64 +102,64 @@ go test ./... -race
 pnpm --dir apps/web test --run
 ```
 
-Organisation :
+Organization:
 
-- `cmd/fronius-sim` : déterminisme (mêmes paramètres ⇒ même corps), modes de
-  panne, `/sim/health` ;
-- `internal/config` : défauts, surcharges, valeurs invalides, garde d'écoute ;
-- `internal/fronius{,/solarapi}` : refus des méthodes non-GET ; cartographie des
-  erreurs HTTP, JSON et délais ; fixtures de contrat ;
-- `internal/fronius/digest` : vecteur RFC 2617, forme exacte de l'en-tête, nombre
-  de requêtes par cas (défi frais, nonce en cache, nonce périmé, 401 sans défi,
-  401 persistant), compteur `nc`, concurrence ;
-- `internal/fronius/internalapi` : liste blanche (refus hors liste, zéro requête
-  émise), extraction tolérante de l'identité, enveloppe `Cgi`, corps illisible
-  jamais confondu avec une absence ;
-- `internal/secret` : masquage dans `fmt`, `slog` et JSON ;
-- `internal/detect` : trois états de détection, anti-duplication des événements,
-  abandon d'un chemin après un 401 sans identifiants ;
-- `internal/model` : unités, qualité, capacités, invariant « pas de zéro » ;
-- `internal/storage` : migrations idempotentes, upsert, buckets, changement
-  d'heure (23 h / 25 h), purge, et équivalence des lectures avant/après
-  agrégation (bornes au milieu d'une heure, heure ouverte, heure vide, rattrapage
-  d'un historique importé) ; `make test-perf` porte la mesure sur un an ;
-- `internal/maintenance` : borne de rétention alignée sur l'heure, une seule
-  purge par journée locale, rétention `0` sans purge, erreurs qui n'arrêtent pas
-  la boucle, passe réelle sur une base SQLite ;
-- `internal/collector` : jitter, backoff, anti-duplication des événements,
-  annulation, absence d'insertion en cas d'échec ;
-- `internal/api` : 404/405, validation des paramètres, états vides, capacités
-  dérivées de la détection, nullabilité de l'identité, hygiène (aucune route ne
-  restitue le mot de passe) ;
-- `apps/web` : formats, mapping de graphique (trous), client API (3 classes
-  d'échec), fraîcheur, composants.
+- `cmd/fronius-sim`: determinism (same parameters ⇒ same body), failure
+  modes, `/sim/health`;
+- `internal/config`: defaults, overrides, invalid values, listen guard;
+- `internal/fronius{,/solarapi}`: refusal of non-GET methods; mapping of
+  HTTP, JSON and timeout errors; contract fixtures;
+- `internal/fronius/digest`: RFC 2617 vector, exact header shape, number
+  of requests per case (fresh challenge, cached nonce, stale nonce, 401 without challenge,
+  persistent 401), `nc` counter, concurrency;
+- `internal/fronius/internalapi`: allowlist (refusal outside the list, zero request
+  emitted), tolerant extraction of identity, `Cgi` envelope, unreadable body
+  never confused with an absence;
+- `internal/secret`: masking in `fmt`, `slog` and JSON;
+- `internal/detect`: three detection states, event deduplication,
+  abandoning a path after a 401 without credentials;
+- `internal/model`: units, quality, capabilities, "no zero" invariant;
+- `internal/storage`: idempotent migrations, upsert, buckets, daylight-saving
+  change (23 h / 25 h), purge, and equivalence of reads before/after
+  aggregation (bounds in the middle of an hour, open hour, empty hour, catch-up
+  of an imported history); `make test-perf` carries the measurement over one year;
+- `internal/maintenance`: retention boundary aligned on the hour, a single
+  purge per local day, retention `0` without purge, errors that do not stop
+  the loop, a real pass on a SQLite database;
+- `internal/collector`: jitter, backoff, event deduplication,
+  cancellation, no insertion on failure;
+- `internal/api`: 404/405, parameter validation, empty states, capabilities
+  derived from detection, identity nullability, hygiene (no route
+  returns the password);
+- `apps/web`: formats, chart mapping (gaps), API client (3 failure
+  classes), freshness, components.
 
-Les tests n'ouvrent aucune connexion vers un appareil : le simulateur et
-`httptest` couvrent tout. Un test ne doit jamais appeler l'onduleur réel.
+The tests open no connection to a device: the simulator and
+`httptest` cover everything. A test must never call the real inverter.
 
 ## Conventions
 
-- Branche `main`, Conventional Commits (`feat(scope):`, `fix(scope):`,
-  `docs:`, `test(scope):`, `chore:`), un commit par étape livrable.
-- Identifiants de code en anglais ; commentaires, documentation et interface en
-  français.
-- `TODO.md` et `CHANGELOG.md` sont tenus à jour à chaque étape ; les décisions
-  structurantes passent par un ADR dans `docs/adr/`.
-- Une information nouvelle est documentée **avec sa source et sa version de
-  firmware** (`docs/SOURCES.md`), et jamais présentée comme une permission
-  firmware si elle vient du client.
+- Branch `main`, Conventional Commits (`feat(scope):`, `fix(scope):`,
+  `docs:`, `test(scope):`, `chore:`), one commit per deliverable step.
+- Code identifiers in English; comments, documentation, interface and commit
+  messages in English.
+- `TODO.md` and `CHANGELOG.md` are kept up to date at each step; structuring
+  decisions go through an ADR in `docs/adr/`.
+- New information is documented **with its source and firmware version**
+  (`docs/SOURCES.md`), and never presented as a firmware permission if it comes from
+  the client.
 
-## Pièges rencontrés (à ne pas réintroduire)
+## Pitfalls encountered (not to be reintroduced)
 
-- **`connectNulls={false}` ne suffit pas.** Recharts ne coupe la courbe que s'il
-  reçoit des points `null` : un bucket absent de la réponse rend ses voisins
-  adjacents, et la courbe est tracée en travers du trou. D'où le complément de
-  grille dans `chart.ts`, piloté par `meta.step_s`.
-- **Le pas d'une série ne se déduit pas des données.** L'écart entre deux
-  buckets renvoyés est faux dès qu'un bucket manque ; le serveur expose donc le
-  pas réellement appliqué.
-- **Un bucket n'est pas une mesure.** `count` et `missing` décrivent des
-  **échantillons** ; `power_pv_avg_w` décrit la puissance moyenne du bucket.
-- **Ne pas déduire le pas de `time.Time.AddDate`** pour les journées locales :
-  une soustraction de 24 h traverse le changement d'heure. Utiliser
+- **`connectNulls={false}` is not enough.** Recharts cuts the curve only if it
+  receives `null` points: a bucket missing from the response makes its neighbors
+  adjacent, and the curve is drawn across the gap. Hence the grid fill in
+  `chart.ts`, driven by `meta.step_s`.
+- **The step of a series cannot be deduced from the data.** The gap between two
+  returned buckets is wrong as soon as a bucket is missing; the server therefore exposes the
+  step actually applied.
+- **A bucket is not a measurement.** `count` and `missing` describe
+  **samples**; `power_pv_avg_w` describes the average power of the bucket.
+- **Do not deduce the step from `time.Time.AddDate`** for local days:
+  subtracting 24 h crosses the daylight-saving change. Use
   `time.Date(…, loc)`.

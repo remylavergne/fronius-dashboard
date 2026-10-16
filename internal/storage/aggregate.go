@@ -8,43 +8,43 @@ import (
 	"time"
 )
 
-// aggStateKey est la clé d'état qui porte la borne d'eau : début de la
-// première heure non agrégée.
+// aggStateKey is the state key that carries the watermark: start of the
+// first non-aggregated hour.
 const aggStateKey = "agg_last_hour_utc"
 
-// RollupResult décrit une passe d'agrégation.
+// RollupResult describes an aggregation pass.
 type RollupResult struct {
-	From      time.Time // début de la première heure recalculée (incluse)
-	To        time.Time // début de l'heure ouverte (exclue : elle est encore alimentée)
-	Buckets   int64     // lignes écrites ou mises à jour dans agg_hour
-	Watermark time.Time // borne d'eau après la passe (zéro si aucune)
+	From      time.Time // start of the first recomputed hour (inclusive)
+	To        time.Time // start of the open hour (exclusive: it is still being fed)
+	Buckets   int64     // rows written or updated in agg_hour
+	Watermark time.Time // watermark after the pass (zero if none)
 }
 
-// Rollup met à jour les agrégats des heures closes (phase 3, ADR 0006).
+// Rollup updates the aggregates of the closed hours (phase 3, ADR 0006).
 //
-// Les lectures agrégées de l'API étaient calculées en parcourant `samples` à
-// chaque requête : correct, mais proportionnel au volume conservé (≈6,3
-// millions de lignes pour un an). Cette passe matérialise la réduction
-// minimale qui permet de répondre sans parcourir les mesures brutes.
+// The aggregated reads of the API used to be computed by walking `samples` on
+// every request: correct, but proportional to the retained volume (≈6.3
+// million rows for one year). This pass materialises the minimal reduction
+// that makes it possible to answer without walking the raw measurements.
 //
-// Trois invariants portent la correction :
+// Three invariants carry the correctness:
 //
-//  1. La borne d'eau (aggStateKey) est toujours alignée sur l'heure UTC. Toute
-//     heure qui lui est strictement antérieure possède une ligne dans agg_hour
-//     si et seulement si elle contient des mesures : une heure agrégée n'est
-//     jamais partielle, et une heure sans mesure n'a pas de ligne (aucun bucket
-//     vide n'est émis, donc aucune interpolation n'est inventée).
-//  2. Une heure n'est servie depuis agg_hour que si elle est entière et
-//     contenue dans la plage demandée (voir aggSplit) : un agrégat couvre
-//     l'heure complète alors qu'une lecture brute ne voit que [from, to).
-//  3. Toute écriture de mesure sous la borne d'eau abaisse celle-ci (voir
-//     lowerWatermark) : une mesure plus ancienne que la borne ne peut jamais
-//     rester non agrégée derrière elle.
+//  1. The watermark (aggStateKey) is always aligned on the UTC hour. Any hour
+//     strictly earlier than it has a row in agg_hour if and only if it contains
+//     measurements: an aggregated hour is never partial, and an hour without a
+//     measurement has no row (no empty bucket is emitted, so no interpolation
+//     is invented).
+//  2. An hour is served from agg_hour only if it is whole and contained in the
+//     requested range (see aggSplit): an aggregate covers the full hour while a
+//     raw read only sees [from, to).
+//  3. Any measurement write below the watermark lowers it (see
+//     lowerWatermark): a measurement older than the watermark can never
+//     stay non-aggregated behind it.
 //
-// La passe repart de la borne d'eau et s'arrête au début de l'heure ouverte :
-// une heure encore alimentée n'est jamais agrégée, donc une lecture n'a jamais
-// à décider si un agrégat est à jour. Sans borne d'eau (base neuve), la passe
-// repart du plus ancien échantillon conservé.
+// The pass starts again from the watermark and stops at the start of the open
+// hour: an hour still being fed is never aggregated, so a read never has to
+// decide whether an aggregate is up to date. Without a watermark (fresh
+// database), the pass starts again from the oldest retained sample.
 func (s *Store) Rollup(ctx context.Context, now time.Time) (RollupResult, error) {
 	open := now.UTC().Truncate(time.Hour)
 
@@ -60,9 +60,9 @@ func (s *Store) Rollup(ctx context.Context, now time.Time) (RollupResult, error)
 			return RollupResult{}, err
 		}
 		if !ok {
-			// Aucune mesure conservée : rien à agréger, et surtout aucune
-			// borne d'eau à écrire, sans quoi un historique importé plus tard
-			// serait lu comme déjà agrégé.
+			// No measurement retained: nothing to aggregate, and above all no
+			// watermark to write, without which a history imported later
+			// would be read as already aggregated.
 			return RollupResult{From: open, To: open}, nil
 		}
 		from = oldest.Truncate(time.Hour)
@@ -90,24 +90,24 @@ func (s *Store) Rollup(ctx context.Context, now time.Time) (RollupResult, error)
 			max_energy_day_wh = excluded.max_energy_day_wh`,
 		formatTS(from), formatTS(open))
 	if err != nil {
-		return RollupResult{}, fmt.Errorf("agrégation horaire: %w", err)
+		return RollupResult{}, fmt.Errorf("hourly aggregation: %w", err)
 	}
 	buckets, err := res.RowsAffected()
 	if err != nil {
-		return RollupResult{}, fmt.Errorf("comptage des agrégats: %w", err)
+		return RollupResult{}, fmt.Errorf("counting aggregates: %w", err)
 	}
 
-	// La borne d'eau n'avance qu'après l'écriture des agrégats : si le
-	// processus s'interrompt entre les deux, la passe suivante recalcule la
-	// même plage (l'écriture est idempotente).
+	// The watermark advances only after the aggregates are written: if the
+	// process is interrupted between the two, the next pass recomputes the
+	// same range (the write is idempotent).
 	if err := s.SetState(ctx, aggStateKey, formatTS(open)); err != nil {
 		return RollupResult{}, err
 	}
 	return RollupResult{From: from, To: open, Buckets: buckets, Watermark: open}, nil
 }
 
-// aggWatermark retourne la borne d'eau enregistrée. Le second retour vaut
-// false si elle est absente ou illisible.
+// aggWatermark returns the recorded watermark. The second return is
+// false if it is absent or unreadable.
 func (s *Store) aggWatermark(ctx context.Context) (time.Time, bool, error) {
 	var v string
 	err := s.db.QueryRowContext(ctx, `SELECT v FROM collector_state WHERE k = ?`, aggStateKey).Scan(&v)
@@ -115,58 +115,58 @@ func (s *Store) aggWatermark(ctx context.Context) (time.Time, bool, error) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {
-		return time.Time{}, false, fmt.Errorf("lecture de la borne d'eau: %w", err)
+		return time.Time{}, false, fmt.Errorf("reading the watermark: %w", err)
 	}
 	t, err := parseTS(v)
 	if err != nil {
 		return time.Time{}, false, nil
 	}
-	// La borne d'eau est toujours alignée sur l'heure (invariant 1) : une
-	// valeur inattendue est ramenée à l'heure pleine inférieure, ce qui
-	// provoque un recalcul d'une heure au pire — jamais un agrégat partiel,
-	// qu'une lecture croirait complet.
+	// The watermark is always aligned on the hour (invariant 1): an
+	// unexpected value is brought down to the lower whole hour, which
+	// causes a recomputation of one hour at worst — never a partial
+	// aggregate, which a read would believe complete.
 	return t.UTC().Truncate(time.Hour), true, nil
 }
 
-// oldestSample retourne le plus ancien échantillon conservé.
+// oldestSample returns the oldest retained sample.
 func (s *Store) oldestSample(ctx context.Context) (time.Time, bool, error) {
 	var v sql.NullString
 	if err := s.db.QueryRowContext(ctx, `SELECT MIN(ts_utc) FROM samples`).Scan(&v); err != nil {
-		return time.Time{}, false, fmt.Errorf("recherche du plus ancien échantillon: %w", err)
+		return time.Time{}, false, fmt.Errorf("searching for the oldest sample: %w", err)
 	}
 	if !v.Valid {
 		return time.Time{}, false, nil
 	}
 	t, err := parseTS(v.String)
 	if err != nil {
-		return time.Time{}, false, fmt.Errorf("horodatage inattendu %q: %w", v.String, err)
+		return time.Time{}, false, fmt.Errorf("unexpected timestamp %q: %w", v.String, err)
 	}
 	return t, true, nil
 }
 
-// lowerWatermark abaisse la borne d'eau si un échantillon plus ancien qu'elle
-// vient d'être écrit. Une mesure sous la borne doit toujours être couverte par
-// la passe suivante, sinon elle resterait éternellement absente des agrégats
-// alors que la lecture les croit complets.
+// lowerWatermark lowers the watermark if a sample older than it has just
+// been written. A measurement below the watermark must always be covered by
+// the next pass, otherwise it would remain forever absent from the aggregates
+// while the read believes them complete.
 func (s *Store) lowerWatermark(ctx context.Context, ts time.Time) error {
 	floor := formatTS(ts.UTC().Truncate(time.Hour))
 	if _, err := s.db.ExecContext(ctx,
 		`UPDATE collector_state SET v = ? WHERE k = ? AND v > ?`, floor, aggStateKey, floor); err != nil {
-		return fmt.Errorf("abaissement de la borne d'eau: %w", err)
+		return fmt.Errorf("lowering the watermark: %w", err)
 	}
 	return nil
 }
 
-// aggSplit détermine la plage horaire servie par les agrégats.
+// aggSplit determines the hourly range served by the aggregates.
 //
-// Une heure ne peut venir d'un agrégat que si elle est entière et contenue
-// dans [from, to) : elle doit donc commencer à une heure pleine (d'où la borne
-// haute ceilHour(from)) et se terminer avant min(to, borne d'eau), elle-même
-// tronquée à l'heure. Le reste de la plage — l'entête partielle et l'heure
-// ouverte — est lu dans les mesures brutes.
+// An hour can come from an aggregate only if it is whole and contained in
+// [from, to): it must therefore start on a whole hour (hence the upper bound
+// ceilHour(from)) and end before min(to, watermark), itself truncated to the
+// hour. The rest of the range — the partial header and the open hour — is read
+// from the raw measurements.
 //
-// Le troisième retour vaut false lorsque aucune heure pleine n'est éligible :
-// la lecture se fait alors entièrement sur les mesures brutes.
+// The third return is false when no whole hour is eligible: the read is then
+// done entirely on the raw measurements.
 func aggSplit(from, to, closed time.Time, enabled bool) (aggFrom, aggTo time.Time, ok bool) {
 	if !enabled {
 		return time.Time{}, time.Time{}, false
@@ -183,7 +183,7 @@ func aggSplit(from, to, closed time.Time, enabled bool) (aggFrom, aggTo time.Tim
 	return start, end, true
 }
 
-// ceilHour retourne le début de la première heure pleine à partir de t.
+// ceilHour returns the start of the first whole hour from t.
 func ceilHour(t time.Time) time.Time {
 	h := t.UTC().Truncate(time.Hour)
 	if h.Before(t) {
@@ -192,11 +192,12 @@ func ceilHour(t time.Time) time.Time {
 	return h
 }
 
-// bucketAcc accumule les réductions d'un bucket.
+// bucketAcc accumulates the reductions of one bucket.
 //
-// La moyenne n'est pas accumulée : elle se recompose depuis sumPV et countPV,
-// ce qui rend le résultat identique que les lignes viennent des mesures brutes
-// ou des agrégats (moyenne des moyennes pondérée par les effectifs).
+// The average is not accumulated: it is recomposed from sumPV and countPV,
+// which makes the result identical whether the rows come from the raw
+// measurements or from the aggregates (average of averages weighted by the
+// counts).
 type bucketAcc struct {
 	countAll int
 	countPV  int
@@ -205,7 +206,7 @@ type bucketAcc struct {
 	maxPV    *float64
 }
 
-// add fusionne une réduction partielle dans l'accumulateur.
+// add merges a partial reduction into the accumulator.
 func (a *bucketAcc) add(countAll, countPV int, sum float64, min, max *float64) {
 	a.countAll += countAll
 	a.countPV += countPV
@@ -218,7 +219,7 @@ func (a *bucketAcc) add(countAll, countPV int, sum float64, min, max *float64) {
 	}
 }
 
-// bucket retourne le point agrégé correspondant.
+// bucket returns the corresponding aggregated point.
 func (a *bucketAcc) bucket(start time.Time) Bucket {
 	b := Bucket{Start: start, Count: a.countAll, Missing: a.countAll - a.countPV}
 	if a.countPV > 0 {
@@ -229,7 +230,7 @@ func (a *bucketAcc) bucket(start time.Time) Bucket {
 	return b
 }
 
-// rawBucketsInto accumule les buckets calculés sur les mesures brutes.
+// rawBucketsInto accumulates the buckets computed on the raw measurements.
 func (s *Store) rawBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, from, to time.Time, step int64) error {
 	if !from.Before(to) {
 		return nil
@@ -243,7 +244,7 @@ func (s *Store) rawBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 		GROUP BY bucket
 		ORDER BY bucket`, step, step, formatTS(from), formatTS(to))
 	if err != nil {
-		return fmt.Errorf("série temporelle: %w", err)
+		return fmt.Errorf("time series: %w", err)
 	}
 	defer rows.Close()
 
@@ -255,18 +256,18 @@ func (s *Store) rawBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 			sum, min, max sql.NullFloat64
 		)
 		if err := rows.Scan(&key, &countAll, &countPV, &sum, &min, &max); err != nil {
-			return fmt.Errorf("lecture d'un bucket: %w", err)
+			return fmt.Errorf("reading a bucket: %w", err)
 		}
 		bucketAccFor(acc, key).add(countAll, countPV, sum.Float64,
 			nullPtr(min), nullPtr(max))
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("parcours des buckets: %w", err)
+		return fmt.Errorf("iterating buckets: %w", err)
 	}
 	return nil
 }
 
-// aggBucketsInto accumule les buckets calculés sur les agrégats horaires.
+// aggBucketsInto accumulates the buckets computed on the hourly aggregates.
 func (s *Store) aggBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, from, to time.Time, step int64) error {
 	if !from.Before(to) {
 		return nil
@@ -280,7 +281,7 @@ func (s *Store) aggBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 		GROUP BY bucket
 		ORDER BY bucket`, step, step, formatTS(from), formatTS(to))
 	if err != nil {
-		return fmt.Errorf("série temporelle agrégée: %w", err)
+		return fmt.Errorf("aggregated time series: %w", err)
 	}
 	defer rows.Close()
 
@@ -292,19 +293,19 @@ func (s *Store) aggBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 			sum, min, max sql.NullFloat64
 		)
 		if err := rows.Scan(&key, &countAll, &countPV, &sum, &min, &max); err != nil {
-			return fmt.Errorf("lecture d'un bucket agrégé: %w", err)
+			return fmt.Errorf("reading an aggregated bucket: %w", err)
 		}
 		bucketAccFor(acc, key).add(countAll, countPV, sum.Float64,
 			nullPtr(min), nullPtr(max))
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("parcours des buckets agrégés: %w", err)
+		return fmt.Errorf("iterating aggregated buckets: %w", err)
 	}
 	return nil
 }
 
-// rawHourlyEnergyInto accumule le maximum d'énergie journalière par heure UTC
-// à partir des mesures brutes.
+// rawHourlyEnergyInto accumulates the maximum daily energy per UTC hour
+// from the raw measurements.
 func (s *Store) rawHourlyEnergyInto(ctx context.Context, acc map[string]float64, from, to time.Time) error {
 	if !from.Before(to) {
 		return nil
@@ -316,7 +317,7 @@ func (s *Store) rawHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 		GROUP BY hour_utc
 		ORDER BY hour_utc`, formatTS(from), formatTS(to))
 	if err != nil {
-		return fmt.Errorf("énergie journalière: %w", err)
+		return fmt.Errorf("daily energy: %w", err)
 	}
 	defer rows.Close()
 
@@ -324,7 +325,7 @@ func (s *Store) rawHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 		var hour string
 		var v sql.NullFloat64
 		if err := rows.Scan(&hour, &v); err != nil {
-			return fmt.Errorf("lecture d'un maximum horaire: %w", err)
+			return fmt.Errorf("reading an hourly maximum: %w", err)
 		}
 		if !v.Valid {
 			continue
@@ -336,8 +337,8 @@ func (s *Store) rawHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 	return rows.Err()
 }
 
-// aggHourlyEnergyInto accumule le maximum d'énergie journalière par heure UTC
-// à partir des agrégats horaires.
+// aggHourlyEnergyInto accumulates the maximum daily energy per UTC hour
+// from the hourly aggregates.
 func (s *Store) aggHourlyEnergyInto(ctx context.Context, acc map[string]float64, from, to time.Time) error {
 	if !from.Before(to) {
 		return nil
@@ -348,7 +349,7 @@ func (s *Store) aggHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 		WHERE bucket_utc >= ? AND bucket_utc < ? AND max_energy_day_wh IS NOT NULL
 		ORDER BY bucket_utc`, formatTS(from), formatTS(to))
 	if err != nil {
-		return fmt.Errorf("énergie journalière agrégée: %w", err)
+		return fmt.Errorf("aggregated daily energy: %w", err)
 	}
 	defer rows.Close()
 
@@ -356,7 +357,7 @@ func (s *Store) aggHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 		var hour string
 		var v sql.NullFloat64
 		if err := rows.Scan(&hour, &v); err != nil {
-			return fmt.Errorf("lecture d'un maximum horaire agrégé: %w", err)
+			return fmt.Errorf("reading an aggregated hourly maximum: %w", err)
 		}
 		if !v.Valid {
 			continue
@@ -368,7 +369,7 @@ func (s *Store) aggHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 	return rows.Err()
 }
 
-// bucketAccFor retourne l'accumulateur d'un bucket, en le créant au besoin.
+// bucketAccFor returns the accumulator of a bucket, creating it if needed.
 func bucketAccFor(acc map[int64]*bucketAcc, key int64) *bucketAcc {
 	a, ok := acc[key]
 	if !ok {
@@ -378,7 +379,7 @@ func bucketAccFor(acc map[int64]*bucketAcc, key int64) *bucketAcc {
 	return a
 }
 
-// bucketsFromAcc matérialise les accumulateurs en points triés par instant.
+// bucketsFromAcc materialises the accumulators into points sorted by instant.
 func bucketsFromAcc(acc map[int64]*bucketAcc) []Bucket {
 	keys := make([]int64, 0, len(acc))
 	for k := range acc {
@@ -393,7 +394,7 @@ func bucketsFromAcc(acc map[int64]*bucketAcc) []Bucket {
 	return out
 }
 
-// nullPtr convertit une valeur nullable en pointeur, nil si absente.
+// nullPtr converts a nullable value into a pointer, nil if absent.
 func nullPtr(v sql.NullFloat64) *float64 {
 	if !v.Valid {
 		return nil

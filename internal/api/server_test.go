@@ -107,7 +107,7 @@ func decodeMeta(t *testing.T, env respEnvelope) respMeta {
 		t.Fatalf("Unmarshal(meta): %v", err)
 	}
 	if m.GeneratedAt == "" {
-		t.Fatal("meta.generated_at manquant")
+		t.Fatal("meta.generated_at missing")
 	}
 	if _, err := time.Parse(apiTimeLayout, m.GeneratedAt); err != nil {
 		t.Fatalf("meta.generated_at = %q : %v", m.GeneratedAt, err)
@@ -137,16 +137,16 @@ func insertSample(t *testing.T, store *storage.Store, ts time.Time, pv float64, 
 func TestUnknownPathAndMethod(t *testing.T) {
 	_, srv, _ := newTestServer(t, nil)
 
-	code, _, body := doRequest(t, srv, http.MethodGet, "/api/v1/inconnu")
+	code, _, body := doRequest(t, srv, http.MethodGet, "/api/v1/unknown")
 	if code != http.StatusNotFound {
-		t.Fatalf("chemin inconnu : status = %d", code)
+		t.Fatalf("unknown path: status = %d", code)
 	}
 	env := decodeEnvelope(t, body)
 	if env.Error == nil || env.Error.Code != CodeNotFound {
-		t.Fatalf("corps = %s", body)
+		t.Fatalf("body = %s", body)
 	}
 
-	// Une méthode non autorisée sur un chemin connu.
+	// A method not allowed on a known path.
 	code, hdr, body := doRequest(t, srv, http.MethodPost, "/api/v1/health")
 	if code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST /api/v1/health : status = %d", code)
@@ -158,9 +158,9 @@ func TestUnknownPathAndMethod(t *testing.T) {
 	if env.Error == nil || env.Error.Code != CodeMethodNotAllowed {
 		t.Fatalf("corps = %s", body)
 	}
-	// Une réponse d'erreur ne porte pas de champ data.
+	// An error response carries no data field.
 	if strings.Contains(string(body), `"data"`) {
-		t.Fatalf("l'erreur ne doit pas porter de champ data : %s", body)
+		t.Fatalf("the error must not carry a data field: %s", body)
 	}
 	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		t.Fatalf("Content-Type = %q", ct)
@@ -171,7 +171,7 @@ func TestHealth(t *testing.T) {
 	srv, httpSrv, store := newTestServer(t, nil)
 	ctx := context.Background()
 
-	// Aucune donnée, aucun cycle : état nominal.
+	// No data, no cycle: nominal state.
 	code, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/health")
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
@@ -189,7 +189,7 @@ func TestHealth(t *testing.T) {
 	}
 	decodeMeta(t, env)
 
-	// Échantillons + cycle réussi.
+	// Samples + successful cycle.
 	insertSample(t, store, time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC), 100, 500)
 	if err := store.SetState(ctx, "last_success_utc", "2026-10-16T07:00:00Z"); err != nil {
 		t.Fatalf("SetState: %v", err)
@@ -215,14 +215,14 @@ func TestHealth(t *testing.T) {
 		t.Fatalf("last_success_utc = %q", health.Collector.LastSuccessUTC)
 	}
 
-	// Un cycle en échec dégrade l'état sans faire échouer l'endpoint.
+	// A failing cycle degrades the state without failing the endpoint.
 	if err := store.InsertRun(ctx, storage.RunRecord{
 		StartedUTC: time.Date(2026, 10, 16, 7, 5, 0, 0, time.UTC), DurationMS: 5001, OK: false,
-		HTTPStatus: 503, ErrorKind: "server", Error: "service indisponible",
+		HTTPStatus: 503, ErrorKind: "server", Error: "service unavailable",
 	}); err != nil {
 		t.Fatalf("InsertRun: %v", err)
 	}
-	if err := store.SetState(ctx, "last_error", "service indisponible"); err != nil {
+	if err := store.SetState(ctx, "last_error", "service unavailable"); err != nil {
 		t.Fatalf("SetState: %v", err)
 	}
 
@@ -232,7 +232,7 @@ func TestHealth(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if health.Status != "degraded" {
-		t.Fatalf("status = %q, attendu degraded", health.Status)
+		t.Fatalf("status = %q, wanted degraded", health.Status)
 	}
 	if health.Collector.LastError == "" || health.Collector.LastRunMS != 5001 {
 		t.Fatalf("collector = %+v", health.Collector)
@@ -253,13 +253,13 @@ func TestSystemWithoutDeviceRow(t *testing.T) {
 	if err := json.Unmarshal(env.Data, &sys); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	// Aucune ligne d'appareil : « non déterminé » n'est pas un objet vide.
+	// No device row: "unknown" is not an empty object.
 	if sys.Device != nil {
-		t.Fatalf("device doit être null sans lecture aboutie : %+v", sys.Device)
+		t.Fatalf("device must be null without a successful read: %+v", sys.Device)
 	}
 	if sys.SolarAPIURL != "http://127.0.0.1:8081" || sys.TZ != "Europe/Brussels" ||
 		sys.PollIntervalS != 5 || sys.StaleAfterS != 30 || sys.APIAddr != "127.0.0.1:8080" {
-		t.Fatalf("système = %+v", sys)
+		t.Fatalf("system = %+v", sys)
 	}
 	if sys.GoVersion == "" || sys.Version != "test-version" {
 		t.Fatalf("versions = %+v", sys)
@@ -267,21 +267,21 @@ func TestSystemWithoutDeviceRow(t *testing.T) {
 	decodeMeta(t, env)
 
 	if sys.Detection == nil {
-		t.Fatal("detection doit toujours être présente")
+		t.Fatal("detection must always be present")
 	}
 	for name, res := range map[string]detectionResourceDTO{
-		"compteur": sys.Detection.Meter, "batterie": sys.Detection.Battery,
-		"api interne": sys.Detection.InternalAPI, "événements": sys.Detection.DeviceEvents,
+		"meter": sys.Detection.Meter, "battery": sys.Detection.Battery,
+		"internal api": sys.Detection.InternalAPI, "events": sys.Detection.DeviceEvents,
 	} {
 		if res.State != string(model.StateUnknown) {
-			t.Fatalf("%s : état = %q, attendu unknown", name, res.State)
+			t.Fatalf("%s: state = %q, wanted unknown", name, res.State)
 		}
 		if res.Reason == "" {
-			t.Fatalf("%s : un état non déterminé doit porter un motif", name)
+			t.Fatalf("%s: an unknown state must carry a reason", name)
 		}
 	}
 	if sys.Detection.ReadAtUTC != nil {
-		t.Fatalf("read_at_utc doit être null sans lecture : %v", *sys.Detection.ReadAtUTC)
+		t.Fatalf("read_at_utc must be null without a read: %v", *sys.Detection.ReadAtUTC)
 	}
 }
 
@@ -302,12 +302,12 @@ func TestSystemWithDeviceRow(t *testing.T) {
 		BatteryState:       model.StatePresent,
 		BatterySource:      internalapi.BatteryPath,
 		DeviceEventsState:  model.StateAbsent,
-		DeviceEventsReason: "corps illisible",
+		DeviceEventsReason: "unreadable body",
 	}
 	if err := store.SaveDevice(ctx, record); err != nil {
 		t.Fatalf("SaveDevice: %v", err)
 	}
-	if err := store.SetState(ctx, detect.StateLastError, "detect_last_error factice"); err != nil {
+	if err := store.SetState(ctx, detect.StateLastError, "fake detect_last_error"); err != nil {
 		t.Fatalf("SetState: %v", err)
 	}
 
@@ -319,7 +319,7 @@ func TestSystemWithDeviceRow(t *testing.T) {
 	}
 
 	if sys.Device == nil {
-		t.Fatal("device doit être renseigné après une lecture")
+		t.Fatal("device must be populated after a read")
 	}
 	if sys.Device.Model == nil || *sys.Device.Model != "Fronius Primo GEN24 3.6 Plus" {
 		t.Fatalf("model = %v", sys.Device.Model)
@@ -339,29 +339,29 @@ func TestSystemWithDeviceRow(t *testing.T) {
 
 	d := sys.Detection
 	if d == nil {
-		t.Fatal("detection manquante")
+		t.Fatal("detection missing")
 	}
 	if d.Meter.State != "present" || d.Meter.Reason != "" {
-		t.Fatalf("compteur = %+v", d.Meter)
+		t.Fatalf("meter = %+v", d.Meter)
 	}
 	if d.Battery.State != "present" {
-		t.Fatalf("batterie = %+v", d.Battery)
+		t.Fatalf("battery = %+v", d.Battery)
 	}
-	// « absent » n'est pas « non déterminé » : l'état et le motif diffèrent.
-	if d.DeviceEvents.State != "absent" || d.DeviceEvents.Reason != "corps illisible" {
-		t.Fatalf("événements = %+v", d.DeviceEvents)
+	// "absent" is not "unknown": the state and the reason differ.
+	if d.DeviceEvents.State != "absent" || d.DeviceEvents.Reason != "unreadable body" {
+		t.Fatalf("events = %+v", d.DeviceEvents)
 	}
 	if d.InternalAPI.State != "present" {
-		t.Fatalf("api interne = %+v", d.InternalAPI)
+		t.Fatalf("internal api = %+v", d.InternalAPI)
 	}
-	if d.LastError != "detect_last_error factice" {
+	if d.LastError != "fake detect_last_error" {
 		t.Fatalf("last_error = %q", d.LastError)
 	}
 	if d.ReadAtUTC == nil || *d.ReadAtUTC != "2026-10-16T07:00:00.000Z" {
 		t.Fatalf("detection.read_at_utc = %v", d.ReadAtUTC)
 	}
 
-	// Les capacités suivent la même détection.
+	// The capabilities follow the same detection.
 	_, _, capBody := doRequest(t, httpSrv, http.MethodGet, "/api/v1/capabilities")
 	capEnv := decodeEnvelope(t, capBody)
 	var caps []capabilityDTO
@@ -374,33 +374,33 @@ func TestSystemWithDeviceRow(t *testing.T) {
 	}
 	for _, id := range []string{"grid.import_export", "load.consumption", "autoconsumption.ratio"} {
 		if !byID[id].Available {
-			t.Fatalf("%s doit être disponible avec un compteur détecté (motif %q)", id, byID[id].Reason)
+			t.Fatalf("%s must be available with a detected meter (reason %q)", id, byID[id].Reason)
 		}
 	}
 	if byID["device.identity"].Available != true {
-		t.Fatalf("device.identity doit être disponible (motif %q)", byID["device.identity"].Reason)
+		t.Fatalf("device.identity must be available (reason %q)", byID["device.identity"].Reason)
 	}
 	if byID["device.events"].Available {
-		t.Fatalf("device.events ne doit pas être disponible sur un état « absent » (motif %q)", byID["device.events"].Reason)
+		t.Fatalf("device.events must not be available on an \"absent\" state (reason %q)", byID["device.events"].Reason)
 	}
 	battery := byID["battery.soc"]
 	if battery.Available {
-		t.Fatal("battery.soc ne doit jamais être disponible en phase 2")
+		t.Fatal("battery.soc must never be available in phase 2")
 	}
 	if battery.Reason != model.ReasonBatteryReadout {
-		t.Fatalf("battery.soc : motif = %q", battery.Reason)
+		t.Fatalf("battery.soc: reason = %q", battery.Reason)
 	}
 	if byID["device.identity"].Reason != "" {
-		t.Fatalf("device.identity : réserve inattendue %q", byID["device.identity"].Reason)
+		t.Fatalf("device.identity: unexpected reserve %q", byID["device.identity"].Reason)
 	}
 }
 
-// TestSystemDeviceEmptyStringsBecomeNull : une chaîne vide en base n'est pas une
-// valeur : elle arrive en null, jamais « » ni « inconnu ».
+// TestSystemDeviceEmptyStringsBecomeNull: an empty string in the database is not a
+// value: it arrives as null, never as "" nor "unknown".
 func TestSystemDeviceEmptyStringsBecomeNull(t *testing.T) {
 	_, httpSrv, store := newTestServer(t, nil)
 
-	// Identité lue mais aucun champ d'identité trouvé dans la réponse.
+	// Identity read but no identity field found in the response.
 	if err := store.SaveDevice(context.Background(), storage.DeviceRecord{
 		ReadAtUTC:         time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC),
 		Source:            internalapi.VersionPath,
@@ -419,26 +419,26 @@ func TestSystemDeviceEmptyStringsBecomeNull(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if sys.Device == nil {
-		t.Fatal("device doit être présent")
+		t.Fatal("device must be present")
 	}
 	if sys.Device.Model != nil || sys.Device.Firmware != nil || sys.Device.SerialNumber != nil {
-		t.Fatalf("les champs vides doivent être null : %+v", sys.Device)
+		t.Fatalf("empty fields must be null: %+v", sys.Device)
 	}
 	raw := string(body)
-	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, "inconnu"} {
+	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, "unknown"} {
 		if strings.Contains(raw, forbidden) {
-			t.Fatalf("la réponse contient %s : %s", forbidden, raw)
+			t.Fatalf("the response contains %s: %s", forbidden, raw)
 		}
 	}
 }
 
-// TestNoRouteLeaksDeviceCredentials : aucune route ne doit restituer la valeur du
-// mot de passe, même lorsque la configuration en porte un.
+// TestNoRouteLeaksDeviceCredentials: no route must return the password
+// value, even when the configuration carries one.
 func TestNoRouteLeaksDeviceCredentials(t *testing.T) {
-	const fake = "mot-de-passe-factice-42"
+	const fake = "fake-password-42"
 
 	_, httpSrv, store := newTestServer(t, func(c *config.Config) {
-		c.DeviceUser = "installateur"
+		c.DeviceUser = "installer"
 		c.DevicePassword = secret.New(fake)
 	})
 	if err := store.SaveDevice(context.Background(), storage.DeviceRecord{
@@ -463,15 +463,15 @@ func TestNoRouteLeaksDeviceCredentials(t *testing.T) {
 		"/api/v1/capabilities",
 	}
 	if len(routes) != 7 {
-		t.Fatalf("le test doit couvrir les sept routes, %d listées", len(routes))
+		t.Fatalf("the test must cover the seven routes, %d listed", len(routes))
 	}
 	for _, route := range routes {
 		code, _, body := doRequest(t, httpSrv, http.MethodGet, route)
 		if code != http.StatusOK {
-			t.Fatalf("%s : status = %d", route, code)
+			t.Fatalf("%s: status = %d", route, code)
 		}
 		if strings.Contains(string(body), fake) {
-			t.Fatalf("%s divulgue le mot de passe : %s", route, body)
+			t.Fatalf("%s leaks the password: %s", route, body)
 		}
 	}
 }
@@ -484,11 +484,11 @@ func TestLiveWithEmptyStoreReturnsNoData(t *testing.T) {
 		t.Fatalf("status = %d", code)
 	}
 	if !strings.Contains(string(body), `"data":null`) {
-		t.Fatalf("data doit être null : %s", body)
+		t.Fatalf("data must be null: %s", body)
 	}
 	env := decodeEnvelope(t, body)
 	if env.Error == nil || env.Error.Code != CodeNoData {
-		t.Fatalf("erreur = %+v", env.Error)
+		t.Fatalf("error = %+v", env.Error)
 	}
 	decodeMeta(t, env)
 }
@@ -499,7 +499,7 @@ func TestLiveAndStaleFlag(t *testing.T) {
 	deviceTS := time.Date(2026, 10, 16, 7, 17, 43, 0, time.UTC)
 	insertSample(t, store, deviceTS, 1902.4, 12345.6)
 
-	// Horloge figée 1 s après la mesure : données fraîches.
+	// Clock frozen 1 s after the measurement: fresh data.
 	srv.now = func() time.Time { return deviceTS.Add(time.Second) }
 
 	code, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/live")
@@ -520,7 +520,7 @@ func TestLiveAndStaleFlag(t *testing.T) {
 	if live.TS != "2026-10-16T07:17:43.000Z" {
 		t.Fatalf("ts = %q", live.TS)
 	}
-	// Les grandeurs non mesurées restent explicitement nulles.
+	// Quantities that are not measured stay explicitly null.
 	for name, v := range map[string]*float64{
 		"power_grid_w":     live.PowerGridW,
 		"power_load_w":     live.PowerLoadW,
@@ -528,7 +528,7 @@ func TestLiveAndStaleFlag(t *testing.T) {
 		"rel_autonomy_pct": live.RelAutonomyPct,
 	} {
 		if v != nil {
-			t.Fatalf("%s = %v, attendu null", name, *v)
+			t.Fatalf("%s = %v, wanted null", name, *v)
 		}
 	}
 	if len(live.Inverters) != 1 || live.Inverters[0].ID != "1" {
@@ -537,7 +537,7 @@ func TestLiveAndStaleFlag(t *testing.T) {
 
 	m := decodeMeta(t, env)
 	if m.Stale == nil || *m.Stale {
-		t.Fatalf("stale = %v, attendu false", m.Stale)
+		t.Fatalf("stale = %v, wanted false", m.Stale)
 	}
 	if m.SampledAt == nil || *m.SampledAt != "2026-10-16T07:17:43.000Z" {
 		t.Fatalf("sampled_at = %v", m.SampledAt)
@@ -546,13 +546,13 @@ func TestLiveAndStaleFlag(t *testing.T) {
 		t.Fatalf("stale_after_s = %v", m.StaleAfterS)
 	}
 
-	// Même base, horloge 60 s plus tard (seuil configuré à 30 s).
+	// Same database, clock 60 s later (threshold configured at 30 s).
 	srv.now = func() time.Time { return deviceTS.Add(time.Minute) }
 	_, _, body = doRequest(t, httpSrv, http.MethodGet, "/api/v1/live")
 	env = decodeEnvelope(t, body)
 	m = decodeMeta(t, env)
 	if m.Stale == nil || !*m.Stale {
-		t.Fatalf("stale = %v, attendu true", m.Stale)
+		t.Fatalf("stale = %v, wanted true", m.Stale)
 	}
 }
 
@@ -567,25 +567,25 @@ func TestTimeSeriesValidation(t *testing.T) {
 		wantStatus int
 		wantCode   string
 	}{
-		{"from manquant", "?to=" + end, http.StatusBadRequest, CodeInvalidRange},
-		{"to manquant", "?from=" + base, http.StatusBadRequest, CodeInvalidRange},
-		{"from illisible", "?from=hier&to=" + end, http.StatusBadRequest, CodeInvalidRange},
-		{"plage inversée", "?from=" + end + "&to=" + base, http.StatusBadRequest, CodeInvalidRange},
-		{"plage nulle", "?from=" + base + "&to=" + base, http.StatusBadRequest, CodeInvalidRange},
-		{"plage trop large", "?from=2020-01-01T00:00:00Z&to=2026-01-01T00:00:00Z", http.StatusBadRequest, CodeInvalidRange},
-		{"pas inconnu", "?from=" + base + "&to=" + end + "&step=17s", http.StatusBadRequest, CodeInvalidStep},
-		{"pas vide explicite", "?from=" + base + "&to=" + end + "&step=0s", http.StatusBadRequest, CodeInvalidStep},
+		{"from missing", "?to=" + end, http.StatusBadRequest, CodeInvalidRange},
+		{"to missing", "?from=" + base, http.StatusBadRequest, CodeInvalidRange},
+		{"from unreadable", "?from=yesterday&to=" + end, http.StatusBadRequest, CodeInvalidRange},
+		{"inverted range", "?from=" + end + "&to=" + base, http.StatusBadRequest, CodeInvalidRange},
+		{"zero range", "?from=" + base + "&to=" + base, http.StatusBadRequest, CodeInvalidRange},
+		{"range too wide", "?from=2020-01-01T00:00:00Z&to=2026-01-01T00:00:00Z", http.StatusBadRequest, CodeInvalidRange},
+		{"unknown step", "?from=" + base + "&to=" + end + "&step=17s", http.StatusBadRequest, CodeInvalidStep},
+		{"explicit empty step", "?from=" + base + "&to=" + end + "&step=0s", http.StatusBadRequest, CodeInvalidStep},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			code, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/timeseries"+tc.query)
 			if code != tc.wantStatus {
-				t.Fatalf("status = %d, corps %s", code, body)
+				t.Fatalf("status = %d, body %s", code, body)
 			}
 			env := decodeEnvelope(t, body)
 			if env.Error == nil || env.Error.Code != tc.wantCode {
-				t.Fatalf("erreur = %+v, corps %s", env.Error, body)
+				t.Fatalf("error = %+v, body %s", env.Error, body)
 			}
 		})
 	}
@@ -612,14 +612,14 @@ func TestTimeSeriesReturnsBucketsAndEmptyRange(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if len(buckets) != 1 {
-		t.Fatalf("buckets = %d, attendu 1", len(buckets))
+		t.Fatalf("buckets = %d, wanted 1", len(buckets))
 	}
 	b := buckets[0]
 	if b.Count != 6 || b.Missing != 0 {
 		t.Fatalf("bucket = %+v", b)
 	}
 	if b.PowerPVAvgW == nil || *b.PowerPVAvgW != 350 {
-		t.Fatalf("power_pv_avg_w = %v, attendu 350", b.PowerPVAvgW)
+		t.Fatalf("power_pv_avg_w = %v, wanted 350", b.PowerPVAvgW)
 	}
 	if b.PowerPVMinW == nil || *b.PowerPVMinW != 100 || b.PowerPVMaxW == nil || *b.PowerPVMaxW != 600 {
 		t.Fatalf("min/max = %v / %v", b.PowerPVMinW, b.PowerPVMaxW)
@@ -629,7 +629,7 @@ func TestTimeSeriesReturnsBucketsAndEmptyRange(t *testing.T) {
 	}
 	decodeMeta(t, env)
 
-	// Plage sans donnée : tableau vide, statut 200, jamais null.
+	// Range without data: empty array, status 200, never null.
 	emptyFrom := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 	emptyTo := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 	code, _, body = doRequest(t, httpSrv, http.MethodGet,
@@ -638,13 +638,13 @@ func TestTimeSeriesReturnsBucketsAndEmptyRange(t *testing.T) {
 		t.Fatalf("status = %d", code)
 	}
 	if !strings.Contains(string(body), `"data":[]`) {
-		t.Fatalf("une plage vide doit produire un tableau vide : %s", body)
+		t.Fatalf("an empty range must produce an empty array: %s", body)
 	}
 }
 
-// TestTimeSeriesExposesResolvedStep : le client ne peut pas déduire le pas de
-// façon fiable (un bucket manquant fausse l'écart entre deux points), le
-// serveur doit donc le lui donner.
+// TestTimeSeriesExposesResolvedStep: the client cannot reliably deduce the step
+// (a missing bucket skews the gap between two points), so the
+// server must give it to it.
 func TestTimeSeriesExposesResolvedStep(t *testing.T) {
 	_, httpSrv, store := newTestServer(t, nil)
 	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
@@ -656,7 +656,7 @@ func TestTimeSeriesExposesResolvedStep(t *testing.T) {
 	}{
 		{"1h", 3600},
 		{"5m", 300},
-		{"auto", 60}, // 1 minute sur une fenêtre d'une heure
+		{"auto", 60}, // 1 minute over a one-hour window
 	}
 	for _, tc := range cases {
 		t.Run(tc.step, func(t *testing.T) {
@@ -668,10 +668,10 @@ func TestTimeSeriesExposesResolvedStep(t *testing.T) {
 			env := decodeEnvelope(t, body)
 			m := decodeMeta(t, env)
 			if m.StepS == nil {
-				t.Fatal("meta.step_s manquant")
+				t.Fatal("meta.step_s missing")
 			}
 			if *m.StepS != tc.want {
-				t.Fatalf("step_s = %v, attendu %v", *m.StepS, tc.want)
+				t.Fatalf("step_s = %v, wanted %v", *m.StepS, tc.want)
 			}
 		})
 	}
@@ -699,14 +699,14 @@ func TestParseStepAutoBounded(t *testing.T) {
 			t.Fatalf("parseStep(auto, %v): %v", tc.span, err)
 		}
 		if got != tc.want {
-			t.Fatalf("span %v : pas = %v, attendu %v", tc.span, got, tc.want)
+			t.Fatalf("span %v: step = %v, wanted %v", tc.span, got, tc.want)
 		}
 		if buckets := tc.span / got; buckets > autoMaxBuckets {
-			t.Fatalf("span %v : %d buckets dépasse la borne %d", tc.span, buckets, autoMaxBuckets)
+			t.Fatalf("span %v: %d buckets exceeds the bound %d", tc.span, buckets, autoMaxBuckets)
 		}
 	}
 
-	// Chaque pas nommé est accepté et résolu à sa durée.
+	// Each named step is accepted and resolved to its duration.
 	for _, opt := range stepOptions {
 		got, err := parseStep(opt.name, time.Hour)
 		if err != nil || got != opt.d {
@@ -718,7 +718,7 @@ func TestParseStepAutoBounded(t *testing.T) {
 func TestDailyEnergyEndpoint(t *testing.T) {
 	srv, httpSrv, store := newTestServer(t, nil)
 
-	// 14 et 15 octobre locaux, avec une remise à zéro du compteur entre les deux.
+	// 14 and 15 October local, with a meter reset between the two.
 	insertSample(t, store, time.Date(2026, 10, 13, 23, 0, 0, 0, time.UTC), 500, 20000) // 14/10 01:00 local
 	insertSample(t, store, time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC), 900, 20000) // 14/10 14:00 local
 	insertSample(t, store, time.Date(2026, 10, 14, 22, 30, 0, 0, time.UTC), 0, 0)      // 15/10 00:30 local
@@ -736,7 +736,7 @@ func TestDailyEnergyEndpoint(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if len(daily) != 2 {
-		t.Fatalf("jours = %+v, attendu 2", daily)
+		t.Fatalf("days = %+v, wanted 2", daily)
 	}
 	if daily[0].Date != "2026-10-14" || daily[1].Date != "2026-10-15" {
 		t.Fatalf("dates = %+v", daily)
@@ -749,10 +749,10 @@ func TestDailyEnergyEndpoint(t *testing.T) {
 	}
 	decodeMeta(t, env)
 
-	// Bornes explicites : la fenêtre porte sur ts_utc, tandis que le
-	// regroupement se fait par date locale. Une journée locale dont seule la
-	// fin (heure locale) tombe dans la fenêtre apparaît donc avec un maximum
-	// partiel — c'est le comportement documenté du endpoint.
+	// Explicit bounds: the window applies to ts_utc, while the
+	// grouping is done by local date. A local day of which only the
+	// end (local hour) falls in the window therefore appears with a partial
+	// maximum — this is the documented behaviour of the endpoint.
 	code, _, body = doRequest(t, httpSrv, http.MethodGet,
 		"/api/v1/energy/daily?from=2026-10-14T00:00:00Z&to=2026-10-15T00:00:00Z")
 	if code != http.StatusOK {
@@ -772,23 +772,23 @@ func TestDailyEnergyEndpoint(t *testing.T) {
 		t.Fatalf("15/10 = %v", daily[1].EnergyWh)
 	}
 
-	// Fenêtre ne couvrant que le 13 octobre UTC : aucune journée locale.
+	// Window covering only 13 October UTC: no local day.
 	code, _, body = doRequest(t, httpSrv, http.MethodGet,
 		"/api/v1/energy/daily?from=2026-10-12T00:00:00Z&to=2026-10-13T12:00:00Z")
 	if code != http.StatusOK {
 		t.Fatalf("status = %d", code)
 	}
 	if !strings.Contains(string(body), `"data":[]`) {
-		t.Fatalf("une plage sans donnée doit produire [] : %s", body)
+		t.Fatalf("a range without data must produce []: %s", body)
 	}
 
-	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/api/v1/energy/daily?from=pas-une-date")
+	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/api/v1/energy/daily?from=not-a-date")
 	if code != http.StatusBadRequest {
 		t.Fatalf("status = %d", code)
 	}
 	env = decodeEnvelope(t, body)
 	if env.Error == nil || env.Error.Code != CodeInvalidRange {
-		t.Fatalf("erreur = %+v", env.Error)
+		t.Fatalf("error = %+v", env.Error)
 	}
 }
 
@@ -801,7 +801,7 @@ func TestEventsEndpoint(t *testing.T) {
 			TS:       time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Minute),
 			Kind:     model.EventCollectorError,
 			Severity: model.SeverityWarning,
-			Message:  "échec de la collecte",
+			Message:  "collection failure",
 			Detail:   "fronius: server | HTTP 503",
 		}); err != nil {
 			t.Fatalf("InsertEvent: %v", err)
@@ -818,30 +818,30 @@ func TestEventsEndpoint(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if len(events) != 3 {
-		t.Fatalf("événements = %d", len(events))
+		t.Fatalf("events = %d", len(events))
 	}
 	if events[0].TS != "2026-10-16T08:02:00.000Z" || events[0].Severity != "warning" {
-		t.Fatalf("premier événement = %+v", events[0])
+		t.Fatalf("first event = %+v", events[0])
 	}
 
-	// Limite appliquée.
+	// Limit applied.
 	_, _, body = doRequest(t, httpSrv, http.MethodGet, "/api/v1/events?limit=2")
 	env = decodeEnvelope(t, body)
 	if err := json.Unmarshal(env.Data, &events); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	if len(events) != 2 {
-		t.Fatalf("limite ignorée : %d", len(events))
+		t.Fatalf("limit ignored: %d", len(events))
 	}
 
-	for _, bad := range []string{"0", "-1", "501", "beaucoup"} {
+	for _, bad := range []string{"0", "-1", "501", "many"} {
 		code, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/events?limit="+bad)
 		if code != http.StatusBadRequest {
-			t.Fatalf("limit=%s : status = %d", bad, code)
+			t.Fatalf("limit=%s: status = %d", bad, code)
 		}
 		env := decodeEnvelope(t, body)
 		if env.Error == nil || env.Error.Code != CodeInvalidRange {
-			t.Fatalf("limit=%s : erreur = %+v", bad, env.Error)
+			t.Fatalf("limit=%s: error = %+v", bad, env.Error)
 		}
 	}
 }
@@ -866,31 +866,31 @@ func TestCapabilitiesEndpoint(t *testing.T) {
 		}
 		unavailable++
 		if c.Reason == "" {
-			t.Fatalf("%s : motif manquant", c.ID)
+			t.Fatalf("%s: reason missing", c.ID)
 		}
 		if c.Quality != string(model.QualityMissing) {
-			t.Fatalf("%s : qualité %q", c.ID, c.Quality)
+			t.Fatalf("%s: quality %q", c.ID, c.Quality)
 		}
 	}
-	// Sans aucune lecture d'identité aboutie, les six capacités liées au
-	// matériel ou aux chemins internes sont indisponibles : grid.import_export,
+	// With no successful identity read, the six capabilities tied to the
+	// hardware or to the internal paths are unavailable: grid.import_export,
 	// load.consumption, autoconsumption.ratio, battery.soc, device.identity,
-	// device.events. Les quatre autres sont disponibles.
+	// device.events. The other four are available.
 	if unavailable != 6 {
-		t.Fatalf("capacités indisponibles = %d, attendu 6", unavailable)
+		t.Fatalf("unavailable capabilities = %d, wanted 6", unavailable)
 	}
 	if len(caps) != 10 {
-		t.Fatalf("capacités = %d, attendu 10", len(caps))
+		t.Fatalf("capabilities = %d, wanted 10", len(caps))
 	}
 
-	// Les tableaux vides sont sérialisés en [] et non null.
+	// Empty arrays are serialised as [] and not null.
 	if strings.Contains(string(body), `"requires":null`) || strings.Contains(string(body), `"evidence":null`) {
-		t.Fatalf("un tableau doit être sérialisé en [] : %s", body)
+		t.Fatalf("an array must be serialised as []: %s", body)
 	}
-	// Aucune valeur numérique nulle inventée dans la réponse complète.
+	// No invented null numeric value in the full response.
 	for _, needle := range []string{`":0,`, `":0}`, `":0.0,`, `":0.0}`} {
 		if strings.Contains(string(body), needle) {
-			t.Fatalf("valeur numérique nulle détectée (%s) : %s", needle, body)
+			t.Fatalf("null numeric value detected (%s): %s", needle, body)
 		}
 	}
 	decodeMeta(t, env)
@@ -907,25 +907,25 @@ func TestStaticWebSPAFallback(t *testing.T) {
 
 	_, httpSrv, _ := newTestServer(t, func(c *config.Config) { c.WebDir = webDir })
 
-	// Racine → index.html.
+	// Root → index.html.
 	code, _, body := doRequest(t, httpSrv, http.MethodGet, "/")
 	if code != http.StatusOK || !strings.Contains(string(body), "app") {
 		t.Fatalf("GET / = %d %s", code, body)
 	}
-	// Fichier réel.
+	// Real file.
 	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/app.js")
 	if code != http.StatusOK || !strings.Contains(string(body), "console.log") {
 		t.Fatalf("GET /app.js = %d %s", code, body)
 	}
-	// Route SPA inconnue → index.html.
-	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/capacites")
+	// Unknown SPA route → index.html.
+	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/capabilities")
 	if code != http.StatusOK || !strings.Contains(string(body), "app") {
-		t.Fatalf("GET /capacites = %d %s", code, body)
+		t.Fatalf("GET /capabilities = %d %s", code, body)
 	}
-	// L'API garde la main.
-	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/api/v1/inconnu")
+	// The API keeps control.
+	code, _, body = doRequest(t, httpSrv, http.MethodGet, "/api/v1/unknown")
 	if code != http.StatusNotFound || !strings.Contains(string(body), CodeNotFound) {
-		t.Fatalf("GET /api/v1/inconnu = %d %s", code, body)
+		t.Fatalf("GET /api/v1/unknown = %d %s", code, body)
 	}
 }
 
@@ -933,22 +933,22 @@ func TestNoStaticWebWhenUnset(t *testing.T) {
 	_, httpSrv, _ := newTestServer(t, nil)
 	code, _, _ := doRequest(t, httpSrv, http.MethodGet, "/")
 	if code != http.StatusNotFound {
-		t.Fatalf("status = %d, attendu 404 sans FRONIUS_WEB_DIR", code)
+		t.Fatalf("status = %d, wanted 404 without FRONIUS_WEB_DIR", code)
 	}
 }
 
-// TestResponsesUnchangedAfterRollup vérifie au niveau de l'API que la bascule
-// vers les agrégats horaires (phase 3) ne change pas la charge utile : le corps
-// de données doit être identique avant et après l'agrégation, alors que la
-// première capture passe par les mesures brutes et la seconde par agg_hour.
+// TestResponsesUnchangedAfterRollup checks at the API level that the switchover
+// to the hourly aggregates (phase 3) does not change the payload: the data
+// body must be identical before and after the aggregation, whereas the
+// first capture goes through the raw measurements and the second through agg_hour.
 func TestResponsesUnchangedAfterRollup(t *testing.T) {
 	_, httpSrv, store := newTestServer(t, nil)
 	base := time.Date(2026, 10, 15, 22, 0, 0, 0, time.UTC)
 
-	// Valeurs exactement représentables en binaire et sommes exactes : une
-	// divergence ne peut alors venir que d'un bucket servi différemment, pas
-	// d'une réassociation de flottants.
-	for i := range 48 { // 12 heures à 15 minutes
+	// Values exactly representable in binary and exact sums: a
+	// divergence can then only come from a bucket served differently, not
+	// from a float reassociation.
+	for i := range 48 { // 12 hours at 15 minutes
 		insertSample(t, store, base.Add(time.Duration(i)*15*time.Minute), float64(i)*100, float64(i)*10)
 	}
 
@@ -971,7 +971,7 @@ func TestResponsesUnchangedAfterRollup(t *testing.T) {
 
 	before := capture()
 	if !strings.Contains(before[0], "power_pv_avg_w") || !strings.Contains(before[2], "energy_wh") {
-		t.Fatalf("réponses vides avant agrégation : %v", before)
+		t.Fatalf("empty responses before aggregation: %v", before)
 	}
 
 	res, err := store.Rollup(context.Background(), time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC))
@@ -979,19 +979,19 @@ func TestResponsesUnchangedAfterRollup(t *testing.T) {
 		t.Fatalf("Rollup: %v", err)
 	}
 	if res.Buckets == 0 {
-		t.Fatal("aucun agrégat écrit : la seconde capture ne testerait rien")
+		t.Fatal("no aggregate written: the second capture would test nothing")
 	}
 	var aggRows int
 	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM agg_hour`).Scan(&aggRows); err != nil {
-		t.Fatalf("comptage des agrégats: %v", err)
+		t.Fatalf("counting the aggregates: %v", err)
 	}
 	if aggRows < 12 {
-		t.Fatalf("%d heures agrégées, attendu au moins 12", aggRows)
+		t.Fatalf("%d aggregated hours, wanted at least 12", aggRows)
 	}
 	after := capture()
 	for i, p := range paths {
 		if before[i] != after[i] {
-			t.Fatalf("%s : charge utile modifiée par l'agrégation\navant : %s\naprès : %s",
+			t.Fatalf("%s: payload changed by the aggregation\nbefore: %s\nafter: %s",
 				p, before[i], after[i])
 		}
 	}

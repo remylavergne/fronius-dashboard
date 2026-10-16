@@ -55,31 +55,31 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 
 	first, err := Open(path, loc)
 	if err != nil {
-		t.Fatalf("premier Open: %v", err)
+		t.Fatalf("first Open: %v", err)
 	}
 	var version, rows int
 	if err := first.db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
-		t.Fatalf("lecture de la version: %v", err)
+		t.Fatalf("reading the version: %v", err)
 	}
 	if err := first.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
-		t.Fatalf("comptage des migrations: %v", err)
+		t.Fatalf("counting the migrations: %v", err)
 	}
 	if version != 3 || rows != 3 {
-		t.Fatalf("schema_migrations = (version=%d, lignes=%d), attendu (3, 3)", version, rows)
+		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (3, 3)", version, rows)
 	}
-	// Le mode WAL doit être actif (preuve que la DSN a bien été appliquée).
+	// The WAL mode must be active (proof that the DSN was actually applied).
 	var journalMode string
 	if err := first.db.QueryRow(`PRAGMA journal_mode`).Scan(&journalMode); err != nil {
 		t.Fatalf("PRAGMA journal_mode: %v", err)
 	}
 	if journalMode != "wal" {
-		t.Fatalf("journal_mode = %q, attendu wal", journalMode)
+		t.Fatalf("journal_mode = %q, wanted wal", journalMode)
 	}
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
-	// Deuxième ouverture : aucune migration ne doit être rejouée.
+	// Second opening: no migration must be replayed.
 	second, err := Open(path, loc)
 	if err != nil {
 		t.Fatalf("second Open: %v", err)
@@ -87,14 +87,14 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	defer second.Close()
 
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
-		t.Fatalf("comptage après second Open: %v", err)
+		t.Fatalf("counting after second Open: %v", err)
 	}
 	if rows != 3 {
-		t.Fatalf("migrations rejouées : %d lignes", rows)
+		t.Fatalf("migrations replayed: %d rows", rows)
 	}
-	// Les tables restent utilisables.
+	// The tables remain usable.
 	if _, err := second.SampleCount(context.Background()); err != nil {
-		t.Fatalf("SampleCount après réouverture: %v", err)
+		t.Fatalf("SampleCount after reopening: %v", err)
 	}
 
 }
@@ -122,7 +122,7 @@ func TestUpsertIsIdempotent(t *testing.T) {
 		t.Fatalf("SampleCount: %v", err)
 	}
 	if count != 1 {
-		t.Fatalf("SampleCount = %d, attendu 1 (upsert sur (ts_utc, source))", count)
+		t.Fatalf("SampleCount = %d, wanted 1 (upsert on (ts_utc, source))", count)
 	}
 
 	got, err := s.LatestSample(ctx)
@@ -130,30 +130,30 @@ func TestUpsertIsIdempotent(t *testing.T) {
 		t.Fatalf("LatestSample: %v", err)
 	}
 	if got.PowerPVW == nil || *got.PowerPVW != 250 {
-		t.Fatalf("PowerPVW = %v, attendu 250 (mise à jour)", got.PowerPVW)
+		t.Fatalf("PowerPVW = %v, wanted 250 (updated)", got.PowerPVW)
 	}
 	if got.EnergyDayWh == nil || *got.EnergyDayWh != 2000 {
 		t.Fatalf("EnergyDayWh = %v", got.EnergyDayWh)
 	}
-	// Un 0 explicite doit survivre à l'aller-retour (pas de confusion avec NULL).
+	// An explicit 0 must survive the round-trip (no confusion with NULL).
 	if got.PowerGridW == nil || *got.PowerGridW != 0 {
-		t.Fatalf("PowerGridW = %v, attendu 0 explicite", got.PowerGridW)
+		t.Fatalf("PowerGridW = %v, wanted explicit 0", got.PowerGridW)
 	}
 	if got.Quality != model.QualityEstimated {
 		t.Fatalf("Quality = %q", got.Quality)
 	}
-	// Un champ jamais renseigné doit rester nil.
+	// A field never set must stay nil.
 	if got.PowerLoadW != nil || got.PowerBatteryW != nil || got.RelAutonomyPct != nil {
-		t.Fatalf("des champs absents sont devenus non nuls : %+v", got)
+		t.Fatalf("absent fields became non-nil: %+v", got)
 	}
 	if len(got.Inverters) != 1 || got.Inverters[0].PowerW == nil || *got.Inverters[0].PowerW != 250 {
-		t.Fatalf("onduleurs = %+v", got.Inverters)
+		t.Fatalf("inverters = %+v", got.Inverters)
 	}
 	if got.Inverters[0].EnergyDayWh == nil || *got.Inverters[0].EnergyDayWh != 7 {
-		t.Fatalf("E_Day onduleur = %v", got.Inverters[0].EnergyDayWh)
+		t.Fatalf("inverter E_Day = %v", got.Inverters[0].EnergyDayWh)
 	}
 	if !got.TS.Equal(ts) {
-		t.Fatalf("TS = %v, attendu %v", got.TS, ts)
+		t.Fatalf("TS = %v, wanted %v", got.TS, ts)
 	}
 }
 
@@ -173,13 +173,13 @@ func TestInverterAbsentValuesRoundTrip(t *testing.T) {
 		t.Fatalf("LatestSample: %v", err)
 	}
 	if len(got.Inverters) != 2 {
-		t.Fatalf("onduleurs = %+v", got.Inverters)
+		t.Fatalf("inverters = %+v", got.Inverters)
 	}
 	if got.Inverters[0].EnergyDayWh != nil {
-		t.Fatalf("E_Day absent devenu %v", *got.Inverters[0].EnergyDayWh)
+		t.Fatalf("absent E_Day became %v", *got.Inverters[0].EnergyDayWh)
 	}
 	if got.Inverters[1].PowerW != nil {
-		t.Fatalf("P absent devenu %v", *got.Inverters[1].PowerW)
+		t.Fatalf("absent P became %v", *got.Inverters[1].PowerW)
 	}
 }
 
@@ -188,7 +188,7 @@ func TestEmptyStoreReturnsErrNoData(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := s.LatestSample(ctx); !errors.Is(err, ErrNoData) {
-		t.Fatalf("LatestSample = %v, attendu ErrNoData", err)
+		t.Fatalf("LatestSample = %v, wanted ErrNoData", err)
 	}
 	buckets, err := s.TimeSeries(ctx, TimeSeriesQuery{
 		From: time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC),
@@ -199,24 +199,24 @@ func TestEmptyStoreReturnsErrNoData(t *testing.T) {
 		t.Fatalf("TimeSeries: %v", err)
 	}
 	if len(buckets) != 0 {
-		t.Fatalf("buckets = %d, attendu 0", len(buckets))
+		t.Fatalf("buckets = %d, wanted 0", len(buckets))
 	}
 	daily, err := s.DailyEnergy(ctx, time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC), time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("DailyEnergy: %v", err)
 	}
 	if len(daily) != 0 {
-		t.Fatalf("daily = %d, attendu 0", len(daily))
+		t.Fatalf("daily = %d, wanted 0", len(daily))
 	}
 	events, err := s.Events(ctx, EventsQuery{Limit: 10})
 	if err != nil {
 		t.Fatalf("Events: %v", err)
 	}
 	if len(events) != 0 {
-		t.Fatalf("events = %d, attendu 0", len(events))
+		t.Fatalf("events = %d, wanted 0", len(events))
 	}
 	if _, ok, err := s.LatestRun(ctx); err != nil || ok {
-		t.Fatalf("LatestRun = (%v, %v), attendu (vide, nil)", ok, err)
+		t.Fatalf("LatestRun = (%v, %v), wanted (empty, nil)", ok, err)
 	}
 }
 
@@ -224,18 +224,18 @@ func TestTimeSeriesBucketBoundsAndGap(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
 
-	// Origine alignée sur une minute UTC.
+	// Origin aligned on a UTC minute.
 	base := time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC)
-	// Bucket 10:00 → 3 échantillons (100, 200, 300 W).
+	// Bucket 10:00 → 3 samples (100, 200, 300 W).
 	for i, pv := range []float64{100, 200, 300} {
 		mustInsert(t, s, sample(base.Add(time.Duration(i)*10*time.Second), pv))
 	}
-	// 10:01 est laissé vide volontairement (trou).
-	// Bucket 10:02 → 1 échantillon sans valeur de puissance PV.
+	// 10:01 is deliberately left empty (gap).
+	// Bucket 10:02 → 1 sample without a PV power value.
 	missing := sample(base.Add(2*time.Minute+5*time.Second), 0)
 	missing.PowerPVW = nil
 	mustInsert(t, s, missing)
-	// Exactement à la borne `to` : doit être exclu.
+	// Exactly at the `to` bound: must be excluded.
 	mustInsert(t, s, sample(base.Add(3*time.Minute), 999))
 
 	buckets, err := s.TimeSeries(ctx, TimeSeriesQuery{
@@ -247,18 +247,18 @@ func TestTimeSeriesBucketBoundsAndGap(t *testing.T) {
 		t.Fatalf("TimeSeries: %v", err)
 	}
 	if len(buckets) != 2 {
-		t.Fatalf("buckets = %d, attendu 2 (le bucket vide ne doit pas être émis)", len(buckets))
+		t.Fatalf("buckets = %d, wanted 2 (the empty bucket must not be emitted)", len(buckets))
 	}
 
 	first := buckets[0]
 	if !first.Start.Equal(base) {
-		t.Fatalf("premier bucket = %v, attendu %v", first.Start, base)
+		t.Fatalf("first bucket = %v, wanted %v", first.Start, base)
 	}
 	if first.Start.Unix()%60 != 0 {
-		t.Fatalf("bucket non aligné sur l'epoch : %v", first.Start)
+		t.Fatalf("bucket not aligned on the epoch: %v", first.Start)
 	}
 	if first.PowerPVAvgW == nil || *first.PowerPVAvgW != 200 {
-		t.Fatalf("AVG = %v, attendu 200", first.PowerPVAvgW)
+		t.Fatalf("AVG = %v, wanted 200", first.PowerPVAvgW)
 	}
 	if first.PowerPVMinW == nil || *first.PowerPVMinW != 100 {
 		t.Fatalf("MIN = %v", first.PowerPVMinW)
@@ -267,18 +267,18 @@ func TestTimeSeriesBucketBoundsAndGap(t *testing.T) {
 		t.Fatalf("MAX = %v", first.PowerPVMaxW)
 	}
 	if first.Count != 3 || first.Missing != 0 {
-		t.Fatalf("Count=%d Missing=%d, attendu 3 et 0", first.Count, first.Missing)
+		t.Fatalf("Count=%d Missing=%d, wanted 3 and 0", first.Count, first.Missing)
 	}
 
 	second := buckets[1]
 	if !second.Start.Equal(base.Add(time.Minute * 2)) {
-		t.Fatalf("second bucket = %v, attendu %v (bucket 10:01 absent)", second.Start, base.Add(2*time.Minute))
+		t.Fatalf("second bucket = %v, wanted %v (bucket 10:01 absent)", second.Start, base.Add(2*time.Minute))
 	}
 	if second.PowerPVAvgW != nil || second.PowerPVMinW != nil || second.PowerPVMaxW != nil {
-		t.Fatalf("un bucket sans valeur PV doit rester nil : %+v", second)
+		t.Fatalf("a bucket without a PV value must stay nil: %+v", second)
 	}
 	if second.Count != 1 || second.Missing != 1 {
-		t.Fatalf("Count=%d Missing=%d, attendu 1 et 1", second.Count, second.Missing)
+		t.Fatalf("Count=%d Missing=%d, wanted 1 and 1", second.Count, second.Missing)
 	}
 }
 
@@ -287,17 +287,17 @@ func TestTimeSeriesRejectsInvalidStep(t *testing.T) {
 	base := time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC)
 	for _, step := range []time.Duration{0, -time.Minute, 500 * time.Millisecond} {
 		if _, err := s.TimeSeries(context.Background(), TimeSeriesQuery{From: base, To: base.Add(time.Hour), Step: step}); err == nil {
-			t.Fatalf("step=%v devait être refusé", step)
+			t.Fatalf("step=%v must be rejected", step)
 		}
 	}
 }
 
-// dailyFixture remplit chaque journée locale de [from, to[ avec un échantillon
-// par heure locale réelle, dont E_Day est l'énergie accumulée depuis minuit
-// local. Le parcours se fait en ajoutant des heures absolues à partir de minuit
-// local : les journées de changement d'heure comptent donc 23 ou 25 échantillons.
+// dailyFixture fills each local day of [from, to[ with one sample
+// per real local hour, whose E_Day is the energy accumulated since local
+// midnight. The walk is done by adding absolute hours starting from local
+// midnight: the DST-transition days therefore count 23 or 25 samples.
 //
-// La fonction retourne le nombre d'échantillons insérés par date locale.
+// The function returns the number of samples inserted per local date.
 func dailyFixture(t *testing.T, s *Store, loc *time.Location, from, to time.Time) map[string]int {
 	t.Helper()
 	perDate := map[string]int{}
@@ -326,22 +326,22 @@ func TestDailyEnergyAcrossDSTTransitions(t *testing.T) {
 		wantHours map[string]int
 	}{
 		{
-			name: "passage à l'heure d'été (23 h)",
+			name: "transition to summer time (23 h)",
 			from: time.Date(2026, 3, 28, 0, 0, 0, 0, loc),
 			to:   time.Date(2026, 3, 31, 0, 0, 0, 0, loc),
 			wantHours: map[string]int{
 				"2026-03-28": 24,
-				"2026-03-29": 23, // 02:00 → 03:00 locales n'existent pas
+				"2026-03-29": 23, // 02:00 → 03:00 local do not exist
 				"2026-03-30": 24,
 			},
 		},
 		{
-			name: "passage à l'heure d'hiver (25 h)",
+			name: "transition to winter time (25 h)",
 			from: time.Date(2026, 10, 24, 0, 0, 0, 0, loc),
 			to:   time.Date(2026, 10, 27, 0, 0, 0, 0, loc),
 			wantHours: map[string]int{
 				"2026-10-24": 24,
-				"2026-10-25": 25, // 03:00 → 02:00 locales : une heure en double
+				"2026-10-25": 25, // 03:00 → 02:00 local: one hour duplicated
 				"2026-10-26": 24,
 			},
 		},
@@ -353,10 +353,10 @@ func TestDailyEnergyAcrossDSTTransitions(t *testing.T) {
 			ctx := context.Background()
 			perDate := dailyFixture(t, s, loc, tc.from, tc.to)
 
-			// Le fixture doit réellement exercer le changement d'heure.
+			// The fixture must really exercise the DST transition.
 			for date, want := range tc.wantHours {
 				if perDate[date] != want {
-					t.Fatalf("fixture : %s = %d échantillons, attendu %d", date, perDate[date], want)
+					t.Fatalf("fixture: %s = %d samples, wanted %d", date, perDate[date], want)
 				}
 			}
 
@@ -365,47 +365,47 @@ func TestDailyEnergyAcrossDSTTransitions(t *testing.T) {
 				t.Fatalf("DailyEnergy: %v", err)
 			}
 			if len(daily) != len(tc.wantHours) {
-				t.Fatalf("jours = %d (%v), attendu %d", len(daily), daily, len(tc.wantHours))
+				t.Fatalf("days = %d (%v), wanted %d", len(daily), daily, len(tc.wantHours))
 			}
 
 			seen := map[string]int{}
 			for _, d := range daily {
 				seen[d.Date]++
 				if d.EnergyWh == nil {
-					t.Fatalf("%s : energy_wh est nil", d.Date)
+					t.Fatalf("%s: energy_wh is nil", d.Date)
 				}
-				// Le maximum du jour est atteint à l'avant-dernier échantillon
-				// horaire de la journée locale, soit (heures − 1) × 1000 Wh.
+				// The day's maximum is reached at the second-to-last hourly
+				// sample of the local day, that is (hours − 1) × 1000 Wh.
 				wantWh := float64(tc.wantHours[d.Date]-1) * 1000
 				if *d.EnergyWh != wantWh {
-					t.Fatalf("%s : energy_wh = %v, attendu %v", d.Date, *d.EnergyWh, wantWh)
+					t.Fatalf("%s: energy_wh = %v, wanted %v", d.Date, *d.EnergyWh, wantWh)
 				}
 			}
 			for date, n := range seen {
 				if n != 1 {
-					t.Fatalf("jour %s émis %d fois", date, n)
+					t.Fatalf("day %s emitted %d times", date, n)
 				}
 			}
 			for date := range tc.wantHours {
 				if seen[date] == 0 {
-					t.Fatalf("jour %s manquant", date)
+					t.Fatalf("day %s missing", date)
 				}
 			}
-			// Ordre croissant, sans trou.
+			// Increasing order, without a gap.
 			for i := 1; i < len(daily); i++ {
 				if daily[i-1].Date >= daily[i].Date {
-					t.Fatalf("ordre des jours non croissant : %v", daily)
+					t.Fatalf("day order not increasing: %v", daily)
 				}
 			}
 		})
 	}
 }
 
-// TestDailyEnergyCounterReset : la remise à zéro de E_Day à minuit local ne doit
-// pas produire d'énergie négative ni de doublon de jour.
+// TestDailyEnergyCounterReset: the reset of E_Day at local midnight must
+// not produce negative energy nor a duplicated day.
 //
-// En été, minuit local correspond à 22:00 UTC la veille : les instants ci-dessous
-// sont choisis de part et d'autre de cette frontière.
+// In summer, local midnight corresponds to 22:00 UTC the previous day: the
+// instants below are chosen on either side of that boundary.
 func TestDailyEnergyCounterReset(t *testing.T) {
 	loc := brussels(t)
 	s := openStore(t, loc)
@@ -418,7 +418,7 @@ func TestDailyEnergyCounterReset(t *testing.T) {
 	}{
 		{time.Date(2026, 10, 14, 23, 0, 0, 0, time.UTC), 20000, "10-15 01:00 local"},
 		{time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC), 20000, "10-15 14:00 local"},
-		{time.Date(2026, 10, 15, 22, 30, 0, 0, time.UTC), 0, "10-16 00:30 local (compteur remis à zéro)"},
+		{time.Date(2026, 10, 15, 22, 30, 0, 0, time.UTC), 0, "10-16 00:30 local (meter reset)"},
 		{time.Date(2026, 10, 15, 23, 30, 0, 0, time.UTC), 1000, "10-16 01:30 local"},
 	}
 	for _, ins := range inserts {
@@ -434,16 +434,16 @@ func TestDailyEnergyCounterReset(t *testing.T) {
 		t.Fatalf("DailyEnergy: %v", err)
 	}
 	if len(daily) != 2 {
-		t.Fatalf("jours = %+v, attendu 2 (15 et 16 octobre locaux)", daily)
+		t.Fatalf("days = %+v, wanted 2 (15 and 16 October local)", daily)
 	}
 	if daily[0].Date != "2026-10-15" || daily[1].Date != "2026-10-16" {
 		t.Fatalf("dates = %v", daily)
 	}
 	if daily[0].EnergyWh == nil || *daily[0].EnergyWh != 20000 {
-		t.Fatalf("10-15 : %v, attendu 20000", daily[0].EnergyWh)
+		t.Fatalf("10-15: %v, wanted 20000", daily[0].EnergyWh)
 	}
 	if daily[1].EnergyWh == nil || *daily[1].EnergyWh != 1000 {
-		t.Fatalf("10-16 : %v, attendu 1000 (maximum après remise à zéro)", daily[1].EnergyWh)
+		t.Fatalf("10-16: %v, wanted 1000 (maximum after reset)", daily[1].EnergyWh)
 	}
 }
 
@@ -457,7 +457,7 @@ func TestEventsAreOrderedAndLimited(t *testing.T) {
 			TS:       base.Add(time.Duration(i) * time.Minute),
 			Kind:     model.EventCollectorError,
 			Severity: model.SeverityWarning,
-			Message:  "échec",
+			Message:  "failure",
 			Detail:   string(rune('a' + i)),
 		})
 		if err != nil {
@@ -470,28 +470,28 @@ func TestEventsAreOrderedAndLimited(t *testing.T) {
 		t.Fatalf("Events: %v", err)
 	}
 	if len(got) != 3 {
-		t.Fatalf("limite ignorée : %d événements", len(got))
+		t.Fatalf("limit ignored: %d events", len(got))
 	}
 	if !got[0].TS.Equal(base.Add(4 * time.Minute)) {
-		t.Fatalf("le plus récent doit venir en premier : %v", got[0].TS)
+		t.Fatalf("the most recent must come first: %v", got[0].TS)
 	}
 	for i := 1; i < len(got); i++ {
 		if got[i-1].TS.Before(got[i].TS) {
-			t.Fatalf("ordre décroissant attendu : %v", got)
+			t.Fatalf("decreasing order expected: %v", got)
 		}
 	}
 
-	// Bornes de plage.
+	// Range bounds.
 	inRange, err := s.Events(ctx, EventsQuery{
 		Limit: 10,
 		From:  base.Add(time.Minute),
 		To:    base.Add(3 * time.Minute),
 	})
 	if err != nil {
-		t.Fatalf("Events bornés: %v", err)
+		t.Fatalf("Events bounded: %v", err)
 	}
 	if len(inRange) != 2 {
-		t.Fatalf("événements dans la plage = %d, attendu 2", len(inRange))
+		t.Fatalf("events in range = %d, wanted 2", len(inRange))
 	}
 }
 
@@ -500,9 +500,9 @@ func TestRunRecords(t *testing.T) {
 	ctx := context.Background()
 	base := time.Date(2026, 10, 16, 8, 0, 0, 0, time.UTC)
 
-	// Aucun cycle enregistré.
+	// No cycle recorded.
 	if _, ok, err := s.LatestRun(ctx); err != nil || ok {
-		t.Fatalf("LatestRun initial = (%v, %v)", ok, err)
+		t.Fatalf("initial LatestRun = (%v, %v)", ok, err)
 	}
 
 	if err := s.InsertRun(ctx, RunRecord{
@@ -512,7 +512,7 @@ func TestRunRecords(t *testing.T) {
 	}
 	if err := s.InsertRun(ctx, RunRecord{
 		StartedUTC: base.Add(time.Minute), DurationMS: 5003, OK: false,
-		HTTPStatus: 503, ErrorKind: "server", Error: "service indisponible",
+		HTTPStatus: 503, ErrorKind: "server", Error: "service unavailable",
 	}); err != nil {
 		t.Fatalf("InsertRun: %v", err)
 	}
@@ -521,8 +521,8 @@ func TestRunRecords(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("LatestRun = (%v, %v)", ok, err)
 	}
-	if got.OK || got.HTTPStatus != 503 || got.ErrorKind != "server" || got.Error != "service indisponible" {
-		t.Fatalf("dernier cycle = %+v", got)
+	if got.OK || got.HTTPStatus != 503 || got.ErrorKind != "server" || got.Error != "service unavailable" {
+		t.Fatalf("last cycle = %+v", got)
 	}
 	if got.DurationMS != 5003 {
 		t.Fatalf("DurationMS = %d", got.DurationMS)
@@ -531,19 +531,19 @@ func TestRunRecords(t *testing.T) {
 		t.Fatalf("StartedUTC = %v", got.StartedUTC)
 	}
 
-	// Un statut HTTP absent reste 0 (colonne NULL) sans casser la lecture.
+	// An absent HTTP status stays 0 (NULL column) without breaking the read.
 	if err := s.InsertRun(ctx, RunRecord{
 		StartedUTC: base.Add(2 * time.Minute), DurationMS: 1, OK: false,
-		ErrorKind: "transport", Error: "connexion refusée",
+		ErrorKind: "transport", Error: "connection refused",
 	}); err != nil {
-		t.Fatalf("InsertRun sans statut: %v", err)
+		t.Fatalf("InsertRun without status: %v", err)
 	}
 	got, _, err = s.LatestRun(ctx)
 	if err != nil {
 		t.Fatalf("LatestRun: %v", err)
 	}
 	if got.HTTPStatus != 0 || got.ErrorKind != "transport" {
-		t.Fatalf("cycle sans statut = %+v", got)
+		t.Fatalf("cycle without status = %+v", got)
 	}
 }
 
@@ -556,17 +556,17 @@ func TestSetStateAndState(t *testing.T) {
 		t.Fatalf("State: %v", err)
 	}
 	if state == nil || len(state) != 0 {
-		t.Fatalf("State initial = %v, attendu map vide non nil", state)
+		t.Fatalf("initial State = %v, wanted a non-nil empty map", state)
 	}
 
 	if err := s.SetState(ctx, "last_success_utc", "2026-10-16T08:00:00.000Z"); err != nil {
 		t.Fatalf("SetState: %v", err)
 	}
-	if err := s.SetState(ctx, "last_error", "premier"); err != nil {
+	if err := s.SetState(ctx, "last_error", "first"); err != nil {
 		t.Fatalf("SetState: %v", err)
 	}
 	if err := s.SetState(ctx, "last_error", "second"); err != nil {
-		t.Fatalf("SetState (mise à jour): %v", err)
+		t.Fatalf("SetState (update): %v", err)
 	}
 
 	state, err = s.State(ctx)
@@ -574,7 +574,7 @@ func TestSetStateAndState(t *testing.T) {
 		t.Fatalf("State: %v", err)
 	}
 	if len(state) != 2 {
-		t.Fatalf("State = %v, attendu 2 entrées", state)
+		t.Fatalf("State = %v, wanted 2 entries", state)
 	}
 	if state["last_error"] != "second" {
 		t.Fatalf("last_error = %q", state["last_error"])
@@ -606,7 +606,7 @@ func TestPurgeBefore(t *testing.T) {
 		t.Fatalf("PurgeBefore: %v", err)
 	}
 	if deleted != 1 {
-		t.Fatalf("échantillons purgés = %d, attendu 1", deleted)
+		t.Fatalf("purged samples = %d, wanted 1", deleted)
 	}
 
 	count, err := s.SampleCount(ctx)
@@ -614,83 +614,83 @@ func TestPurgeBefore(t *testing.T) {
 		t.Fatalf("SampleCount: %v", err)
 	}
 	if count != 2 {
-		t.Fatalf("échantillons restants = %d, attendu 2", count)
+		t.Fatalf("remaining samples = %d, wanted 2", count)
 	}
 	events, err := s.Events(ctx, EventsQuery{Limit: 10})
 	if err != nil {
 		t.Fatalf("Events: %v", err)
 	}
 	if len(events) != 2 {
-		t.Fatalf("événements restants = %d, attendu 2", len(events))
+		t.Fatalf("remaining events = %d, wanted 2", len(events))
 	}
 	latest, _, err := s.LatestRun(ctx)
 	if err != nil {
 		t.Fatalf("LatestRun: %v", err)
 	}
 	if !latest.StartedUTC.Equal(base.Add(2 * time.Hour)) {
-		t.Fatalf("cycles non purgés : %v", latest.StartedUTC)
+		t.Fatalf("cycles not purged: %v", latest.StartedUTC)
 	}
 
-	// Purge d'une plage vide : aucune erreur, aucun effet.
+	// Purge of an empty range: no error, no effect.
 	deleted, err = s.PurgeBefore(ctx, base)
 	if err != nil {
-		t.Fatalf("PurgeBefore vide: %v", err)
+		t.Fatalf("empty PurgeBefore: %v", err)
 	}
 	if deleted != 0 {
-		t.Fatalf("échantillons purgés = %d, attendu 0", deleted)
+		t.Fatalf("purged samples = %d, wanted 0", deleted)
 	}
 }
 
 func TestTimestampFormattingIsStable(t *testing.T) {
-	// Deux instants séparés de moins d'une milliseconde partagent la même clé :
-	// l'upsert les fusionne, la précision stockée étant la milliseconde.
+	// Two instants less than a millisecond apart share the same key:
+	// the upsert merges them, the stored precision being the millisecond.
 	ts := time.Date(2026, 10, 16, 7, 17, 43, 123456789, time.UTC)
 	if got, want := formatTS(ts), "2026-10-16T07:17:43.123Z"; got != want {
-		t.Fatalf("formatTS = %q, attendu %q", got, want)
+		t.Fatalf("formatTS = %q, wanted %q", got, want)
 	}
 	back, err := parseTS("2026-10-16T07:17:43.123Z")
 	if err != nil {
 		t.Fatalf("parseTS: %v", err)
 	}
 	if !back.Equal(ts.Truncate(time.Millisecond)) {
-		t.Fatalf("aller-retour = %v", back)
+		t.Fatalf("round-trip = %v", back)
 	}
 	if back.Location() != time.UTC {
-		t.Fatalf("l'horodatage relu doit être en UTC, reçu %v", back.Location())
+		t.Fatalf("the re-read timestamp must be in UTC, got %v", back.Location())
 	}
-	// L'ordre lexicographique suit l'ordre chronologique.
+	// The lexicographic order follows the chronological order.
 	if formatTS(ts.Add(time.Second)) <= formatTS(ts) {
-		t.Fatal("l'ordre lexicographique ne suit pas l'ordre chronologique")
+		t.Fatal("the lexicographic order does not follow the chronological order")
 	}
 	if _, err := parseTS("2026-10-16 07:17:43"); err == nil {
-		t.Fatal("un format non conforme devait être refusé")
+		t.Fatal("a non-conforming format must be rejected")
 	}
 }
 
 func TestSplitStatements(t *testing.T) {
-	// Le point-virgule à l'intérieur du commentaire est le cas qui a réellement
-	// cassé l'application de la migration : il doit être retiré avec le reste
-	// du commentaire.
-	body := "-- commentaire\n-- unités (W, Wh, %) ; aucune conversion\nCREATE TABLE a (x INTEGER);\n\n-- autre\nCREATE INDEX b ON a(x);\n"
+	// The semicolon inside the comment is the case that actually
+	// broke the migration application: it must be removed with the rest
+	// of the comment.
+	body := "-- comment\n-- units (W, Wh, %); no conversion\nCREATE TABLE a (x INTEGER);\n\n-- other\nCREATE INDEX b ON a(x);\n"
 	got := splitStatements(body)
 	if len(got) != 2 {
-		t.Fatalf("instructions = %d (%q), attendu 2", len(got), got)
+		t.Fatalf("statements = %d (%q), wanted 2", len(got), got)
 	}
 	if !strings.HasPrefix(got[0], "CREATE TABLE a") {
-		t.Fatalf("première instruction inattendue : %q", got[0])
+		t.Fatalf("unexpected first statement: %q", got[0])
 	}
 	if !strings.HasPrefix(got[1], "CREATE INDEX b") {
-		t.Fatalf("seconde instruction inattendue : %q", got[1])
+		t.Fatalf("unexpected second statement: %q", got[1])
 	}
 	for _, stmt := range got {
-		if strings.Contains(stmt, "aucune") {
-			t.Fatalf("un fragment de commentaire a survécu : %q", stmt)
+		if strings.Contains(stmt, "no conversion") {
+			t.Fatalf("a comment fragment survived: %q", stmt)
 		}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Migration 0002 : identité, détection, anti-duplication
+// Migration 0002: identity, detection, anti-duplication
 // ---------------------------------------------------------------------------
 
 func deviceRecord(ts time.Time, modelName string) DeviceRecord {
@@ -713,11 +713,11 @@ func TestDeviceIsASingleReplacedRow(t *testing.T) {
 	s := openStore(t, brussels(t))
 	ctx := context.Background()
 
-	// Base neuve : aucune ligne, donc « non déterminé » — pas un zéro déguisé.
+	// Fresh database: no row, hence "unknown" — not a disguised zero.
 	if got, ok, err := s.Device(ctx); err != nil {
 		t.Fatalf("Device: %v", err)
 	} else if ok {
-		t.Fatalf("une base neuve ne doit contenir aucune ligne : %+v", got)
+		t.Fatalf("a fresh database must contain no row: %+v", got)
 	}
 
 	first := time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC)
@@ -725,7 +725,7 @@ func TestDeviceIsASingleReplacedRow(t *testing.T) {
 		t.Fatalf("SaveDevice: %v", err)
 	}
 
-	// Seconde écriture : la ligne est remplacée, pas dupliquée.
+	// Second write: the row is replaced, not duplicated.
 	second := first.Add(time.Minute)
 	rec := deviceRecord(second, "Primo GEN24 3.6")
 	rec.BatteryState = model.StatePresent
@@ -739,34 +739,34 @@ func TestDeviceIsASingleReplacedRow(t *testing.T) {
 		t.Fatalf("Device: %v", err)
 	}
 	if !ok {
-		t.Fatal("une ligne est attendue après deux écritures")
+		t.Fatal("a row is expected after two writes")
 	}
 	if !got.ReadAtUTC.Equal(second) || got.Model != "Primo GEN24 3.6" {
-		t.Fatalf("enregistrement = %+v", got)
+		t.Fatalf("record = %+v", got)
 	}
 	if got.MeterState != model.StatePresent || got.BatteryState != model.StatePresent {
-		t.Fatalf("états = %+v", got)
+		t.Fatalf("states = %+v", got)
 	}
-	// « non déterminé » doit survivre à l'aller-retour : il ne devient jamais
-	// « absent ».
+	// "unknown" must survive the round-trip: it never becomes
+	// "absent".
 	if got.DeviceEventsState != model.StateUnknown || got.IdentityState != model.StatePresent {
-		t.Fatalf("états = %+v", got)
+		t.Fatalf("states = %+v", got)
 	}
 	if got.SerialNumber != "SIMULATED-0001" || got.Firmware != "1.24.3-sim" {
-		t.Fatalf("identité = %+v", got)
+		t.Fatalf("identity = %+v", got)
 	}
 
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM device`).Scan(&count); err != nil {
-		t.Fatalf("comptage: %v", err)
+		t.Fatalf("counting: %v", err)
 	}
 	if count != 1 {
-		t.Fatalf("lignes en base = %d, attendu 1", count)
+		t.Fatalf("rows in the database = %d, wanted 1", count)
 	}
 
-	// La contrainte CHECK (id = 1) interdit une seconde ligne.
+	// The CHECK (id = 1) constraint forbids a second row.
 	if _, err := s.db.Exec(`INSERT INTO device (id, read_at_utc, source) VALUES (2, '2026-01-01T00:00:00.000Z', 'x')`); err == nil {
-		t.Fatal("une seconde ligne d'appareil devait être refusée")
+		t.Fatal("a second device row must be rejected")
 	}
 }
 
@@ -780,7 +780,7 @@ func TestMarkDeviceEventSeen(t *testing.T) {
 		t.Fatalf("MarkDeviceEventSeen: %v", err)
 	}
 	if !fresh {
-		t.Fatal("une clé neuve doit être signalée comme telle")
+		t.Fatal("a new key must be reported as such")
 	}
 
 	again, err := s.MarkDeviceEventSeen(ctx, "device:ABC", ts.Add(time.Minute))
@@ -788,7 +788,7 @@ func TestMarkDeviceEventSeen(t *testing.T) {
 		t.Fatalf("MarkDeviceEventSeen: %v", err)
 	}
 	if again {
-		t.Fatal("une clé déjà vue ne doit pas être signalée comme neuve")
+		t.Fatal("an already seen key must not be reported as new")
 	}
 
 	other, err := s.MarkDeviceEventSeen(ctx, "device:DEF", ts)
@@ -796,7 +796,7 @@ func TestMarkDeviceEventSeen(t *testing.T) {
 		t.Fatalf("MarkDeviceEventSeen: %v", err)
 	}
 	if !other {
-		t.Fatal("une autre clé doit être neuve")
+		t.Fatal("another key must be new")
 	}
 
 	count, err := s.DeviceEventsSeenCount(ctx)
@@ -804,7 +804,7 @@ func TestMarkDeviceEventSeen(t *testing.T) {
 		t.Fatalf("DeviceEventsSeenCount: %v", err)
 	}
 	if count != 2 {
-		t.Fatalf("clés mémorisées = %d, attendu 2", count)
+		t.Fatalf("remembers keys = %d, wanted 2", count)
 	}
 }
 
@@ -814,14 +814,14 @@ func TestPurgeRemovesSeenEventMarks(t *testing.T) {
 	old := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	recent := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 
-	marks := map[string]time.Time{"device:ancien": old, "device:récent": recent}
+	marks := map[string]time.Time{"device:old": old, "device:recent": recent}
 	for key, ts := range marks {
 		if _, err := s.MarkDeviceEventSeen(ctx, key, ts); err != nil {
 			t.Fatalf("MarkDeviceEventSeen: %v", err)
 		}
 	}
 
-	// Borne exclusive : la marque exactement à la borne survit.
+	// Exclusive bound: the mark exactly at the bound survives.
 	limit := recent
 	if _, err := s.PurgeBefore(ctx, limit); err != nil {
 		t.Fatalf("PurgeBefore: %v", err)
@@ -832,6 +832,6 @@ func TestPurgeRemovesSeenEventMarks(t *testing.T) {
 		t.Fatalf("DeviceEventsSeenCount: %v", err)
 	}
 	if count != 1 {
-		t.Fatalf("clés conservées = %d, attendu 1 (borne haute exclusive)", count)
+		t.Fatalf("retained keys = %d, wanted 1 (exclusive upper bound)", count)
 	}
 }

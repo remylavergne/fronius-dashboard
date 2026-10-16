@@ -1,25 +1,25 @@
--- Migration 0002 : identité de l'appareil, détection de présence et
--- anti-duplication des événements matériels.
+-- Migration 0002: device identity, presence detection and
+-- anti-duplication of hardware events.
 --
--- Choix structurants :
---   * `device` est une ligne unique (CHECK id = 1) : l'identité d'un appareil
---     REMPLACE la précédente, elle ne s'accumule pas. Un historique d'identités
---     n'aurait aucun sens pour une supervision mono-onduleur.
---   * les états de détection sont stockés en texte à trois valeurs
---     (unknown/absent/present) et non en booléens : « non déterminé » n'est pas
---     « absent ». Un booléen écraserait cette distinction, et l'interface
---     afficherait « aucun Smart Meter détecté » après un simple 401 — une
---     absence fabriquée, exactement ce que l'invariant du modèle interdit.
---   * chaque état porte sa CAUSE (`*_reason`), écrite en même temps que lui :
---     « non déterminé » sans motif n'est pas exploitable, et reconstituer la
---     cause à la lecture serait l'inventer.
---   * les colonnes texte d'identité ont pour défaut la chaîne vide, qui signifie
---     « non trouvé dans la réponse ». Elle est convertie en null à la frontière
---     de l'API : jamais en 0, jamais en « inconnu ».
---   * `device_events_seen` est la mémoire d'anti-duplication : une clé d'événement
---     déjà vue ne produit pas une seconde ligne dans `events`. L'index sur
---     seen_at_utc permet à la purge de retirer les marques en même temps que les
---     événements qu'elles dédupliquent.
+-- Structural choices:
+--   * `device` is a single row (CHECK id = 1): a device's identity
+--     REPLACES the previous one, it does not accumulate. An identity history
+--     would make no sense for single-inverter supervision.
+--   * detection states are stored as text with three values
+--     (unknown/absent/present) and not as booleans: "unknown" is not
+--     "absent". A boolean would erase this distinction, and the interface
+--     would display "no Smart Meter detected" after a simple 401 — a
+--     fabricated absence, exactly what the model invariant forbids.
+--   * each state carries its CAUSE (`*_reason`), written at the same time as it:
+--     "unknown" without a reason is not usable, and reconstructing the
+--     cause at read time would be inventing it.
+--   * the identity text columns default to the empty string, which means
+--     "not found in the response". It is converted to null at the API
+--     boundary: never to 0, never to "unknown".
+--   * `device_events_seen` is the anti-duplication memory: an event key
+--     already seen does not produce a second row in `events`. The index on
+--     seen_at_utc lets the purge remove the marks at the same time as the
+--     events they deduplicate.
 
 CREATE TABLE device (
   id INTEGER PRIMARY KEY CHECK (id = 1),

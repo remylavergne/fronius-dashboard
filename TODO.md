@@ -1,325 +1,323 @@
-# TODO exhaustif — Fronius Go + React
+# Exhaustive TODO — Fronius Go + React
 
-> Cases à cocher par l’agent. Priorité : phases 0 à 6 pour MVP, phase 7 après validation. Aucune mutation de l’onduleur dans le MVP.
+> Boxes to be checked by the agent. Priority: phases 0 to 6 for the MVP, phase 7 after validation. No inverter mutation in the MVP.
 
-## 0 — Cadrage et preuves
+## 0 — Scoping and evidence
 
-- [x] Créer dépôt Git monorepo et README de développement
-- [x] Importer les MD du dossier et référencer les sources originales sans publier de secrets
-- [x] Vérifier l’inventaire matériel/firmware contre l’export PDF
-- [ ] Identifier métriques effectivement renvoyées par la Solar API (échantillons anonymisés)
-- [x] Détecter dynamiquement la présence d’un compteur et d’une batterie (absence/unknown distingués)
-- [ ] Confirmer absence de Smart Meter et batterie sur le matériel réel (sonde, à exécuter par l’utilisateur)
-- [x] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
-- [x] Choisir licence, stratégie branches, conventions de commit
-- [x] Consigner toutes les inconnues dans un registre de décisions
+- [x] Create the monorepo Git repository and a development README
+- [x] Import the MD files from the folder and reference the original sources without publishing any secrets
+- [x] Verify the hardware/firmware inventory against the PDF export
+- [ ] Identify the metrics actually returned by the Solar API (anonymized samples)
+- [x] Dynamically detect the presence of a meter and a battery (absence/unknown distinguished)
+- [ ] Confirm the absence of Smart Meter and battery on the real hardware (probe, to be run by the user)
+- [x] Define MVP vs phase 2 (control) goals and success criteria
+- [x] Choose license, branch strategy, commit conventions
+- [x] Record all unknowns in a decision register
 
-## 1 — Recherche API et sécurité
+## 1 — API research and security
 
-- [ ] Documenter `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` et ses champs réellement disponibles
-- [x] Relever autres endpoints Solar API documentés et utiles
-- [x] Extraire méthodes/arguments/DTO des commandes internes utiles en lecture seule (table par chemin dans `docs/ENDPOINTS.md`, provenance dans `docs/SOURCES.md`)
-- [ ] Auditer garde Angular `oi.a` et contrôles de composants sans supposer permissions serveur
-- [x] Construire matrice endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord
-- [x] Classifier chaque endpoint READ / MUTATION / DANGEROUS
-- [x] Analyser module `ytu1` Digest, gestion nonce et cas d’erreur
-- [x] Vérifier gestion 401/403, nonce expiré et cas d’absence d’auth
-- [x] Documenter récupération Technician et compteur sans effectuer d’essai
-- [x] Vérifier anciens profils/gestionnaire de mots de passe si récupération encore souhaitée
-- [x] Documenter `SupportAccount`, SDP, ServiceFile comme non validés côté firmware
-- [x] Exclure des tests actifs les réglages réseau électrique, firmware et récupération
+- [ ] Document `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` and its fields actually available
+- [x] Extract other documented and useful Solar API endpoints
+- [x] Extract methods/arguments/DTO of the internal commands useful in read-only mode (table per path in `docs/ENDPOINTS.md`, provenance in `docs/SOURCES.md`)
+- [ ] Audit the Angular guard `oi.a` and the component checks without assuming server permissions
+- [x] Build the endpoint/method/parameters/declared role/tested role/side effect matrix
+- [x] Classify each endpoint READ / MUTATION / DANGEROUS
+- [x] Analyze the `ytu1` Digest module, nonce handling and error cases
+- [x] Verify 401/403 handling, expired nonce and cases of missing auth
+- [x] Document Technician recovery and counter without performing any trial
+- [x] Check old profiles/password manager if recovery is still desired
+- [x] Document `SupportAccount`, SDP, ServiceFile as not validated on the firmware side
+- [x] Exclude electrical network settings, firmware and recovery from active tests
 
-## 2 — Architecture et outillage
+## 2 — Architecture and tooling
 
 - [x] ADR SQLite vs PostgreSQL
 - [x] ADR SSE vs polling
-- [x] ADR Solar API vs Modbus vs API interne
-- [x] ADR authentification et accès distant
-- [x] ADR stockage/rétention et agrégations
-- [x] ADR packaging Go statique/Docker Compose/NAS
-- [x] Initialiser module Go et structure internal/
-- [x] Initialiser Vite React TypeScript strict et shadcn/ui
-- [x] Installer Tailwind, TanStack Query, React Router, Recharts, Zod si nécessaire
-- [x] Mettre en place lint/format/tests Go + frontend
-- [x] Ajouter CI GitHub Actions ou équivalent
-- [x] Ajouter exemples `.env.example` sans secrets
+- [x] ADR Solar API vs Modbus vs internal API
+- [x] ADR authentication and remote access
+- [x] ADR storage/retention and aggregations
+- [x] ADR packaging Go static/Docker Compose/NAS
+- [x] Initialize the Go module and the internal/ structure
+- [x] Initialize Vite React strict TypeScript and shadcn/ui
+- [x] Install Tailwind, TanStack Query, React Router, Recharts, Zod if necessary
+- [x] Set up lint/format/tests Go + frontend
+- [x] Add CI GitHub Actions or equivalent
+- [x] Add `.env.example` examples without secrets
 
-## 3 — Backend acquisition
+## 3 — Acquisition backend
 
-- [x] Implémenter client HTTP Go configurable avec timeout/context
-- [x] Implémenter adaptateur Solar API en lecture seule
-- [x] Définir DTO bruts versionnés et normalisation en modèle domaine
-- [x] Normaliser unités W/kW/Wh/kWh, timestamps UTC, qualité des données
-- [x] Gérer valeurs absentes/nulles et champs optionnels
-- [x] Gérer 404/401/5xx, JSON invalide, timeout et déconnexion
-- [x] Mettre en place polling configurable avec jitter raisonnable
-- [x] Garantir qu’aucun retry automatique ne déclenche une écriture
-- [x] Ajouter métriques collecteur et logs structurés expurgés
-- [x] Implémenter mock/simulateur Fronius et fixtures anonymisées
-- [ ] Ajouter tests de contrat à partir des réponses réelles expurgées
-- [x] Préparer client Digest optionnel isolé, sans l’utiliser si inutile au MVP
-- [x] Vérifier que le frontend n’a jamais accès aux identifiants Fronius
+- [x] Implement a configurable Go HTTP client with timeout/context
+- [x] Implement the read-only Solar API adapter
+- [x] Define versioned raw DTOs and normalization into a domain model
+- [x] Normalize units W/kW/Wh/kWh, UTC timestamps, data quality
+- [x] Handle absent/null values and optional fields
+- [x] Handle 404/401/5xx, invalid JSON, timeout and disconnection
+- [x] Set up configurable polling with reasonable jitter
+- [x] Guarantee that no automatic retry triggers a write
+- [x] Add collector metrics and redacted structured logs
+- [x] Implement the Fronius mock/simulator and anonymized fixtures
+- [ ] Add contract tests from the real redacted responses
+- [x] Prepare an optional isolated Digest client, without using it if unnecessary for the MVP
+- [x] Verify that the frontend never has access to the Fronius credentials
 
-## 4 — Persistance et API Go
+## 4 — Persistence and Go API
 
-- [x] Définir schéma SQLite : measurements, aggregates, events, system_status
-- [x] Ajouter migrations versionnées et WAL
-- [x] Implémenter upsert idempotent et déduplication
-- [x] Agréger minutes/heures/jours avec règles explicites
-- [x] Gérer fuseaux et changement d’heure Europe/Brussels
-- [x] Définir rétention et purge programmée
-- [ ] Implémenter sauvegarde/restauration testée
-- [x] Implémenter `/api/v1/health` et `/api/v1/system`
-- [x] Implémenter `/api/v1/live` et `/api/v1/timeseries`
-- [x] Implémenter `/api/v1/energy/daily` et `/api/v1/events`
-- [x] Implémenter `/api/v1/capabilities` et paramètres non sensibles
-- [x] Implémenter SSE ou polling selon ADR
-- [x] Valider paramètres de plage/date/granularité
-- [x] Paginer et borner requêtes volumineuses
-- [ ] Générer OpenAPI et clients TS typés
-- [x] Ajouter tests intégration API+SQLite
+- [x] Define the SQLite schema: measurements, aggregates, events, system_status
+- [x] Add versioned migrations and WAL
+- [x] Implement idempotent upsert and deduplication
+- [x] Aggregate minutes/hours/days with explicit rules
+- [x] Handle time zones and the Europe/Brussels daylight saving change
+- [x] Define retention and scheduled purge
+- [ ] Implement tested backup/restore
+- [x] Implement `/api/v1/health` and `/api/v1/system`
+- [x] Implement `/api/v1/live` and `/api/v1/timeseries`
+- [x] Implement `/api/v1/energy/daily` and `/api/v1/events`
+- [x] Implement `/api/v1/capabilities` and non-sensitive settings
+- [x] Implement SSE or polling according to the ADR
+- [x] Validate range/date/granularity parameters
+- [x] Paginate and bound large requests
+- [ ] Generate OpenAPI and typed TS clients
+- [x] Add API+SQLite integration tests
 
-## 5 — UI React/shadcn
+## 5 — React/shadcn UI
 
-- [ ] Définir design system, thèmes clair/sombre et navigation responsive
-- [ ] Construire shell (sidebar, header, breadcrumb, navigation mobile)
-- [x] Construire cartes KPI production instantanée / énergie du jour / état
-- [x] Construire courbe puissance 24h avec tooltips, unités et sélection de période
-- [ ] Construire agrégats journaliers/hebdomadaires/mensuels/annuels
-- [ ] Ajouter comparaisons de périodes et calendrier de production
-- [ ] Ajouter état onduleur, firmware, réseau et diagnostics disponibles
-- [ ] Ajouter événements et filtres par date/sévérité
-- [x] Ajouter page santé du collecteur et dernier rafraîchissement
-- [ ] Ajouter page paramètres et test de connectivité lecture seule
-- [x] Ajouter page capacités (mesuré/estimé/indisponible/non vérifié)
-- [x] Masquer les cartes consommation, import/export et autoconsommation sans compteur
-- [x] Implémenter états loading/error/empty/offline/stale
-- [x] Implémenter cache et rafraîchissement via TanStack Query
-- [x] Implémenter graphiques Recharts responsives et accessibles
-- [ ] Implémenter export CSV des historiques
-- [x] Ajouter traduction FR avec structure i18n DE/EN
-- [x] Ajouter navigation clavier et vérifications WCAG AA
-- [ ] Tester responsive desktop/tablette/mobile
+- [ ] Define the design system, light/dark themes and responsive navigation
+- [ ] Build the shell (sidebar, header, breadcrumb, mobile navigation)
+- [x] Build the instantaneous production / energy of the day / state KPI cards
+- [x] Build the 24h power curve with tooltips, units and period selection
+- [ ] Build daily/weekly/monthly/yearly aggregates
+- [ ] Add period comparisons and production calendar
+- [ ] Add inverter state, firmware, network and available diagnostics
+- [ ] Add events and filters by date/severity
+- [x] Add collector health page and last refresh
+- [ ] Add settings page and read-only connectivity test
+- [x] Add capabilities page (measured/estimated/unavailable/unverified)
+- [x] Hide consumption, import/export and self-consumption cards without a meter
+- [x] Implement loading/error/empty/offline/stale states
+- [x] Implement cache and refresh via TanStack Query
+- [x] Implement responsive and accessible Recharts charts
+- [ ] Implement CSV export of the histories
+- [x] Add FR translation with an i18n DE/EN structure
+- [x] Add keyboard navigation and WCAG AA checks
+- [ ] Test responsive desktop/tablet/mobile
 
-## 6 — Qualité, déploiement, exploitation
+## 6 — Quality, deployment, operations
 
-- [x] Tests unitaires parseurs, conversions et agrégations
-- [x] Tests DST, trous temporels, doublons, reboot et données aberrantes
-- [x] Tests API sur erreurs réseau, authentification et corruption JSON
-- [ ] Tests composants React et tests E2E sur simulateur
-- [x] Vérifier absence de secrets dans bundle, logs, localStorage, dépôt
-- [ ] Sécuriser CORS, cookies, CSP et authentification si accès distant
-- [ ] Configurer bind localhost/LAN et HTTPS proxy selon ADR
-- [ ] Compiler binaire Go avec assets React intégrés
-- [ ] Créer Dockerfile multi-stage et compose optionnel
-- [ ] Ajouter volumes, healthcheck, restart policy et gestion de secrets
-- [ ] Tester installation NAS/local, démarrage et mises à jour
-- [ ] Tester backup et restauration de la base
-- [x] Documenter installation, configuration, maintenance et dépannage
-- [ ] Créer captures d’écran et guide utilisateur
-- [ ] Vérifier consommation ressources et charge réseau de l’onduleur
+- [x] Unit tests for parsers, conversions and aggregations
+- [x] DST, time gaps, duplicates, reboot and outlier data tests
+- [x] API tests on network errors, authentication and JSON corruption
+- [ ] React component tests and E2E tests on the simulator
+- [x] Verify the absence of secrets in the bundle, logs, localStorage, repository
+- [ ] Secure CORS, cookies, CSP and authentication if remote access
+- [ ] Configure localhost/LAN bind and HTTPS proxy according to the ADR
+- [ ] Compile the Go binary with embedded React assets
+- [ ] Create a multi-stage Dockerfile and an optional compose
+- [ ] Add volumes, healthcheck, restart policy and secret management
+- [ ] Test NAS/local installation, startup and updates
+- [ ] Test backup and restore of the database
+- [x] Document installation, configuration, maintenance and troubleshooting
+- [ ] Create screenshots and a user guide
+- [ ] Verify resource consumption and network load of the inverter
 
-## 7 — Phase ultérieure (hors MVP)
+## 7 — Later phase (out of MVP)
 
-- [ ] Identifier besoin exact de contrôle (liste de commandes métier)
-- [ ] Pour chaque commande, obtenir preuve d’autorisation et documentation firmware
-- [ ] Définir garde-fous, confirmation et journal d’audit des mutations
-- [ ] Prévoir dry-run et simulateur des commandes
-- [ ] Revue de sécurité spécifique avant toute écriture sur matériel réel
-- [ ] Étudier intégration Smart Meter ou autre capteur fiable pour consommation réseau
-- [ ] Ajouter batterie et flux énergétiques seulement si matériel détecté
-- [ ] Étudier notifications (panne, défaut, production anormale)
-- [ ] Étudier multi-onduleurs et profils utilisateurs si besoin réel
-- [ ] Réévaluer la procédure de récupération Technician via voie autorisée
+- [ ] Identify the exact need for control (list of business commands)
+- [ ] For each command, obtain proof of authorization and firmware documentation
+- [ ] Define guardrails, confirmation and audit log of the mutations
+- [ ] Provide a dry-run and a simulator of the commands
+- [ ] Specific security review before any write on real hardware
+- [ ] Study Smart Meter or other reliable sensor integration for grid consumption
+- [ ] Add battery and energy flows only if hardware detected
+- [ ] Study notifications (failure, fault, abnormal production)
+- [ ] Study multi-inverters and user profiles if a real need
+- [ ] Reassess the Technician recovery procedure via an authorized channel
 
-## Journal
+## Log
 
-- 2026-10-16 — Étape 1 : socle du dépôt (`.gitignore`, MIT, `CHANGELOG.md`, `.env.example`,
-  `Makefile`, `docs/`), correction `references/` dans `AGENTS.md`. Commit
+- 2026-10-16 — Step 1: repository foundation (`.gitignore`, MIT, `CHANGELOG.md`, `.env.example`,
+  `Makefile`, `docs/`), fix of `references/` in `AGENTS.md`. Commit
   `chore: init monorepo`.
-- 2026-10-16 — Étape 2 : `go.mod` (`fronius-supervisor`, go 1.24) et simulateur
-  `cmd/fronius-sim`. Courbe `max(0, sin(π·(h−7)/12))·nominal·cloud(t)` avec bruit lissé
-  dérivé du seed, `?at=` (extension simulateur), pannes `500/503/401/404/timeout/invalid_json/
-  empty/status7`, `/sim/health`. Décision : `rel_*` émis à `null` quand leur dénominateur est
-  nul (jamais de zéro inventé) ; `P_Akku` reste `null` même avec `--with-meter` car aucune
-  batterie n'est modélisée. Vérifié en direct : `P_PV > 0` à 11:39 locale, `P_Grid = null`,
-  `Head.Status.Code = 0`, deux appels `?at=` identiques octet pour octet, nuit à 0.
-- 2026-10-16 — Étape 3 : `internal/config`, environnement uniquement (aucun fichier de
-  configuration en phase 1). Garde `CheckListenAddress` : `froniusd` refusera toute écoute
-  non loopback sans `FRONIUS_ALLOW_REMOTE=1`. Les deux cases `TODO.md` mappées à cette étape
-  (« objectifs MVP vs phase 2 », « registre des inconnues ») dépendent respectivement de
-  l'ADR 0004 (étape 6) et de `docs/UNKNOWNS.md` (étape 13) : elles seront cochées à ces
-  étapes, pas ici.
-- 2026-10-16 — Étape 4 : `internal/fronius/froniuserr` (erreurs typées, `KindOf`,
-  `errors.Is` par nature) et `internal/fronius/readonly.go` (`ReadOnly` : refus structurel
-  de POST/PUT/PATCH/DELETE/HEAD, y compris requête nulle et transport nul). La garde sera
-  instanciée dans `froniusd` et `fronius-probe` ; un appel non-GET n'atteint jamais le
-  réseau.
-- 2026-10-16 — Étape 5 : `internal/fronius/solarapi` (`dto.go` = seul lieu où la forme
-  supposée du JSON est encodée, `client.go` = transport + cartographie d'erreurs). Vérifié
-  par `httptest` : 200 nominal, 404/401/403/429/500/503, corps vide, JSON tronqué, page HTML,
-  `Body`/`Data` absent, `P_PV` non numérique, `Head.Status.Code = 7`, délai dépassé,
-  serveur fermé, corps > 1 MiB, champs inconnus tolérés, préfixe de chemin conservé.
-  L'item « Documenter GetPowerFlowRealtimeData.fcgi » reste ouvert jusqu'à `docs/SOURCES.md`
-  (étape 6) puis la réconciliation par la sonde (étape 11).
-- 2026-10-16 — Étape 6 : `internal/model` (`measurement.go`, `units.go`, `capabilities.go`,
-  `event.go`) avec l'invariant « jamais de zéro inventé » ; ADR 0001 à 0007 ;
-  `docs/SOURCES.md` (provenance + vérifications exécutées sur le bundle : `fcgi` 0,
+- 2026-10-16 — Step 2: `go.mod` (`fronius-supervisor`, go 1.24) and simulator
+  `cmd/fronius-sim`. Curve `max(0, sin(π·(h−7)/12))·nominal·cloud(t)` with smoothed noise
+  derived from the seed, `?at=` (simulator extension), faults `500/503/401/404/timeout/invalid_json/
+  empty/status7`, `/sim/health`. Decision: `rel_*` emitted as `null` when their denominator is
+  zero (no invented zero); `P_Akku` stays `null` even with `--with-meter` because no
+  battery is modeled. Verified live: `P_PV > 0` at 11:39 local, `P_Grid = null`,
+  `Head.Status.Code = 0`, two `?at=` calls identical byte for byte, night at 0.
+- 2026-10-16 — Step 3: `internal/config`, environment only (no configuration file
+  in phase 1). `CheckListenAddress` guard: `froniusd` will refuse any non-loopback listen
+  without `FRONIUS_ALLOW_REMOTE=1`. The two `TODO.md` boxes mapped to this step
+  ("MVP vs phase 2 goals", "register of unknowns") depend respectively on
+  ADR 0004 (step 6) and `docs/UNKNOWNS.md` (step 13): they will be checked at those
+  steps, not here.
+- 2026-10-16 — Step 4: `internal/fronius/froniuserr` (typed errors, `KindOf`,
+  `errors.Is` by nature) and `internal/fronius/readonly.go` (`ReadOnly`: structural refusal
+  of POST/PUT/PATCH/DELETE/HEAD, including a nil request and nil transport). The guard will be
+  instantiated in `froniusd` and `fronius-probe`; a non-GET call never reaches the
+  network.
+- 2026-10-16 — Step 5: `internal/fronius/solarapi` (`dto.go` = the only place where the assumed
+  shape of the JSON is encoded, `client.go` = transport + error mapping). Verified
+  with `httptest`: nominal 200, 404/401/403/429/500/503, empty body, truncated JSON, HTML page,
+  missing `Body`/`Data`, non-numeric `P_PV`, `Head.Status.Code = 7`, exceeded delay,
+  closed server, body > 1 MiB, unknown fields tolerated, path prefix preserved.
+  The item "Document GetPowerFlowRealtimeData.fcgi" remains open until `docs/SOURCES.md`
+  (step 6) then the reconciliation by the probe (step 11).
+- 2026-10-16 — Step 6: `internal/model` (`measurement.go`, `units.go`, `capabilities.go`,
+  `event.go`) with the "no invented zero" invariant; ADR 0001 to 0007;
+  `docs/SOURCES.md` (provenance + checks run on the bundle: `fcgi` 0,
   `RealtimeData` 0, `PowerFlowRealtime` 0, `solar_api` 1, `x-www-authenticate` 7,
-  `AuthHash` 15) ; `docs/ENDPOINTS.md` (classification des 79 chemins du bundle, liste
-  blanche réduite au seul GET Solar API). Décision de modèle : `Capability.Reason` porte un
-  motif d'indisponibilité quand la capacité est indisponible, une réserve quand elle est
-  disponible mais non vérifiée (`production.*`), jamais les deux.
-- 2026-10-16 — Étape 7 : `internal/storage`. Écart au plan assumé et documenté :
-  `modernc.org/sqlite v1.60.1` (version épinglée par le plan) déclare
-  `go 1.26.0`, donc `go.mod` porte `go 1.26.0` au lieu de `go 1.24` — garder la
-  version épinglée du pilote prime sur la directive de langage, et le toolchain
-  1.26 est disponible localement. Conséquence : les idiomes Go 1.26
-  (`new(expr)`, `for range n`) sont désormais applicables et ont été adoptés
-  (`fptr`/`iptr` de `cmd/fronius-sim` et `pf`/`pi` des tests supprimés).
-  Tables : `samples` (WITHOUT ROWID, clé `(ts_utc, source)`), `events`,
-  `collector_runs`, `collector_state`, `schema_migrations`. Les agrégats
-  matérialisés (`aggregates`) restent reportés en phase 3 par l'ADR 0006 ; la
-  purge existe (`PurgeBefore`) mais n'est pas programmée. Trois anomalies
-  détectées par les tests et corrigées : découpage des instructions de migration
-  avant retrait des commentaires (un `;` dans un commentaire cassait la
-  migration), double mise à l'échelle du début de bucket, et deux fixtures de
-  test qui ne franchissaient pas réellement minuit local.
-- 2026-10-16 — Étape 8 : `internal/collector`. `Sink` inclut `InsertEvent`, absent de la
-  définition du plan mais nécessaire au comportement demandé (événement warning anti-dupliqué
-  à l'échec, événement de reprise). Décisions : `last_success_utc` porte l'horloge du
-  **collecteur** (instant du cycle réussi), pas l'horodatage de l'appareil, qui reste dans
-  `Sample.TS` ; un échec de persistance (`InsertSample`) n'écrit ni cycle ni événement de
-  panne, car ce n'est pas une panne de l'appareil. « Logs expurgés » est satisfait par
-  construction en phase 1 : le backend ne détient aucun identifiant Fronius.
-- 2026-10-16 — Étape 9 : `internal/api` et `cmd/froniusd`. Écart assumé : `/api/v1/health`
-  respecte l'enveloppe `{data, meta}` comme les six autres routes, alors que le point 11 de
-  vérification du plan lit `.collector.last_error` à la racine ; la lecture correcte est
-  `.data.collector.last_error`. Décisions : `/api/v1/live` renvoie 200 avec `data:null` et
-  `error.code=no_data` sur base vide (un état vide n'est pas une panne, et le client doit
-  pouvoir lire `no_data`) ; les erreurs ne portent pas de champ `data` ; une fenêtre UTC sur
-  `/energy/daily` peut inclure une journée locale partiellement couverte, comportement
-  documenté dans le handler. Chaîne complète vérifiée en direct : 34 560 points de backfill en
-  8 s, +1 point toutes les ~5 s, `stale` bascule après 30 s, arrêt du simulateur → 5 cycles en
-  échec sans aucune mesure inventée, `last_error` renseigné, `status: degraded`, redémarrage du
-  simulateur → reprise automatique avec événement `collector_recovered` sans redémarrer `froniusd`.
-- 2026-10-16 — Étape 10 : fixtures et tests de contrat. Les quatre fixtures sont produites par
-  le simulateur (seed 42, instant `2026-06-21T12:00:00+02:00`) et portent `synthetic: true`,
-  `confidence: "HYPOTHÈSE"` : elles ne remplacent pas une capture réelle. L'item « tests de
-  contrat à partir de réponses **réelles** expurgées » reste donc ouvert jusqu'à l'exécution de
-  `fronius-probe` par l'utilisateur (étape 11) et la promotion des fixtures. Le test de
-  contrat couvre déjà toute la chaîne fixture → client → `model.FromPowerFlow` → `Sample`.
-- 2026-10-16 — Étape 11 : sonde `cmd/fronius-probe` (un seul GET en liste blanche, refus des
-  adresses non locales, expurgation structurelle, `--save` en 0600) et `docs/PROBE-READONLY.md`.
-  Deux bugs d'expurgation détectés par les tests et corrigés avant livraison : l'encodeur JSON de
-  Go sérialisait `<redacted>` en `\u003c…\u003e`, et le motif IPv6 permissif masquait les
-  **horodatages** (`12:00:00` passait pour une adresse) — la détection IPv6 est désormais une
-  fonction exigeant quatre groupes ou la forme `::`. Sonde vérifiée en direct contre le simulateur
-  (`--list`, exécution complète, `--save`) ; son refus a été vérifié contre `192.0.2.10`
-  **sans émettre de requête**. L'item « tests GET uniquement sur matériel » reste ouvert :
-  cette exécution appartient à l'utilisateur.
-- 2026-10-16 — Étape 12 : interface React dans `apps/web`. Deux défauts détectés par la
-  vérification en navigateur, pas par les tests, et corrigés : (1) `connectNulls={false}` était
-  sans effet, car un bucket absent de la réponse ne figurait pas dans les données et Recharts
-  reliait ses voisins — les trous sont désormais matérialisés par des points `null` (limite de
-  5000 points, au-delà desquels la grille n'est pas complétée) ; (2) le pas était déduit de
-  l'écart entre les deux premiers buckets, ce qui est faux dès qu'un bucket manque — le serveur
-  expose maintenant `meta.step_s` (commit `fix(api)`). Vérifié en direct : KPI alimentés par le
-  simulateur, courbe 24 h annonçant « 1 point(s) sans mesure » et tracé coupé en deux
-  sous-chemins, page Capacités listant les 5 indisponibles avec leur motif, page Paramètres en
-  lecture seule, arrêt de `froniusd` → bandeau « API injoignable » **et** badge « Données
-  périmées » (fraîcheur rejugée localement quand l'API ne répond plus), reprise après
-  redémarrage, état vide sur base vierge, navigation clavier parcourant la barre latérale, et
-  build de production servi par `froniusd` (`FRONIUS_WEB_DIR`) avec repli SPA.
-  Non livré à cette étape, laissé ouvert : test de connectivité depuis la page Paramètres,
-  sélecteur de thème clair/sombre, fil d'Ariane, export CSV, tests E2E, vérification
-  responsive multi-appareils.
-- 2026-10-16 — Étape 13 : `docs/ARCHITECTURE.md`, `DEVELOPMENT.md`, `RUNBOOK.md`,
-  `UNKNOWNS.md` et `.github/workflows/ci.yml`. Le README racine reçoit une section « Logiciel
-  livré » pointant vers `docs/`. Aucun secret dans le bundle produit : les seules occurrences de
-  `password`/`nonce` proviennent de React DOM (table des types d'entrée, nonce CSP), `src/` n'en
-  contient aucune, `localStorage` n'est jamais utilisé et aucun fichier de secrets n'est versionné
-  hors `.env.example`. Décisions consignées : aucune purge périodique (redémarrage seul
-  déclencheur), aucun filtrage des valeurs aberrantes tant qu'aucun cas réel n'est observé.
+  `AuthHash` 15); `docs/ENDPOINTS.md` (classification of the 79 paths of the bundle, allowlist
+  reduced to the single Solar API GET). Model decision: `Capability.Reason` carries an
+  unavailability reason when the capability is unavailable, a caveat when it is
+  available but unverified (`production.*`), never both.
+- 2026-10-16 — Step 7: `internal/storage`. Deviation from the plan, assumed and documented:
+  `modernc.org/sqlite v1.60.1` (version pinned by the plan) declares
+  `go 1.26.0`, so `go.mod` carries `go 1.26.0` instead of `go 1.24` — keeping the
+  pinned driver version takes precedence over the language directive, and the 1.26
+  toolchain is available locally. Consequence: the Go 1.26 idioms
+  (`new(expr)`, `for range n`) are now applicable and were adopted
+  (`fptr`/`iptr` of `cmd/fronius-sim` and `pf`/`pi` of the tests removed).
+  Tables: `samples` (WITHOUT ROWID, key `(ts_utc, source)`), `events`,
+  `collector_runs`, `collector_state`, `schema_migrations`. The materialized aggregates
+  (`aggregates`) remain deferred to phase 3 by ADR 0006; the
+  purge exists (`PurgeBefore`) but is not scheduled. Three anomalies
+  detected by the tests and fixed: splitting of the migration statements
+  before removing the comments (a `;` in a comment broke the
+  migration), double scaling of the bucket start, and two test
+  fixtures that did not actually cross local midnight.
+- 2026-10-16 — Step 8: `internal/collector`. `Sink` includes `InsertEvent`, absent from the
+  plan definition but necessary for the requested behavior (anti-duplicated warning event
+  on failure, recovery event). Decisions: `last_success_utc` carries the clock of the
+  **collector** (instant of the successful cycle), not the device timestamp, which remains in
+  `Sample.TS`; a persistence failure (`InsertSample`) writes neither a cycle nor a failure
+  event, because it is not a device failure. "Redacted logs" is satisfied by
+  construction in phase 1: the backend holds no Fronius credentials.
+- 2026-10-16 — Step 9: `internal/api` and `cmd/froniusd`. Assumed deviation: `/api/v1/health`
+  respects the `{data, meta}` envelope like the six other routes, whereas verification
+  point 11 of the plan reads `.collector.last_error` at the root; the correct
+  read is `.data.collector.last_error`. Decisions: `/api/v1/live` returns 200 with `data:null` and
+  `error.code=no_data` on an empty database (an empty state is not a failure, and the client must
+  be able to read `no_data`); errors do not carry a `data` field; a UTC window on
+  `/energy/daily` may include a partially covered local day, behavior documented in
+  the handler. Full chain verified live: 34,560 backfill points in
+  8 s, +1 point every ~5 s, `stale` flips after 30 s, simulator stop → 5 failed cycles without
+  any invented measurement, `last_error` set, `status: degraded`, simulator restart →
+  automatic recovery with a `collector_recovered` event without restarting `froniusd`.
+- 2026-10-16 — Step 10: fixtures and contract tests. The four fixtures are produced by
+  the simulator (seed 42, instant `2026-06-21T12:00:00+02:00`) and carry `synthetic: true`,
+  `confidence: "HYPOTHESIS"`: they do not replace a real capture. The item "contract
+  tests from **real** redacted responses" therefore remains open until the execution of
+  `fronius-probe` by the user (step 11) and the promotion of the fixtures. The contract
+  test already covers the whole chain fixture → client → `model.FromPowerFlow` → `Sample`.
+- 2026-10-16 — Step 11: probe `cmd/fronius-probe` (a single GET in the allowlist, refusal of
+  non-local addresses, structural redaction, `--save` in 0600) and `docs/PROBE-READONLY.md`.
+  Two redaction bugs detected by the tests and fixed before delivery: Go's JSON encoder
+  serialized `<redacted>` as `\u003c…\u003e`, and the permissive IPv6 pattern masked
+  **timestamps** (`12:00:00` passed for an address) — IPv6 detection is now a
+  function requiring four groups or the `::` form. Probe verified live against the simulator
+  (`--list`, full run, `--save`); its refusal was verified against `192.0.2.10`
+  **without emitting a request**. The item "GET-only tests on hardware" remains open:
+  this run belongs to the user.
+- 2026-10-16 — Step 12: React interface in `apps/web`. Two defects detected by the
+  browser verification, not by the tests, and fixed: (1) `connectNulls={false}` was
+  without effect, because a bucket absent from the response was not in the data and Recharts
+  linked its neighbors — the gaps are now materialized by `null` points (limit of
+  5000 points, beyond which the grid is not completed); (2) the step was deduced from the
+  difference between the first two buckets, which is wrong as soon as a bucket is missing — the server
+  now exposes `meta.step_s` (commit `fix(api)`). Verified live: KPIs fed by the
+  simulator, 24 h curve announcing "1 point(s) without measurement" and plot cut into two
+  sub-paths, Capabilities page listing the 5 unavailable ones with their reason, Settings page in
+  read-only, stopping `froniusd` → "API unreachable" banner **and** "Stale data" badge
+  (freshness re-judged locally when the API no longer responds), recovery after
+  restart, empty state on a fresh database, keyboard navigation traversing the sidebar, and
+  production build served by `froniusd` (`FRONIUS_WEB_DIR`) with SPA fallback.
+  Not delivered at this step, left open: connectivity test from the Settings page,
+  light/dark theme selector, breadcrumb, CSV export, E2E tests, multi-device
+  responsive verification.
+- 2026-10-16 — Step 13: `docs/ARCHITECTURE.md`, `DEVELOPMENT.md`, `RUNBOOK.md`,
+  `UNKNOWNS.md` and `.github/workflows/ci.yml`. The root README receives a "Delivered
+  software" section pointing to `docs/`. No secret in the produced bundle: the only occurrences of
+  `password`/`nonce` come from React DOM (input type table, CSP nonce), `src/` contains
+  none, `localStorage` is never used and no secrets file is versioned
+  apart from `.env.example`. Decisions recorded: no periodic purge (restart is the only
+  trigger), no filtering of outlier values as long as no real case is observed.
 
-- 2026-10-16 — Étape 14 (phase 2) : lecture authentifiée des chemins internes. Livré :
-  `internal/secret` (type `secret.String`, masqué pour `fmt`, `slog` et JSON),
-  `internal/fronius/digest` (Digest RFC 2617 : défi, en-tête, **un** retry sur 401, cache de
-  nonce, compteur décimal, `nc` unique sous concurrence), `internal/fronius/internalapi`
-  (liste blanche exécutable de quatre chemins + extraction tolérante de l’identité),
-  `internal/detect` (identité, présence, événements, anti-duplication, abandon d’un chemin
-  après un 401 sans identifiants), migration `0002_device.sql`, capacités à trois états
-  (`unknown`/`absent`/`present`), endpoints `/api/v1/system` et `/api/v1/capabilities` enrichis,
-  page Système (identité + détection), sonde étendue (5 endpoints, `--endpoint`,
-  `--password-stdin`, jamais de `--password`), documentation (SOURCES, ENDPOINTS, UNKNOWNS,
-  ARCHITECTURE, RUNBOOK, DEVELOPMENT, PROBE-READONLY) et garde CI « aucun mot de passe
-  versionné ».
+- 2026-10-16 — Step 14 (phase 2): authenticated reading of internal paths. Delivered:
+  `internal/secret` (type `secret.String`, masked for `fmt`, `slog` and JSON),
+  `internal/fronius/digest` (Digest RFC 2617: challenge, header, **one** retry on 401, nonce
+  cache, decimal counter, unique `nc` under concurrency), `internal/fronius/internalapi`
+  (executable allowlist of four paths + tolerant extraction of the identity),
+  `internal/detect` (identity, presence, events, anti-duplication, abandoning a path
+  after a 401 without credentials), migration `0002_device.sql`, three-state capabilities
+  (`unknown`/`absent`/`present`), enriched `/api/v1/system` and `/api/v1/capabilities`
+  endpoints, System page (identity + detection), extended probe (5 endpoints, `--endpoint`,
+  `--password-stdin`, never `--password`), documentation (SOURCES, ENDPOINTS, UNKNOWNS,
+  ARCHITECTURE, RUNBOOK, DEVELOPMENT, PROBE-READONLY) and CI guard "no versioned
+  password".
 
-  Vérifications exécutées : `go vet ./...`, `CGO_ENABLED=0 go build ./...`, `go test ./... -race`
-  (tous les paquets ok) ; vecteur RFC 2617 exact ; 50 requêtes concurrentes produisant 50 `nc`
-  distincts ; simulateur protégé par Digest **et authentifié par un client tiers**
-  (`curl --digest` → 200) ; bout en bout simulateur + `froniusd` : `/api/v1/system` renvoie
-  modèle, firmware et numéro de série issus du matériel simulé, `meter.state=present`,
-  `battery.state=absent`, `device.identity` et `device.events` disponibles, `battery.soc`
-  indisponible avec son motif ; **anti-duplication vérifiée sur ~16 cycles** republiant le même
-  flux (2 lignes `device_event`, 2 clés, 1 ligne `device`) ; sans identifiants, les quatre états
-  passent `unknown` avec un motif nommant les variables d’environnement, **quatre 401 au premier
-  cycle et plus aucun ensuite** ; aucune trace du mot de passe dans le journal de `froniusd`
-  (0 occurrence) ni dans le corps d’aucune des sept routes ; la recherche du motif
-  « `FRONIUS_DEVICE_PASSWORD` suivi d’une valeur » est sans résultat, y compris
-  pour la garde CI elle-même (le motif n’est jamais écrit en clair dans le dépôt :
-  il ferait échouer cette même garde).
+  Checks run: `go vet ./...`, `CGO_ENABLED=0 go build ./...`, `go test ./... -race`
+  (all packages ok); exact RFC 2617 vector; 50 concurrent requests producing 50 distinct
+  `nc`; simulator protected by Digest **and authenticated by a third-party client**
+  (`curl --digest` → 200); end to end simulator + `froniusd`: `/api/v1/system` returns
+  model, firmware and serial number from the simulated hardware, `meter.state=present`,
+  `battery.state=absent`, `device.identity` and `device.events` available, `battery.soc`
+  unavailable with its reason; **anti-duplication verified over ~16 cycles** republishing the same
+  flow (2 `device_event` rows, 2 keys, 1 `device` row); without credentials, the four states
+  move to `unknown` with a reason naming the environment variables, **four 401s on the first
+  cycle and none afterwards**; no trace of the password in the `froniusd` log
+  (0 occurrence) nor in the body of any of the seven routes; the search for the pattern
+  "`FRONIUS_DEVICE_PASSWORD` followed by a value" returns nothing, including
+  for the CI guard itself (the pattern is never written in clear text in the repository:
+  it would fail this same guard).
 
-  Deux écarts au plan, assumés et documentés : (1) la table `device` stocke les **états à trois
-  valeurs et leur cause** (`*_state`, `*_reason`) au lieu de booléens — un booléen ne peut pas
-  distinguer « absent » de « non déterminé », et l’interface aurait affiché « aucun Smart Meter
-  détecté » après un simple 401 ; (2) `internal/secret` implémente `GoString` en plus de
-  `String`, sans quoi `%#v` contournait le masquage.
+  Two deviations from the plan, assumed and documented: (1) the `device` table stores the **three-
+  valued states and their cause** (`*_state`, `*_reason`) instead of booleans — a boolean cannot
+  distinguish "absent" from "undetermined", and the interface would have displayed "no Smart Meter
+  detected" after a mere 401; (2) `internal/secret` implements `GoString` in addition to
+  `String`, without which `%#v` bypassed the masking.
 
-  Non livré, laissé ouvert : exécution de la sonde contre le matériel réel et promotion des
-  fixtures (appartient à l’utilisateur, voir `docs/PROBE-READONLY.md`), noms réels des clés
-  `modelName`/`firmwareVersion`, forme de `/status/activeEvents`, lecture de l’état de charge
-  de la batterie, filtres d’événements par date/sévérité dans l’interface, OpenAPI, export CSV,
-  tests E2E, captures d’écran.
+  Not delivered, left open: running the probe against the real hardware and promoting the
+  fixtures (belongs to the user, see `docs/PROBE-READONLY.md`), real names of the `modelName`/`firmwareVersion` keys, shape of `/status/activeEvents`, reading of the battery state of charge,
+  event filters by date/severity in the interface, OpenAPI, CSV export,
+  E2E tests, screenshots.
 
-- 2026-10-16 — Étape 15 (phase 3) : agrégats horaires et purge planifiée. Livré :
-  migration `0003_agg.sql` (`agg_hour` : `count_all`, `count_pv`, `sum_pv_w`,
-  `min_pv_w`, `max_pv_w`, `max_energy_day_wh`), bascule des lectures au pas
-  horaire ou journalier vers ces agrégats dès que la plage est entière et close,
-  invalidation de la borne d'eau à l'écriture (un historique importé sous la
-  borne est repris par la passe suivante), purge des agrégats avec celle des
-  mesures, et nouveau paquet `internal/maintenance` qui planifie l'agrégation
-  (toutes les 5 min, rattrapage au démarrage) et la purge (au démarrage puis
-  chaque jour à partir de 03:00, `FRONIUS_RETENTION_DAYS=0` la désactivant).
-  L'item « rétention et purge programmée » de la section 4 est ainsi
-  complètement satisfait (l'ADR 0006 le reportait à cette phase) ; `make
-  test-perf` rejoue le critère de sortie.
+- 2026-10-16 — Step 15 (phase 3): hourly aggregates and scheduled purge. Delivered:
+  migration `0003_agg.sql` (`agg_hour`: `count_all`, `count_pv`, `sum_pv_w`,
+  `min_pv_w`, `max_pv_w`, `max_energy_day_wh`), switching reads at hourly or daily step
+  to these aggregates as soon as the range is whole and closed,
+  invalidation of the water mark on write (a history imported under the
+  mark is picked up by the next pass), purge of the aggregates together with that of the
+  measurements, and a new `internal/maintenance` package that schedules the aggregation
+  (every 5 min, catch-up at startup) and the purge (at startup then
+  every day from 03:00, `FRONIUS_RETENTION_DAYS=0` disabling it).
+  The "retention and scheduled purge" item of section 4 is thus
+  completely satisfied (ADR 0006 deferred it to this phase); `make
+  test-perf` replays the exit criterion.
 
-  Vérifications exécutées : `go vet ./...`, `CGO_ENABLED=0 go build ./...`,
-  `go test ./... -race` (tous les paquets ok) ; équivalence brut/agrégat
-  vérifiée sur un jeu de données couvrant une heure vide, des valeurs absentes,
-  une entête au milieu d'une heure, la queue dans l'heure ouverte et une
-  transition d'heure locale (23 h) — buckets, effectifs et minimum/maximum
-  identiques, moyennes égales à 1e-9 relatif près ; au niveau de l'API, charge
-  utile **identique octet à octet** avant et après agrégation sur
-  `/timeseries?step=1h`, `step=1d` et `/energy/daily` ; anti-régression sur la
-  borne d'eau (abaissement à l'écriture, jamais d'heure ouverte agrégée, pas de
-  borne écrite sur une base vide, purge cohérente entre les deux tables) ;
-  mesure sur un an (6 307 200 mesures insérées en 22,7 s) : pas 1 h **14 ms**
-  contre 5 168 ms, énergie journalière **5 ms** contre 5 535 ms, pas 1 j 7 ms,
-  avec 8 760 et 366 buckets identiques dans les deux chemins — critère de
-  l'ADR 0006 (< 200 ms) largement tenu.
+  Checks run: `go vet ./...`, `CGO_ENABLED=0 go build ./...`,
+  `go test ./... -race` (all packages ok); raw/aggregate equivalence
+  verified on a data set covering an empty hour, absent values,
+  a header in the middle of an hour, the tail in the open hour and a
+  local hour transition (23 h) — buckets, counts and minimum/maximum
+  identical, averages equal to within 1e-9 relative; at the API level, payload
+  **identical byte for byte** before and after aggregation on
+  `/timeseries?step=1h`, `step=1d` and `/energy/daily`; anti-regression on the
+  water mark (lowering on write, never an open hour aggregated, no
+  mark written on an empty database, purge consistent between the two tables);
+  measurement over one year (6,307,200 measurements inserted in 22.7 s): 1 h step **14 ms**
+  against 5,168 ms, daily energy **5 ms** against 5,535 ms, 1 d step 7 ms,
+  with 8,760 and 366 buckets identical in both paths — criterion of
+  ADR 0006 (< 200 ms) largely met.
 
-  Écart au plan, assumé et documenté dans l'ADR : aucune table journalière n'est
-  créée. Le regroupement par date locale se fait en Go depuis la table horaire
-  (8 760 lignes pour un an, 5 ms), donc une seconde table n'apporterait qu'une
-  synchronisation et une purge supplémentaires à tester. Deux points de
-  conception non prévus par le plan et nécessaires à la correction : la lecture
-  ne sert une heure depuis les agrégats que si elle est **entière et contenue**
-  dans la plage demandée (un agrégat couvre l'heure complète, la lecture brute
-  ne voit que `[from, to)` — servir une heure partielle depuis un agrégat
-  inventerait des mesures), et la borne de purge est alignée sur l'heure pour que
-  mesures et agrégats partagent la même frontière. Non livré, laissé ouvert :
-  mêmes items que l'étape 14 (sonde matérielle et promotion des fixtures,
-  clés d'identité réelles, forme de `/status/activeEvents`, état de charge
-  batterie, filtres d'événements, OpenAPI, export CSV, tests E2E, captures).
+  Deviation from the plan, assumed and documented in the ADR: no daily table is
+  created. Grouping by local date is done in Go from the hourly table
+  (8,760 rows for a year, 5 ms), so a second table would only bring an additional
+  synchronization and purge to test. Two design points not planned by the plan
+  and necessary for correctness: the read serves an hour from the aggregates
+  only if it is **whole and contained** in the requested range (an aggregate covers
+  the full hour, the raw read only sees `[from, to)` — serving a partial hour from
+  an aggregate would invent measurements), and the purge bound is aligned with the hour so that
+  measurements and aggregates share the same boundary. Not delivered, left open:
+  same items as step 14 (hardware probe and promotion of the fixtures,
+  real identity keys, shape of `/status/activeEvents`, battery state of charge,
+  event filters, OpenAPI, CSV export, E2E tests, screenshots).

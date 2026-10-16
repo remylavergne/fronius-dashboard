@@ -1,12 +1,12 @@
 /**
- * Requêtes TanStack Query vers l'API de supervision.
+ * TanStack Query requests to the monitoring API.
  *
- * Politique de rafraîchissement (ADR 0002) : polling côté client, avec
- * `refetchInterval: 5000` — la même cadence que le collecteur, elle-même
- * alignée sur les 5 000 ms du client officiel. `staleTime` légèrement inférieur
- * pour que deux requêtes successives ne se croisent pas, `retry: 1` pour
- * absorber un hoquet réseau sans masquer une panne, et `throwOnError: false`
- * pour que chaque page décide de son rendu d'erreur.
+ * Refresh policy (ADR 0002): client-side polling, with
+ * `refetchInterval: 5000` — the same cadence as the collector, itself aligned
+ * with the 5000 ms of the official client. `staleTime` slightly lower so that
+ * two successive requests do not overlap, `retry: 1` to absorb a network hiccup
+ * without masking a failure, and `throwOnError: false` so that each page
+ * decides its own error rendering.
  */
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -71,11 +71,11 @@ export function useEnergyDaily(): UseQueryResult<EnergyDailyEnvelope> {
   })
 }
 
-/** Plages prédéfinies proposées par la vue d'ensemble. */
+/** Preset ranges offered by the overview view. */
 export const RANGES = ['24h', '7d', '30d'] as const
 export type RangeKey = (typeof RANGES)[number]
 
-/** Pas de granularité acceptés par l'API (cf. internal/api/server.go). */
+/** Granularity steps accepted by the API (cf. internal/api/server.go). */
 export const STEPS = ['auto', '1m', '5m', '15m', '1h', '1d'] as const
 export type StepKey = (typeof STEPS)[number]
 
@@ -88,12 +88,12 @@ const RANGE_HOURS: Record<RangeKey, number> = {
 export type TimeseriesParams = { from: string; to: string; step: string }
 
 /**
- * Construit les paramètres d'une plage prédéfinie.
+ * Builds the parameters of a preset range.
  *
- * La borne haute est arrondie à la minute : sans cet arrondi, l'horodatage
- * changerait à chaque rendu et la clé de requête deviendrait instable, ce qui
- * déclencherait des rechargements en boucle. `step: 'auto'` laisse le backend
- * choisir le pas le plus fin produisant au plus 1500 points.
+ * The upper bound is rounded to the minute: without this rounding, the
+ * timestamp would change on every render and the query key would become
+ * unstable, triggering reload loops. `step: 'auto'` lets the backend choose the
+ * finest step producing at most 1500 points.
  */
 export function rangeToQuery(range: RangeKey, now: Date = new Date()): TimeseriesParams {
   const anchor = new Date(Math.floor(now.getTime() / 60_000) * 60_000)
@@ -105,9 +105,10 @@ export function rangeToQuery(range: RangeKey, now: Date = new Date()): Timeserie
 }
 
 /**
- * Convertit une valeur d'`<input type="datetime-local">` en horodatage RFC3339,
- * ou `null` si elle est vide ou illisible. La chaîne sans fuseau est interprétée
- * par le navigateur comme une heure locale, ce qui est le comportement attendu.
+ * Converts a value of `<input type="datetime-local">` into an RFC3339
+ * timestamp, or `null` if it is empty or unreadable. The string without a time
+ * zone is interpreted by the browser as a local time, which is the expected
+ * behaviour.
  */
 export function localInputToISO(value: string): string | null {
   if (value === '') {
@@ -117,7 +118,7 @@ export function localInputToISO(value: string): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
-/** Convertit un horodatage en valeur d'`<input type="datetime-local">` (heure locale). */
+/** Converts a timestamp into a value of `<input type="datetime-local">` (local time). */
 export function isoToLocalInput(iso: string | Date): string {
   const date = typeof iso === 'string' ? new Date(iso) : iso
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -135,10 +136,10 @@ export function useTimeseries(params: TimeseriesParams, enabled = true): UseQuer
 }
 
 /**
- * Horloge rafraîchie chaque minute.
+ * Clock refreshed every minute.
  *
- * Ancre des plages glissantes : la fenêtre se décale d'elle-même, sans changer
- * la clé de requête plus d'une fois par minute.
+ * Anchor of sliding ranges: the window shifts by itself, without changing the
+ * query key more than once per minute.
  */
 export function useMinuteTick(): Date {
   const [now, setNow] = useState(() => new Date())

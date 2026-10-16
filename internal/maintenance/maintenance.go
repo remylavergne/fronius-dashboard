@@ -1,13 +1,13 @@
-// Package maintenance exécute les travaux de fond de la base : agrégation
-// horaire et purge de rétention (ADR 0006).
+// Package maintenance runs the background database jobs: hourly
+// aggregation and retention purge (ADR 0006).
 //
-// Ces travaux ne dépendent d'aucune mesure fraîche, d'où leur planification ici
-// plutôt que dans le collecteur : l'agrégation repart de la borne d'eau
-// enregistrée et rattrape donc à elle seule une interruption du service.
+// These jobs do not depend on any fresh measurement, hence their scheduling here
+// rather than in the collector: the aggregation starts again from the recorded
+// watermark and therefore catches up on a service interruption on its own.
 //
-// Les deux travaux sont journalisés mais ne peuvent pas arrêter la boucle : une
-// panne d'un cycle (base occupée, disque plein) ne doit pas priver la
-// supervision de sa maintenance jusqu'au prochain redémarrage.
+// Both jobs are logged but cannot stop the loop: a failure of one cycle
+// (database busy, disk full) must not deprive the supervision of its maintenance
+// until the next restart.
 package maintenance
 
 import (
@@ -20,54 +20,54 @@ import (
 	"fronius-supervisor/internal/storage"
 )
 
-// DefaultTick est la cadence des travaux de fond. Elle borne aussi la
-// précision de l'heure de purge : une rétention décalée de quelques minutes
-// est sans conséquence.
+// DefaultTick is the cadence of the background jobs. It also bounds the
+// precision of the purge time: a retention shifted by a few minutes
+// has no consequence.
 const DefaultTick = 5 * time.Minute
 
-// purgeHour est l'heure locale à partir de laquelle la purge quotidienne a lieu.
+// purgeHour is the local hour from which the daily purge takes place.
 const purgeHour = 3
 
-// Store est le sous-ensemble du magasin utilisé par la maintenance.
-// *storage.Store le satisfait sans adaptateur.
+// Store is the subset of the store used by the maintenance.
+// *storage.Store satisfies it without an adapter.
 type Store interface {
 	Rollup(ctx context.Context, now time.Time) (storage.RollupResult, error)
 	PurgeBefore(ctx context.Context, t time.Time) (int64, error)
 	InsertEvent(ctx context.Context, e model.Event) error
 }
 
-// Runner planifie l'agrégation horaire et la purge de rétention.
+// Runner schedules the hourly aggregation and the retention purge.
 type Runner struct {
 	Store Store
 	Loc   *time.Location
-	// RetentionDays vaut 0 pour une conservation illimitée : aucune purge, ni
-	// au démarrage ni ensuite, n'est alors exécutée.
+	// RetentionDays is 0 for unlimited retention: no purge, neither
+	// at startup nor afterwards, is then executed.
 	RetentionDays int
-	// Tick borne la cadence des travaux (DefaultTick si nul).
+	// Tick bounds the cadence of the jobs (DefaultTick if zero).
 	Tick time.Duration
 	Log  *slog.Logger
-	// Now est injectable (tests) ; time.Now par défaut.
+	// Now is injectable (tests); time.Now by default.
 	Now func() time.Time
 
-	// lastPurgeDate mémorise la dernière journée locale purgée. L'état est
-	// volontairement en mémoire : un redémarrage provoque une purge au
-	// démarrage, ce qui est le comportement attendu (et suffisant).
+	// lastPurgeDate remembers the last purged local day. The state is
+	// deliberately in memory: a restart triggers a purge at
+	// startup, which is the expected behaviour (and sufficient).
 	lastPurgeDate string
 }
 
-// Run agrège les heures closes toutes les Tick et purge une fois par jour
-// local, jusqu'à l'annulation du contexte. Retourne nil à l'arrêt.
+// Run aggregates the closed hours every Tick and purges once per local day,
+// until the context is cancelled. Returns nil on stop.
 func (r *Runner) Run(ctx context.Context) error {
 	log := r.log()
-	log.Info("maintenance démarrée", "tick", r.tick(), "retention_days", r.RetentionDays)
+	log.Info("maintenance started", "tick", r.tick(), "retention_days", r.RetentionDays)
 
 	r.RollupOnce(ctx)
 	if r.RetentionDays > 0 {
-		// Une purge au démarrage : c'est le comportement de la phase 1, et
-		// cela rattrape la durée d'arrêt sans attendre le lendemain.
+		// A purge at startup: this is the phase-1 behaviour, and
+		// it catches up on the downtime without waiting for the next day.
 		r.PurgeOnce(ctx)
 	} else {
-		log.Info("rétention illimitée : purge planifiée désactivée")
+		log.Info("unlimited retention: scheduled purge disabled")
 	}
 
 	tick := time.NewTicker(r.tick())
@@ -76,7 +76,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info("maintenance arrêtée")
+			log.Info("maintenance stopped")
 			return nil
 		case <-tick.C:
 			r.RollupOnce(ctx)
@@ -85,26 +85,26 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 }
 
-// RollupOnce agrège les heures closes jusqu'à maintenant.
+// RollupOnce aggregates the closed hours up to now.
 func (r *Runner) RollupOnce(ctx context.Context) storage.RollupResult {
 	res, err := r.Store.Rollup(ctx, r.now())
 	if err != nil {
-		r.log().Error("agrégation horaire impossible", "error", err)
+		r.log().Error("hourly aggregation failed", "error", err)
 		return storage.RollupResult{}
 	}
 	switch {
 	case res.To.Sub(res.From) > time.Hour:
-		// Rattrapage après une interruption : une passe de routine ne couvre
-		// qu'une heure, elle mérite le niveau debug seulement.
-		r.log().Info("agrégation horaire rattrapée",
+		// Catch-up after an interruption: a routine pass covers
+		// only one hour, it deserves the debug level only.
+		r.log().Info("hourly aggregation caught up",
 			"from", res.From, "to", res.To, "buckets", res.Buckets)
 	case res.Buckets > 0:
-		r.log().Debug("agrégation horaire", "buckets", res.Buckets)
+		r.log().Debug("hourly aggregation", "buckets", res.Buckets)
 	}
 	return res
 }
 
-// maybePurge déclenche la purge une fois par journée locale, à partir de
+// maybePurge triggers the purge once per local day, from
 // purgeHour.
 func (r *Runner) maybePurge(ctx context.Context) {
 	if r.RetentionDays <= 0 {
@@ -117,43 +117,43 @@ func (r *Runner) maybePurge(ctx context.Context) {
 	r.PurgeOnce(ctx)
 }
 
-// PurgeOnce applique la rétention et journalise le résultat.
+// PurgeOnce applies the retention and logs the result.
 func (r *Runner) PurgeOnce(ctx context.Context) {
 	now := r.now()
-	// La journée est marquée dès la tentative : une rétention qui échoue est
-	// signalée, puis retentée le lendemain plutôt qu'à chaque tick.
+	// The day is marked as soon as the attempt is made: a retention that fails
+	// is reported, then retried the next day rather than on every tick.
 	r.lastPurgeDate = now.In(r.loc()).Format("2006-01-02")
 
 	limit := retentionLimit(now, r.loc(), r.RetentionDays)
 	deleted, err := r.Store.PurgeBefore(ctx, limit)
 	if err != nil {
-		r.log().Error("purge de rétention impossible", "error", err)
+		r.log().Error("retention purge failed", "error", err)
 		return
 	}
-	r.log().Info("purge de rétention terminée",
+	r.log().Info("retention purge completed",
 		"before", limit, "samples_deleted", deleted, "retention_days", r.RetentionDays)
 
 	if err := r.Store.InsertEvent(ctx, model.Event{
 		TS:       now.UTC(),
 		Kind:     model.EventPurge,
 		Severity: model.SeverityInfo,
-		Message:  "purge de rétention exécutée",
-		Detail: fmt.Sprintf("%d échantillons supprimés avant %s",
+		Message:  "retention purge executed",
+		Detail: fmt.Sprintf("%d samples deleted before %s",
 			deleted, limit.Format(time.RFC3339)),
 	}); err != nil {
-		r.log().Warn("événement de purge non enregistré", "error", err)
+		r.log().Warn("purge event not recorded", "error", err)
 	}
 }
 
-// retentionLimit retourne la borne de purge : minuit local du jour il y a
-// `days` jours, arrondi à l'heure pleine SUPÉRIEURE.
+// retentionLimit returns the purge bound: local midnight of the day `days`
+// days ago, rounded up to the NEXT whole hour.
 //
-// L'arrondi est structurel : les agrégats et les mesures doivent partager une
-// frontière alignée sur l'heure. Une frontière plus fine laisserait l'heure à
-// cheval avec son agrégat supprimé mais une partie de ses mesures conservée —
-// ces mesures deviendraient invisibles des lectures agrégées. Pour un fuseau
-// décalé d'un nombre entier d'heures, dont Europe/Brussels, l'arrondi est
-// neutre.
+// The rounding is structural: the aggregates and the measurements must share a
+// boundary aligned on the hour. A finer boundary would leave the hour
+// straddling with its aggregate deleted but part of its measurements kept —
+// those measurements would become invisible to the aggregated reads. For a
+// timezone offset by a whole number of hours, including Europe/Brussels, the
+// rounding is neutral.
 func retentionLimit(now time.Time, loc *time.Location, days int) time.Time {
 	local := now.In(loc)
 	midnight := time.Date(local.Year(), local.Month(), local.Day()-days, 0, 0, 0, 0, loc)

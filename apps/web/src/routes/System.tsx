@@ -9,12 +9,12 @@ import { formatAge, formatDuration } from '@/lib/format'
 import { useHealth, useSystem } from '@/lib/queries'
 
 /**
- * État de la supervision : collecteur, base, identité de l'onduleur.
+ * Monitoring status: collector, database, inverter identity.
  *
- * L'identité et les détections matérielles proviennent des chemins internes de
- * l'appareil (phase 2) et sont rendues par DevicePanel : une information non lue
- * est affichée comme « non déterminée » avec son motif, jamais comblée par une
- * valeur déduite.
+ * Identity and hardware detections come from the device's internal paths
+ * (phase 2) and are rendered by DevicePanel: information that has not been read
+ * is displayed as "unknown" with its reason, never filled in with an inferred
+ * value.
  */
 export function SystemPage() {
   const { t } = useT()
@@ -65,7 +65,7 @@ export function SystemPage() {
               {t(`health.${healthData.status}` as 'health.ok')}
             </Badge>
             <span className="text-muted-foreground">
-              {t('health.db')} : {healthData.db.ok ? 'OK' : t('health.error')}
+              {t('health.db')}: {healthData.db.ok ? 'OK' : t('health.error')}
             </span>
             {healthData.db.error ? <span className="text-destructive">{healthData.db.error}</span> : null}
           </div>

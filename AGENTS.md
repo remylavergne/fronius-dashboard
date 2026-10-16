@@ -1,45 +1,46 @@
-# Consignes à l'agent IA de développement
+# Instructions for the AI development agent
 
-Tu développes une application locale de supervision d'un Fronius Primo GEN24 3.6 Plus, backend Go, frontend React/TypeScript/shadcn/ui. Lis **tous** les fichiers de ce dossier avant de coder, en commençant par `README.md` et `TODO.md`.
+You are developing a local supervision application for a Fronius Primo GEN24 3.6 Plus, Go backend, React/TypeScript/shadcn/ui frontend. Read **all** the files in this folder before coding, starting with `README.md` and `TODO.md`.
 
 ## Workflow
 
-1. Établis le plan de livraison et les ADR manquants ; propose les hypothèses plutôt que de les inventer.
-2. Implémente **d'abord** un simulateur Fronius à partir de fixtures anonymisées ; aucun matériel requis pour les tests.
-3. Implémente un client Solar API lecture seule et le modèle normalisé ; ajoute l'auth Digest interne seulement si une métrique le justifie.
-4. Implémente la persistance, l'API Go, puis le frontend React et les graphiques.
-5. Écris tests et documentation à chaque étape ; maintiens `TODO.md` et un journal `CHANGELOG.md`.
-6. Avant toute interaction avec l'onduleur réel, explique précisément les requêtes prévues et demande confirmation. **GET uniquement** par défaut.
+1. Establish the delivery plan and the missing ADRs; propose assumptions rather than inventing them.
+2. Implement **first** a Fronius simulator from anonymized fixtures; no hardware required for the tests.
+3. Implement a read-only Solar API client and the normalized model; add internal Digest auth only if a metric justifies it.
+4. Implement the persistence, the Go API, then the React frontend and the charts.
+5. Write tests and documentation at each step; maintain `TODO.md` and a `CHANGELOG.md` log.
+6. Before any interaction with the real inverter, explain precisely the planned requests and ask for confirmation. **GET only** by default.
+7. Comments, documentation, interface and commits are in English.
 
-## Exigences
+## Requirements
 
-- Pas de dépendance à l'Angular du fabricant dans l'application produite.
-- Ne jamais affirmer que des permissions frontend sont des permissions firmware.
-- Ne jamais exposer secrets à React ni les inscrire dans le dépôt.
-- Ne pas calculer consommation/import/export sans Smart Meter ou autre mesure validée.
-- Les commandes modifiant l'onduleur sont hors périmètre MVP.
-- Code idiomatique Go, TS strict, architecture simple et testable ; lint, format, tests, CI.
-- Tout endpoint non testé est explicitement `unverified`.
-- Toute nouvelle information doit être documentée avec sa source et sa version de firmware.
+- No dependency on the manufacturer's Angular in the produced application.
+- Never assert that frontend permissions are firmware permissions.
+- Never expose secrets to React nor record them in the repository.
+- Do not compute consumption/import/export without a Smart Meter or other validated measurement.
+- Commands that modify the inverter are out of MVP scope.
+- Idiomatic Go code, strict TS, simple and testable architecture; lint, format, tests, CI.
+- Any untested endpoint is explicitly `unverified`.
+- Any new information must be documented with its source and its firmware version.
 
 ## Definition of Done
 
-Fonctionnalité testée (unitaires + intégration), typée, documentée, erreurs et états vides gérés, accessibilité vérifiée, secrets absents des logs, compatible données hors ligne.
+Tested feature (unit + integration), typed, documented, errors and empty states handled, accessibility verified, no secrets in the logs, compatible with offline data.
 
-## Sources de référence
+## Reference sources
 
-Le fichier `references/fronius-original.js` contient
-le JavaScript original de l'interface Fronius GEN24.
+The file `references/fronius-original.js` contains
+the original JavaScript of the Fronius GEN24 interface.
 
-Il constitue la source primaire pour :
+It is the primary source for:
 
-- L'identification des endpoints HTTP
-- L'analyse des mécanismes d'authentification
-- La compréhension des permissions
-- L'identification des structures de données
-- La reconstitution des fonctionnalités existantes
+- Identifying the HTTP endpoints
+- Analyzing the authentication mechanisms
+- Understanding the permissions
+- Identifying the data structures
+- Reconstructing the existing features
 
-L'agent doit consulter ce fichier avant d'implémenter
-une fonctionnalité basée sur l'API propriétaire Fronius.
+The agent must consult this file before implementing
+a feature based on the proprietary Fronius API.
 
-Ne jamais modifier ce fichier original.
+Never modify this original file.

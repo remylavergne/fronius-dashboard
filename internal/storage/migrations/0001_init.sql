@@ -1,16 +1,15 @@
--- Migration 0001 : schéma initial de la phase 1.
+-- Migration 0001: initial phase-1 schema.
 --
--- Choix structurants :
---   * `samples` est WITHOUT ROWID avec la clé primaire (ts_utc, source) : c'est
---     cette clé qui rend l'ingestion idempotente et le rejeu du backfill sans
---     doublon.
---   * `ts_utc` est un texte UTC au format 2006-01-02T15:04:05.000Z : ordre
---     lexicographique = ordre chronologique, et les fonctions de date de SQLite
---     le lisent directement.
---   * les colonnes de mesure sont NULLables : l'absence d'une valeur (pas de
---     Smart Meter, pas de batterie) reste NULL, jamais 0.
---   * les unités sont les unités SI de base (W, Wh, %) ; aucune conversion
---     n'est appliquée à l'écriture.
+-- Structural choices:
+--   * `samples` is WITHOUT ROWID with primary key (ts_utc, source): it is this
+--     key that makes ingestion idempotent and backfill replay duplicate-free.
+--   * `ts_utc` is a UTC text in the format 2006-01-02T15:04:05.000Z: lexicographic
+--     order = chronological order, and SQLite's date functions read it
+--     directly.
+--   * the measurement columns are NULLable: the absence of a value (no
+--     Smart Meter, no battery) stays NULL, never 0.
+--   * the units are the base SI units (W, Wh, %); no conversion is
+--     applied at write time.
 
 CREATE TABLE samples (
   ts_utc TEXT NOT NULL,

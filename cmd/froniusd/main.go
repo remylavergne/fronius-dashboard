@@ -1,10 +1,10 @@
-// Command froniusd est le service de supervision : collecte périodique des
-// mesures, persistance SQLite, API REST de consultation.
+// Command froniusd is the supervision service: periodic collection of
+// measurements, SQLite persistence, REST API for consultation.
 //
-// Sécurité : le service n'émet que des GET vers l'onduleur (garanti par
-// fronius.ReadOnly) et refuse de s'exposer au-delà de la boucle locale sans
-// FRONIUS_ALLOW_REMOTE=1 (voir docs/adr/0005). Aucune commande de modification
-// du matériel n'existe dans ce binaire.
+// Security: the service only issues GETs towards the inverter (guaranteed by
+// fronius.ReadOnly) and refuses to expose itself beyond the loopback without
+// FRONIUS_ALLOW_REMOTE=1 (see docs/adr/0005). No hardware modification command
+// exists in this binary.
 package main
 
 import (
@@ -36,13 +36,13 @@ import (
 	"fronius-supervisor/internal/storage"
 )
 
-// shutdownTimeout borne l'arrêt propre du serveur HTTP.
+// shutdownTimeout bounds the clean shutdown of the HTTP server.
 const shutdownTimeout = 10 * time.Second
 
 func main() {
 	var (
-		backfillDays  = flag.Int("backfill-days", 0, "remplit la base avec N jours d'historique du simulateur avant de démarrer")
-		forceBackfill = flag.Bool("force-backfill", false, "autorise un remplissage d'historique vers une adresse non locale (déconseillé)")
+		backfillDays  = flag.Int("backfill-days", 0, "fills the database with N days of simulator history before starting")
+		forceBackfill = flag.Bool("force-backfill", false, "allows a history backfill towards a non-local address (not recommended)")
 	)
 	flag.Parse()
 
@@ -62,7 +62,7 @@ func run(backfillDays int, forceBackfill bool) error {
 	}
 	loc, err := cfg.Location()
 	if err != nil {
-		return fmt.Errorf("fuseau %q: %w", cfg.TZ, err)
+		return fmt.Errorf("time zone %q: %w", cfg.TZ, err)
 	}
 
 	logger, err := newLogger(cfg)
@@ -76,14 +76,14 @@ func run(backfillDays int, forceBackfill bool) error {
 	}
 	defer func() {
 		if err := store.Close(); err != nil {
-			logger.Error("fermeture de la base impossible", "error", err)
+			logger.Error("database close failed", "error", err)
 		}
 	}()
 
-	// Tous les clients passent par la garde lecture seule : une requête non-GET
-	// est refusée avant d'atteindre le réseau. Le transport Digest est placé
-	// sous cette garde et sous les deux clients : il n'ajoute d'en-tête
-	// Authorization qu'en réponse à un 401, et jamais vers un autre hôte.
+	// All clients go through the read-only guard: a non-GET request
+	// is refused before reaching the network. The Digest transport is placed
+	// beneath this guard and beneath the two clients: it only adds an
+	// Authorization header in response to a 401, and never towards another host.
 	digestTransport, err := digest.New(&http.Client{}, cfg.SolarAPIURL,
 		digest.Credentials{Username: cfg.DeviceUser, Password: cfg.DevicePassword}, logger)
 	if err != nil {
@@ -114,10 +114,10 @@ func run(backfillDays int, forceBackfill bool) error {
 		TS:       time.Now().UTC(),
 		Kind:     model.EventStartup,
 		Severity: model.SeverityInfo,
-		Message:  "collecteur démarré",
+		Message:  "collector started",
 		Detail:   cfg.SolarAPIURL,
 	}); err != nil {
-		logger.Warn("événement de démarrage non enregistré", "error", err)
+		logger.Warn("startup event not recorded", "error", err)
 	}
 
 	col := &collector.Collector{
@@ -133,13 +133,13 @@ func run(backfillDays int, forceBackfill bool) error {
 	go func() {
 		defer wg.Done()
 		if err := col.Run(ctx); err != nil {
-			logger.Error("collecteur arrêté sur erreur", "error", err)
+			logger.Error("collector stopped on error", "error", err)
 		}
 	}()
 
-	// Le détecteur démarre toujours, avec ou sans identifiants : c'est la seule
-	// façon de savoir que l'appareil exige une authentification, et le bundle
-	// prouve que certains chemins internes répondent sans elle (module yTJA).
+	// The detector always starts, with or without credentials: it is the only
+	// way to know that the device requires authentication, and the bundle
+	// proves that some internal paths respond without it (module yTJA).
 	det := &detect.Detector{
 		Source:                internalClient,
 		Sink:                  store,
@@ -151,13 +151,13 @@ func run(backfillDays int, forceBackfill bool) error {
 	go func() {
 		defer wg.Done()
 		if err := det.Run(ctx); err != nil {
-			logger.Error("détecteur arrêté sur erreur", "error", err)
+			logger.Error("detector stopped on error", "error", err)
 		}
 	}()
 
-	// La maintenance (agrégation horaire, purge de rétention) démarre après le
-	// remplissage d'historique : sa première passe agrège alors ce que le
-	// backfill vient d'écrire.
+	// Maintenance (hourly aggregation, retention purge) starts after the
+	// history backfill: its first pass then aggregates what the
+	// backfill has just written.
 	maint := &maintenance.Runner{
 		Store:         store,
 		Loc:           loc,
@@ -168,7 +168,7 @@ func run(backfillDays int, forceBackfill bool) error {
 	go func() {
 		defer wg.Done()
 		if err := maint.Run(ctx); err != nil {
-			logger.Error("maintenance arrêtée sur erreur", "error", err)
+			logger.Error("maintenance stopped on error", "error", err)
 		}
 	}()
 
@@ -181,7 +181,7 @@ func run(backfillDays int, forceBackfill bool) error {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.ListenAndServe() }()
 
-	logger.Info("froniusd démarré",
+	logger.Info("froniusd started",
 		"api_addr", cfg.HTTPAddr,
 		"solarapi_url", cfg.SolarAPIURL,
 		"db_path", cfg.DBPath,
@@ -192,39 +192,39 @@ func run(backfillDays int, forceBackfill bool) error {
 
 	select {
 	case <-ctx.Done():
-		logger.Info("arrêt demandé")
+		logger.Info("shutdown requested")
 	case err := <-serveErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("serveur HTTP: %w", err)
+			return fmt.Errorf("HTTP server: %w", err)
 		}
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("arrêt du serveur HTTP impossible", "error", err)
+		logger.Error("HTTP server shutdown failed", "error", err)
 	}
 	wg.Wait()
-	logger.Info("arrêt terminé")
+	logger.Info("shutdown complete")
 	return nil
 }
 
-// backfill reconstitue un historique en interrogeant le simulateur avec son
-// paramètre non standard « at ».
+// backfill rebuilds a history by querying the simulator with its
+// non-standard "at" parameter.
 //
-// Par défaut, la cible doit être locale : marteler l'onduleur réel avec des
-// dizaines de milliers de requêtes serait inacceptable. --force-backfill lève
-// ce refus en connaissance de cause.
+// By default, the target must be local: hammering the real inverter with tens
+// of thousands of requests would be unacceptable. --force-backfill lifts
+// this refusal knowingly.
 func backfill(ctx context.Context, client *solarapi.Client, store *storage.Store, cfg config.Config, days int, force bool, logger *slog.Logger) error {
 	if !force {
 		u, err := url.Parse(cfg.SolarAPIURL)
 		if err != nil {
-			return fmt.Errorf("URL Solar API %q: %w", cfg.SolarAPIURL, err)
+			return fmt.Errorf("Solar API URL %q: %w", cfg.SolarAPIURL, err)
 		}
 		if !config.IsLoopbackHost(u.Hostname()) {
 			return fmt.Errorf(
-				"refus: le remplissage d'historique interrogerait %s ; "+
-					"le simulateur local est attendu (utiliser --force-backfill pour passer outre)",
+				"refusal: the history backfill would query %s; "+
+					"the local simulator is expected (use --force-backfill to override)",
 				cfg.SolarAPIURL)
 		}
 	}
@@ -234,19 +234,19 @@ func backfill(ctx context.Context, client *solarapi.Client, store *storage.Store
 	start := end.AddDate(0, 0, -days)
 	planned := int(end.Sub(start) / step)
 
-	logger.Info("backfill démarré", "days", days, "step", step, "planned_requests", planned)
+	logger.Info("backfill started", "days", days, "step", step, "planned_requests", planned)
 
 	var inserted, failed int
 	for ts, i := start, 0; ts.Before(end); ts, i = ts.Add(step), i+1 {
 		if err := ctx.Err(); err != nil {
-			logger.Warn("backfill interrompu", "inserted", inserted, "failed", failed)
+			logger.Warn("backfill interrupted", "inserted", inserted, "failed", failed)
 			return nil
 		}
 		env, err := client.GetPowerFlowRealtimeDataAt(ctx, ts)
 		if err != nil {
 			failed++
 			if failed == 1 {
-				logger.Warn("backfill: première requête en échec", "at", ts, "error", err)
+				logger.Warn("backfill: first request failed", "at", ts, "error", err)
 			}
 			continue
 		}
@@ -255,11 +255,11 @@ func backfill(ctx context.Context, client *solarapi.Client, store *storage.Store
 		}
 		inserted++
 		if i%2000 == 1999 {
-			logger.Info("backfill en cours", "inserted", inserted, "at", ts)
+			logger.Info("backfill in progress", "inserted", inserted, "at", ts)
 		}
 	}
 
-	logger.Info("backfill terminé", "inserted", inserted, "failed", failed)
+	logger.Info("backfill finished", "inserted", inserted, "failed", failed)
 	return nil
 }
 
@@ -286,12 +286,12 @@ func parseLevel(s string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("niveau de log inconnu %q", s)
+		return 0, fmt.Errorf("unknown log level %q", s)
 	}
 }
 
-// version retourne la version du binaire : version du module si elle est
-// connue, sinon révision VCS, sinon « dev ».
+// version returns the binary version: the module version if it is
+// known, otherwise the VCS revision, otherwise "dev".
 func version() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

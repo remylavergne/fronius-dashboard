@@ -7,11 +7,11 @@ export type EmptyStateProps = {
 }
 
 /**
- * État vide explicite.
+ * Explicit empty state.
  *
- * Une base sans mesure (installation neuve, collecteur jamais démarré) n'est pas
- * une erreur : c'est un état à nommer, pour éviter qu'une page blanche soit
- * interprétée comme une panne.
+ * A database without a measurement (new installation, collector never started)
+ * is not an error: it is a state to name, to avoid a blank page being
+ * interpreted as a failure.
  */
 export function EmptyState({ title, hint }: EmptyStateProps) {
   return (

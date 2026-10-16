@@ -1,17 +1,17 @@
 /**
- * Client HTTP de l'API de supervision.
+ * HTTP client of the monitoring API.
  *
- * Le frontend ne s'adresse qu'à `/api` (relayé vers `froniusd` par le proxy
- * Vite en développement). Il ne connaît ni l'adresse de l'onduleur, ni un
- * identifiant quelconque : les identifiants de l'appareil restent dans
- * l'environnement du service et ne traversent jamais cette frontière.
+ * The frontend only addresses `/api` (relayed to `froniusd` by the Vite proxy
+ * in development). It knows neither the inverter address nor any credential:
+ * the device credentials stay in the service environment and never cross this
+ * boundary.
  */
 import type { ZodType } from 'zod'
 import { errorEnvelopeSchema } from './schema'
 
 export type ApiErrorKind = 'network' | 'http' | 'schema'
 
-/** Erreur d'accès à l'API, classée par nature. */
+/** API access error, classified by nature. */
 export class ApiError extends Error {
   readonly kind: ApiErrorKind
   readonly status: number | undefined
@@ -33,19 +33,19 @@ export class ApiError extends Error {
 function describeFailure(cause: unknown): string {
   if (cause instanceof Error) {
     if (cause.name === 'AbortError') {
-      return 'requête annulée'
+      return 'request cancelled'
     }
     return cause.message
   }
-  return 'échec réseau'
+  return 'network failure'
 }
 
 /**
- * Exécute une requête GET et valide la réponse.
+ * Executes a GET request and validates the response.
  *
- * Trois échecs sont distingués : `network` (l'API est injoignable), `http`
- * (l'API a répondu une erreur) et `schema` (réponse inattendue — c'est le
- * signal d'une dérive entre les DTO Go et ces schémas).
+ * Three failures are distinguished: `network` (the API is unreachable), `http`
+ * (the API returned an error) and `schema` (unexpected response — the signal of
+ * a drift between the Go DTOs and these schemas).
  */
 export async function fetchJSON<T>(
   path: string,
@@ -70,7 +70,7 @@ export async function fetchJSON<T>(
     body = text === '' ? null : JSON.parse(text)
   } catch (cause) {
     if (response.ok) {
-      throw new ApiError('schema', 'réponse illisible : JSON invalide', {
+      throw new ApiError('schema', 'unreadable response: invalid JSON', {
         status: response.status,
         cause,
       })
@@ -82,7 +82,7 @@ export async function fetchJSON<T>(
     const parsed = errorEnvelopeSchema.safeParse(body)
     throw new ApiError(
       'http',
-      parsed.success ? parsed.data.error.message : `erreur HTTP ${response.status}`,
+      parsed.success ? parsed.data.error.message : `HTTP error ${response.status}`,
       parsed.success
         ? { status: response.status, code: parsed.data.error.code }
         : { status: response.status },
@@ -91,7 +91,7 @@ export async function fetchJSON<T>(
 
   const result = schema.safeParse(body)
   if (!result.success) {
-    throw new ApiError('schema', 'réponse inattendue de l’API', {
+    throw new ApiError('schema', 'unexpected API response', {
       status: response.status,
       cause: result.error,
     })

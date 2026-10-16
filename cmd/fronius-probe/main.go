@@ -1,21 +1,21 @@
-// Command fronius-probe effectue une requête de diagnostic en LECTURE SEULE
-// vers un onduleur Fronius, et écrit le corps expurgé sur demande.
+// Command fronius-probe performs a READ-ONLY diagnostic request
+// to a Fronius inverter, and writes the redacted body on demand.
 //
-// Ce binaire est destiné à être exécuté par l'utilisateur, sur son propre
-// matériel, après lecture de docs/PROBE-READONLY.md. Il n'est jamais lancé par
-// l'agent ni par la CI.
+// This binary is intended to be run by the user, on their own
+// hardware, after reading docs/PROBE-READONLY.md. It is never launched by
+// the agent or by CI.
 //
-// Garanties :
-//   - liste blanche de cinq endpoints, en GET uniquement, sélectionnables par
-//     --endpoint ; tout autre chemin est refusé avant construction d'URL ;
-//   - refus d'une adresse non locale sans --allow-non-loopback explicite ;
-//   - aucune écriture vers l'appareil : aucune méthode non-GET n'est construite,
-//     et la garde fronius.ReadOnly rejette toute requête qui ne serait pas un GET ;
-//   - expurgation du corps et des en-têtes avant toute écriture sur disque ;
-//   - aucun mot de passe en ligne de commande : les identifiants viennent de
-//     l'environnement (FRONIUS_DEVICE_USER / FRONIUS_DEVICE_PASSWORD) ou, pour
-//     le mot de passe, de l'entrée standard (--password-stdin) — un argument
-//     finirait dans l'historique du shell et dans la table des processus.
+// Guarantees:
+//   - allowlist of five endpoints, GET only, selectable via
+//     --endpoint; any other path is refused before building the URL;
+//   - refusal of a non-local address without an explicit --allow-non-loopback;
+//   - no write to the device: no non-GET method is built,
+//     and the fronius.ReadOnly guard rejects any request that is not a GET;
+//   - redaction of the body and headers before any write to disk;
+//   - no password on the command line: the credentials come from the
+//     environment (FRONIUS_DEVICE_USER / FRONIUS_DEVICE_PASSWORD) or, for
+//     the password, from standard input (--password-stdin) — an argument
+//     would end up in the shell history and in the process table.
 package main
 
 import (
@@ -42,67 +42,67 @@ import (
 	"fronius-supervisor/internal/secret"
 )
 
-// errNotWhitelisted : la sonde ne peut pas viser une URL arbitraire.
-var errNotWhitelisted = errors.New("endpoint hors liste blanche")
+// errNotWhitelisted: the probe cannot target an arbitrary URL.
+var errNotWhitelisted = errors.New("endpoint not in allowlist")
 
-// maxBodyBytes borne la lecture : une réponse Solar API réelle fait quelques
-// kilo-octets.
+// maxBodyBytes bounds the read: a real Solar API response is a few
+// kilobytes.
 const maxBodyBytes = 1 << 20
 
-// endpoint décrit une entrée de la liste blanche.
+// endpoint describes an allowlist entry.
 type endpoint struct {
 	method         string
 	path           string
 	classification string
 	note           string
-	// digest : le chemin est atteint par le client officiel avec un GET
-	// authentifié (il n'implique pas que l'appareil l'exige : il peut répondre
-	// sans en-tête).
+	// digest: the path is reached by the official client with an authenticated
+	// GET (it does not imply that the device requires it: it may respond
+	// without a header).
 	digest bool
 }
 
-// whitelist est la liste blanche de la phase 2 : les quatre chemins internes
-// (identité, présence d'un compteur et d'une batterie, événements) et l'endpoint
-// Solar API de la phase 1. Chaque ajout à cette liste est une décision
-// documentée, testée et relue (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
+// whitelist is the phase 2 allowlist: the four internal paths
+// (identity, presence of a meter and a battery, events) and the Solar API
+// endpoint of phase 1. Every addition to this list is a decision
+// that is documented, tested and reviewed (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
 var whitelist = []endpoint{
 	{
 		method:         http.MethodGet,
 		path:           solarapi.PowerFlowPath,
 		classification: "READ",
-		note:           "Mesure de production du site (Body.Data.Site) et des onduleurs (Body.Data.Inverters)",
+		note:           "Site production measurement (Body.Data.Site) and inverter measurement (Body.Data.Inverters)",
 	},
 	{
 		method:         http.MethodGet,
 		path:           internalapi.VersionPath,
 		classification: "READ",
 		digest:         true,
-		note:           "Identité de l'appareil : numéro de série (clé établie), nombre de phases, groupe d'appareil",
+		note:           "Device identity: serial number (established key), number of phases, device group",
 	},
 	{
 		method:         http.MethodGet,
 		path:           internalapi.ActiveEventsPath,
 		classification: "READ",
 		digest:         true,
-		note:           "Événements actifs : forme du corps NON établie, c'est la capture attendue",
+		note:           "Active events: body shape NOT established, this is the expected capture",
 	},
 	{
 		method:         http.MethodGet,
 		path:           internalapi.PowerMeterPath,
 		classification: "READ",
 		digest:         true,
-		note:           "Présence d'un Fronius Smart Meter (Body.Data indexé par identifiant de composant)",
+		note:           "Presence of a Fronius Smart Meter (Body.Data indexed by component id)",
 	},
 	{
 		method:         http.MethodGet,
 		path:           internalapi.BatteryPath,
 		classification: "READ",
 		digest:         true,
-		note:           "Présence d'une batterie (Body.Data indexé par identifiant de composant)",
+		note:           "Presence of a battery (Body.Data indexed by component id)",
 	},
 }
 
-// allowAllEndpoints est la valeur de --endpoint qui sélectionne toute la liste.
+// allowAllEndpoints is the value of --endpoint that selects the whole list.
 const allowAllEndpoints = "all"
 
 type options struct {
@@ -114,19 +114,19 @@ type options struct {
 	endpoint      string
 	passwordStdin bool
 	out           io.Writer
-	// stdin alimente --password-stdin (injectable en test).
+	// stdin feeds --password-stdin (injectable in tests).
 	stdin io.Reader
 }
 
 func main() {
 	var opt options
-	flag.StringVar(&opt.baseURL, "base-url", "http://127.0.0.1:8081", "URL de base de l'appareil (simulateur par défaut)")
-	flag.BoolVar(&opt.allowNonLocal, "allow-non-loopback", false, "autorise une adresse non locale (à n'utiliser qu'après lecture de docs/PROBE-READONLY.md)")
-	flag.StringVar(&opt.saveDir, "save", "", "répertoire où écrire le corps expurgé")
-	flag.DurationVar(&opt.timeout, "timeout", 5*time.Second, "délai par requête")
-	flag.BoolVar(&opt.list, "list", false, "affiche la liste blanche des endpoints et quitte")
-	flag.StringVar(&opt.endpoint, "endpoint", allowAllEndpoints, "chemin à sonder ("+allowAllEndpoints+" ou un chemin de la liste blanche)")
-	flag.BoolVar(&opt.passwordStdin, "password-stdin", false, "lit le mot de passe sur la première ligne de l'entrée standard")
+	flag.StringVar(&opt.baseURL, "base-url", "http://127.0.0.1:8081", "Base URL of the device (simulator by default)")
+	flag.BoolVar(&opt.allowNonLocal, "allow-non-loopback", false, "allows a non-local address (use only after reading docs/PROBE-READONLY.md)")
+	flag.StringVar(&opt.saveDir, "save", "", "directory where the redacted body is written")
+	flag.DurationVar(&opt.timeout, "timeout", 5*time.Second, "per-request timeout")
+	flag.BoolVar(&opt.list, "list", false, "prints the allowlist of endpoints and exits")
+	flag.StringVar(&opt.endpoint, "endpoint", allowAllEndpoints, "path to probe ("+allowAllEndpoints+" or a path from the allowlist)")
+	flag.BoolVar(&opt.passwordStdin, "password-stdin", false, "reads the password on the first line of standard input")
 	flag.Parse()
 	opt.out = os.Stdout
 	opt.stdin = os.Stdin
@@ -160,27 +160,27 @@ func run(opt options) error {
 		return fmt.Errorf("URL %q: %w", opt.baseURL, err)
 	}
 	if base.Scheme != "http" && base.Scheme != "https" {
-		return fmt.Errorf("URL %q : schéma http(s) attendu", opt.baseURL)
+		return fmt.Errorf("URL %q: expected http(s) scheme", opt.baseURL)
 	}
 	if base.Host == "" {
-		return fmt.Errorf("URL %q : hôte manquant", opt.baseURL)
+		return fmt.Errorf("URL %q: missing host", opt.baseURL)
 	}
 	if !config.IsLoopbackHost(base.Hostname()) && !opt.allowNonLocal {
 		return fmt.Errorf(
-			"refus: %s n'est pas une adresse locale ; relancer avec --allow-non-loopback "+
-				"après avoir lu docs/PROBE-READONLY.md et obtenu l'accord explicite de l'utilisateur",
+			"refusal: %s is not a local address; re-run with --allow-non-loopback "+
+				"after reading docs/PROBE-READONLY.md and obtaining the user's explicit consent",
 			opt.baseURL)
 	}
 	if opt.timeout <= 0 {
-		return fmt.Errorf("--timeout doit être strictement positif")
+		return fmt.Errorf("--timeout must be strictly positive")
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	// La garde lecture seule est interposée devant le transport : une requête
-	// non-GET ne peut pas atteindre le réseau, même par erreur de programmation.
-	// Le transport Digest est composé sous elle, et seulement pour les chemins
-	// qui le demandent ; sans identifiants il émet la requête nue.
+	// The read-only guard is interposed in front of the transport: a non-GET
+	// request cannot reach the network, even by programming mistake.
+	// The Digest transport is composed beneath it, and only for the paths
+	// that request it; without credentials it sends the bare request.
 	digestTransport, err := digest.New(&http.Client{}, opt.baseURL,
 		digest.Credentials{Username: cred.user, Password: cred.password}, logger)
 	if err != nil {
@@ -198,8 +198,8 @@ func run(opt options) error {
 	return nil
 }
 
-// doerFor retourne le transport d'un endpoint, la garde lecture seule restant
-// à l'extérieur.
+// doerFor returns the transport of an endpoint, the read-only guard remaining
+// outside.
 func doerFor(ep endpoint, digestTransport *digest.Transport) fronius.Doer {
 	if ep.digest {
 		return fronius.ReadOnly{Inner: digestTransport}
@@ -207,10 +207,10 @@ func doerFor(ep endpoint, digestTransport *digest.Transport) fronius.Doer {
 	return fronius.ReadOnly{Inner: &http.Client{}}
 }
 
-// selectEndpoints résout --endpoint.
+// selectEndpoints resolves --endpoint.
 //
-// Tout chemin absent de la liste blanche est refusé : la sonde ne peut pas
-// viser une URL arbitraire, même si l'utilisateur la connaît.
+// Any path absent from the allowlist is refused: the probe cannot
+// target an arbitrary URL, even if the user knows it.
 func selectEndpoints(name string) ([]endpoint, error) {
 	trimmed := strings.TrimSpace(name)
 	switch trimmed {
@@ -225,17 +225,17 @@ func selectEndpoints(name string) ([]endpoint, error) {
 	return nil, fmt.Errorf("%w: %q", errNotWhitelisted, trimmed)
 }
 
-// credentials rassemble les identifiants, sans jamais les journaliser.
+// credentials gathers the credentials, without ever logging them.
 type credentials struct {
 	user     string
 	password secret.String
 }
 
-// readCredentials lit l'environnement, et le mot de passe sur l'entrée standard
-// si --password-stdin est actif.
+// readCredentials reads the environment, and the password on standard input
+// if --password-stdin is active.
 //
-// Aucun flag --password n'existe : un mot de passe en argument apparaîtrait
-// dans l'historique du shell et dans la table des processus.
+// No --password flag exists: a password passed as an argument would appear
+// in the shell history and in the process table.
 func readCredentials(opt options) (credentials, error) {
 	out := credentials{user: strings.TrimSpace(os.Getenv("FRONIUS_DEVICE_USER"))}
 	if v := strings.TrimSpace(os.Getenv("FRONIUS_DEVICE_PASSWORD")); v != "" {
@@ -244,15 +244,15 @@ func readCredentials(opt options) (credentials, error) {
 	if opt.passwordStdin {
 		line, err := bufio.NewReader(opt.stdin).ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
-			return credentials{}, fmt.Errorf("lecture du mot de passe sur l'entrée standard: %w", err)
+			return credentials{}, fmt.Errorf("reading the password from standard input: %w", err)
 		}
 		out.password = secret.New(strings.TrimRight(line, "\r\n"))
 	}
 	if out.user == "" && !out.password.IsZero() {
-		return credentials{}, errors.New("FRONIUS_DEVICE_USER est vide : les deux identifiants vont ensemble")
+		return credentials{}, errors.New("FRONIUS_DEVICE_USER is empty: both credentials go together")
 	}
 	if out.user != "" && out.password.IsZero() {
-		return credentials{}, errors.New("FRONIUS_DEVICE_PASSWORD est vide : les deux identifiants vont ensemble")
+		return credentials{}, errors.New("FRONIUS_DEVICE_PASSWORD is empty: both credentials go together")
 	}
 	return out, nil
 }
@@ -262,40 +262,40 @@ func probe(ctx context.Context, doer fronius.Doer, base *url.URL, ep endpoint, o
 
 	req, err := http.NewRequestWithContext(ctx, ep.method, endpointURL.String(), nil)
 	if err != nil {
-		return fmt.Errorf("construction de la requête: %w", err)
+		return fmt.Errorf("building the request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 
-	fmt.Fprintf(opt.out, "Requête\n  %s %s\n", ep.method, endpointURL)
-	fmt.Fprintf(opt.out, "  classification : %s\n  liste blanche : %s\n\n", ep.classification, ep.note)
+	fmt.Fprintf(opt.out, "Request\n  %s %s\n", ep.method, endpointURL)
+	fmt.Fprintf(opt.out, "  classification: %s\n  allowlist: %s\n\n", ep.classification, ep.note)
 
 	start := time.Now()
 	resp, err := doer.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		return fmt.Errorf("requête %s: %w", endpointURL, err)
+		return fmt.Errorf("request %s: %w", endpointURL, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
-		return fmt.Errorf("lecture du corps: %w", err)
+		return fmt.Errorf("reading the body: %w", err)
 	}
 	truncated := len(body) > maxBodyBytes
 	if truncated {
 		body = body[:maxBodyBytes]
 	}
 
-	fmt.Fprintf(opt.out, "Réponse\n  statut   : %s\n  durée    : %s\n  octets   : %d%s\n",
-		resp.Status, duration.Round(time.Millisecond), len(body), map[bool]string{true: " (tronqué)"}[truncated])
+	fmt.Fprintf(opt.out, "Response\n  status   : %s\n  duration : %s\n  bytes    : %d%s\n",
+		resp.Status, duration.Round(time.Millisecond), len(body), map[bool]string{true: " (truncated)"}[truncated])
 
-	fmt.Fprintf(opt.out, "  en-têtes (valeurs sensibles masquées)\n")
+	fmt.Fprintf(opt.out, "  headers (sensitive values masked)\n")
 	for _, name := range sortedHeaderNames(resp.Header) {
 		fmt.Fprintf(opt.out, "    %s: %s\n", name, maskHeaderValue(name, strings.Join(resp.Header.Values(name), ", ")))
 	}
 
 	redacted := redactBody(body)
-	fmt.Fprintf(opt.out, "\nCorps expurgé\n%s\n", redacted)
+	fmt.Fprintf(opt.out, "\nRedacted body\n%s\n", redacted)
 	if note := sameBodyNote(body, redacted); note != "" {
 		fmt.Fprintf(opt.out, "\n%s\n", note)
 	}
@@ -305,28 +305,28 @@ func probe(ctx context.Context, doer fronius.Doer, base *url.URL, ep endpoint, o
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(opt.out, "\nCorps expurgé écrit dans %s\n", path)
+		fmt.Fprintf(opt.out, "\nRedacted body written to %s\n", path)
 	}
 
-	logger.Debug("sonde exécutée", "url", endpointURL.String(), "status", resp.StatusCode, "bytes", len(body))
+	logger.Debug("probe executed", "url", endpointURL.String(), "status", resp.StatusCode, "bytes", len(body))
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("l'appareil a répondu %s", resp.Status)
+		return fmt.Errorf("the device responded %s", resp.Status)
 	}
 	return nil
 }
 
 func printWhitelist(w io.Writer, baseURL string) {
-	fmt.Fprintf(w, "Liste blanche de fronius-probe (mode lecture seule, GET uniquement)\n")
-	fmt.Fprintf(w, "Base : %s\n\n", baseURL)
+	fmt.Fprintf(w, "fronius-probe allowlist (read-only mode, GET only)\n")
+	fmt.Fprintf(w, "Base: %s\n\n", baseURL)
 	for _, ep := range whitelist {
 		fmt.Fprintf(w, "  %-4s %-60s %-5s digest=%v\n", ep.method, ep.path, ep.classification, ep.digest)
 		fmt.Fprintf(w, "       %s\n", ep.note)
 	}
-	fmt.Fprintf(w, "\nAucune autre requête n'est possible : la liste est figée dans le binaire.\n")
-	fmt.Fprintf(w, "Aucune méthode POST, PUT, PATCH ou DELETE n'est construite ni autorisée.\n")
-	fmt.Fprintf(w, "\nIdentifiants : FRONIUS_DEVICE_USER et FRONIUS_DEVICE_PASSWORD (environnement),\n")
-	fmt.Fprintf(w, "ou --password-stdin pour le mot de passe. L'en-tête Authorization n'est envoyé\n")
-	fmt.Fprintf(w, "qu'en réponse à un 401, jamais préemptivement.\n")
+	fmt.Fprintf(w, "\nNo other request is possible: the list is frozen in the binary.\n")
+	fmt.Fprintf(w, "No POST, PUT, PATCH or DELETE method is built or allowed.\n")
+	fmt.Fprintf(w, "\nCredentials: FRONIUS_DEVICE_USER and FRONIUS_DEVICE_PASSWORD (environment),\n")
+	fmt.Fprintf(w, "or --password-stdin for the password. The Authorization header is sent\n")
+	fmt.Fprintf(w, "only in response to a 401, never preemptively.\n")
 }
 
 func sortedHeaderNames(h http.Header) []string {
@@ -340,24 +340,24 @@ func sortedHeaderNames(h http.Header) []string {
 
 func saveRedacted(dir string, ep endpoint, body []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", fmt.Errorf("création de %s: %w", dir, err)
+		return "", fmt.Errorf("creating %s: %w", dir, err)
 	}
 	name := fmt.Sprintf("probe_%s_%s.json", saveName(ep.path),
 		time.Now().UTC().Format("20060102T150405Z"))
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, body, 0o600); err != nil {
-		return "", fmt.Errorf("écriture de %s: %w", path, err)
+		return "", fmt.Errorf("writing %s: %w", path, err)
 	}
 	return path, nil
 }
 
-// saveName dérive un nom de fichier du CHEMIN de l'endpoint, et non de son seul
-// dernier segment : « /components/PowerMeter/readable » et
-// « /components/BatteryManagementSystem/readable » finissent tous deux par
-// « readable » et s'écraseraient mutuellement.
+// saveName derives a file name from the PATH of the endpoint, and not from its
+// single last segment: "/components/PowerMeter/readable" and
+// "/components/BatteryManagementSystem/readable" both end with
+// "readable" and would overwrite each other.
 //
-// La forme obtenue (status_version, components_powermeter_readable) est celle
-// des fixtures promues décrites dans docs/PROBE-READONLY.md.
+// The shape obtained (status_version, components_powermeter_readable) is that
+// of the promoted fixtures described in docs/PROBE-READONLY.md.
 func saveName(path string) string {
 	withoutExt := strings.TrimSuffix(path, filepath.Ext(path))
 	trimmed := strings.Trim(withoutExt, "/")
@@ -368,10 +368,10 @@ func saveName(path string) string {
 	return strings.ToLower(replacer.Replace(trimmed))
 }
 
-// sameBodyNote signale les octets retirés, sans jamais les afficher.
+// sameBodyNote signals the removed bytes, without ever displaying them.
 func sameBodyNote(original, redacted []byte) string {
 	if len(original) == len(redacted) {
 		return ""
 	}
-	return "Note : des valeurs ont été remplacées par <redacted> avant affichage et écriture."
+	return "Note: some values were replaced by <redacted> before display and write."
 }

@@ -9,11 +9,11 @@ export type AppShellProps = {
 }
 
 /**
- * Structure de l'application : en-tête, navigation latérale, contenu, pied.
+ * Application structure: header, side navigation, content, footer.
  *
- * Repères sémantiques `header` / `nav` / `main` / `footer`, navigation par une
- * liste de liens réels (donc utilisables au clavier et par un lecteur d'écran),
- * et anneau de focus conservé sur les liens actifs.
+ * Semantic landmarks `header` / `nav` / `main` / `footer`, navigation by a list
+ * of real links (therefore usable with the keyboard and by a screen reader),
+ * and focus ring kept on active links.
  */
 export function AppShell({ children }: AppShellProps) {
   const { t } = useT()
@@ -21,8 +21,8 @@ export function AppShell({ children }: AppShellProps) {
   const links = [
     { to: '/', label: t('nav.overview'), icon: Gauge },
     { to: '/system', label: t('nav.system'), icon: CircleDot },
-    { to: '/capacites', label: t('nav.capabilities'), icon: ListChecks },
-    { to: '/parametres', label: t('nav.settings'), icon: Settings },
+    { to: '/capabilities', label: t('nav.capabilities'), icon: ListChecks },
+    { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 
   return (

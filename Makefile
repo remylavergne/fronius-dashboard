@@ -8,19 +8,19 @@ WEB := apps/web
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-build: ## Compile le backend (statique, CGO off) et le frontend
+build: ## Build the backend (static, CGO off) and the frontend
 	CGO_ENABLED=0 $(GO) build -o bin/ ./cmd/...
 	$(PNPM) --dir $(WEB) build
 
-test: test-go test-web ## Lance tous les tests
+test: test-go test-web ## Run all tests
 
-test-go: ## Tests Go avec détecteur de courses
+test-go: ## Go tests with race detector
 	$(GO) test ./... -race
 
-test-web: ## Tests frontend (vitest, run unique)
+test-web: ## Frontend tests (vitest, single run)
 	$(PNPM) --dir $(WEB) test --run
 
-test-perf: ## Mesure le critère de l'ADR 0006 (un an de données, < 200 ms ; ≈6,3 M de lignes)
+test-perf: ## Measure the ADR 0006 criterion (one year of data, < 200 ms; ≈6.3 M rows)
 	FRONIUS_PERF_YEAR=1 $(GO) test ./internal/storage/ -run TestOneYearTimeSeriesPerformance -count=1 -v -timeout 30m
 
 lint: lint-go lint-web ## Lint backend + frontend
@@ -31,20 +31,20 @@ lint-go:
 lint-web:
 	$(PNPM) --dir $(WEB) lint
 
-fmt: ## Formate le code Go
+fmt: ## Format the Go code
 	$(GO) fmt ./...
 
-dev-sim: ## Démarre le simulateur Fronius (127.0.0.1:8081)
+dev-sim: ## Start the Fronius simulator (127.0.0.1:8081)
 	$(GO) run ./cmd/fronius-sim
 
-dev-api: ## Démarre froniusd (API 127.0.0.1:8080 + collecteur)
+dev-api: ## Start froniusd (API 127.0.0.1:8080 + collector)
 	$(GO) run ./cmd/froniusd
 
-dev-web: ## Démarre le serveur de développement Vite (127.0.0.1:5173)
+dev-web: ## Start the Vite development server (127.0.0.1:5173)
 	$(PNPM) --dir $(WEB) dev
 
-seed: ## Remplit la base via le simulateur (7 jours d'historique)
+seed: ## Fill the database via the simulator (7 days of history)
 	$(GO) run ./cmd/froniusd --backfill-days 7
 
-clean: ## Supprime les artefacts générés
+clean: ## Remove generated artefacts
 	rm -rf bin data coverage $(WEB)/dist

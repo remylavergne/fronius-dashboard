@@ -1,30 +1,30 @@
-# Interface de supervision
+# Monitoring interface
 
-Frontend React de `froniusd` : consultation locale d'un Fronius GEN24 (production,
-énergies, capacités, état du collecteur).
+React frontend for `froniusd`: local consultation of a Fronius GEN24 (production,
+energies, capabilities, collector status).
 
-## Démarrage
+## Getting started
 
 ```bash
 pnpm install
 pnpm dev          # http://127.0.0.1:5173
 ```
 
-Le proxy Vite relaie `/api` vers `http://127.0.0.1:8080` (`vite.config.ts`) :
-`froniusd` doit tourner. Le frontend ne connaît ni l'adresse de l'onduleur ni un
-identifiant — la phase 1 n'en détient aucun.
+The Vite proxy relays `/api` to `http://127.0.0.1:8080` (`vite.config.ts`):
+`froniusd` must be running. The frontend knows neither the inverter address nor
+any credential — phase 1 holds none.
 
-## Commandes
+## Commands
 
-| Commande | Effet |
+| Command | Effect |
 |---|---|
-| `pnpm dev` | serveur de développement |
-| `pnpm build` | typecheck strict (`tsc -b`) puis build de production |
-| `pnpm test` / `pnpm test --run` | tests vitest (jsdom) |
-| `pnpm typecheck` | `tsc -b` seul |
+| `pnpm dev` | development server |
+| `pnpm build` | strict typecheck (`tsc -b`) then production build |
+| `pnpm test` / `pnpm test --run` | vitest tests (jsdom) |
+| `pnpm typecheck` | `tsc -b` alone |
 | `pnpm lint` | oxlint |
 
-Build servi directement par le backend :
+Build served directly by the backend:
 
 ```bash
 pnpm build
@@ -33,23 +33,24 @@ cd .. && FRONIUS_WEB_DIR=apps/web/dist ../bin/froniusd
 
 ## Structure
 
-| Chemin | Rôle |
+| Path | Role |
 |---|---|
-| `src/lib/schema.ts` | Schémas zod **miroirs** de `internal/api/dto.go` |
-| `src/lib/api.ts` | `fetchJSON` : échecs classés `network` / `http` / `schema` |
-| `src/lib/queries.ts` | Hooks TanStack Query (polling 5 s) et plages de temps |
-| `src/lib/chart.ts` | Buckets → points de graphique, trous matérialisés en `null` |
-| `src/lib/freshness.ts` | Décision de péremption affichée |
-| `src/routes/` | Vue d'ensemble, Système, Capacités, Paramètres |
-| `src/components/ui/` | Composants shadcn/ui générés (ne pas éditer à la main) |
-| `src/i18n/` | Dictionnaire plat FR, prêt pour EN/DE |
+| `src/lib/schema.ts` | zod schemas **mirroring** `internal/api/dto.go` |
+| `src/lib/api.ts` | `fetchJSON`: failures classified as `network` / `http` / `schema` |
+| `src/lib/queries.ts` | TanStack Query hooks (5 s polling) and time ranges |
+| `src/lib/chart.ts` | Buckets → chart points, gaps materialised as `null` |
+| `src/lib/freshness.ts` | Staleness decision displayed |
+| `src/routes/` | Overview, System, Capabilities, Settings |
+| `src/components/ui/` | Generated shadcn/ui components (do not edit by hand) |
+| `src/i18n/` | Flat EN dictionary, ready for FR/DE |
 
-Deux règles à respecter :
+Two rules to follow:
 
-1. **Toute évolution de `internal/api/dto.go` doit être répercutée dans
-   `src/lib/schema.ts`** : c'est ce qui détecte la dérive entre backend et
+1. **Any change to `internal/api/dto.go` must be reflected in
+   `src/lib/schema.ts`**: this is what detects drift between the backend and the
    interface.
-2. **Ne jamais remplacer une mesure absente par `0`.** L'API renvoie `null`,
-   l'affichage un tiret ; l'invariant « pas de zéro inventé » va jusqu'à l'écran.
+2. **Never replace an absent measurement with `0`.** The API returns `null`, the
+   display a dash; the "no invented zero" invariant goes all the way to the
+   screen.
 
-Documentation complète : `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`.
+Full documentation: `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`.

@@ -25,7 +25,7 @@ const (
 )
 
 // ---------------------------------------------------------------------------
-// Vérificateur indépendant : n'utilise PAS le code de production.
+// Independent verifier: does NOT use the production code.
 // ---------------------------------------------------------------------------
 
 func md5hex(s string) string {
@@ -33,10 +33,10 @@ func md5hex(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// parseParams découpe un en-tête d'authentification en paires clé/valeur.
+// parseParams splits an authentication header into key/value pairs.
 //
-// Implémentation volontairement indépendante de ParseChallenge : elle sert à
-// vérifier l'en-tête produit, une vérification circulaire n'aurait aucune valeur.
+// Implementation deliberately independent from ParseChallenge: it is used to
+// verify the produced header, a circular check would have no value.
 func parseParams(header string) map[string]string {
 	out := map[string]string{}
 	for _, part := range strings.Split(header, ", ") {
@@ -50,7 +50,7 @@ func parseParams(header string) map[string]string {
 	return out
 }
 
-// expectedResponse recalcule la réponse attendue d'après l'en-tête reçu.
+// expectedResponse recomputes the expected response from the received header.
 func expectedResponse(method, user, password, realm string, params map[string]string) string {
 	ha1 := md5hex(user + ":" + realm + ":" + password)
 	ha2 := md5hex(method + ":" + params["uri"])
@@ -61,16 +61,16 @@ func expectedResponse(method, user, password, realm string, params map[string]st
 	return md5hex(input + ":" + ha2)
 }
 
-// device est un serveur de test qui vérifie le Digest et compte les requêtes.
+// device is a test server that verifies the Digest and counts the requests.
 type device struct {
 	user, password, realm string
-	// monotonic active la vérification « nc strictement croissant », comme un
-	// serveur réel protégé contre le rejeu. Désactivé pour le test concurrent :
-	// l'ordre d'arrivée des requêtes y est indéterminé.
+	// monotonic enables the "strictly increasing nc" check, like a real server
+	// protected against replay. Disabled for the concurrent test: the arrival
+	// order of the requests there is undetermined.
 	monotonic bool
 	mu        sync.Mutex
 	requests  int
-	// authenticated compte les requêtes dont le Digest a été accepté.
+	// authenticated counts the requests whose Digest was accepted.
 	authenticated int
 	ncs           []string
 	cnonces       []string
@@ -90,15 +90,15 @@ func newDevice(t *testing.T, user, password, realm string) *device {
 	return d
 }
 
-// nonce retourne le nonce courant du serveur de test.
+// nonce returns the current nonce of the test server.
 func (d *device) nonce() string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.currentNonce
 }
 
-// setNonce remplace le nonce courant : toute requête portant l'ancien est
-// refusée comme périmée.
+// setNonce replaces the current nonce: any request carrying the old one is
+// refused as stale.
 func (d *device) setNonce(n string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -130,10 +130,10 @@ func (d *device) nonceCounts() []string {
 	return append([]string(nil), d.ncs...)
 }
 
-// accept vérifie l'en-tête Authorization d'une requête déjà authentifiée.
+// accept verifies the Authorization header of an already authenticated request.
 //
-// Rejoue les vérifications d'un serveur réel : réponse recalculée, et compteur
-// de répétition strictement croissant pour un même nonce.
+// Replays the checks of a real server: recomputed response, and strictly
+// increasing retry counter for a same nonce.
 func (d *device) accept(t *testing.T, r *http.Request) bool {
 	t.Helper()
 	header := r.Header.Get("Authorization")
@@ -148,7 +148,7 @@ func (d *device) accept(t *testing.T, r *http.Request) bool {
 		return false
 	}
 
-	// Sans qop, l'en-tête suit la forme RFC 2069 : ni nc ni cnonce.
+	// Without qop, the header follows the RFC 2069 form: neither nc nor cnonce.
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if nc := params["nc"]; nc != "" {
@@ -157,7 +157,7 @@ func (d *device) accept(t *testing.T, r *http.Request) bool {
 			return false
 		}
 		if last, ok := d.lastNC[params["nonce"]]; d.monotonic && ok && v <= last {
-			return false // rejeu : le compteur doit croître strictement
+			return false // replay: the counter must increase strictly
 		}
 		d.lastNC[params["nonce"]] = v
 		d.ncs = append(d.ncs, nc)
@@ -170,18 +170,18 @@ func (d *device) accept(t *testing.T, r *http.Request) bool {
 func parseUint(s string) (uint64, error) {
 	var v uint64
 	if s == "" {
-		return 0, errors.New("vide")
+		return 0, errors.New("empty")
 	}
 	for _, r := range s {
 		if r < '0' || r > '9' {
-			return 0, fmt.Errorf("non décimal: %q", s)
+			return 0, fmt.Errorf("non-decimal: %q", s)
 		}
 		v = v*10 + uint64(r-'0')
 	}
 	return v, nil
 }
 
-// challenge écrit un défi 401 dans l'en-tête non standard du fabricant.
+// challenge writes a 401 challenge in the vendor's non-standard header.
 func challenge(w http.ResponseWriter, headerName, realm, nonce string, qop, opaque string, stale bool) {
 	var b strings.Builder
 	fmt.Fprintf(&b, `Digest realm="%s", nonce="%s"`, realm, nonce)
@@ -228,7 +228,7 @@ func readBody(t *testing.T, resp *http.Response) string {
 }
 
 // ---------------------------------------------------------------------------
-// Vecteur RFC 2617 : l'ancre de correction du calcul.
+// RFC 2617 vector: the correctness anchor of the computation.
 // ---------------------------------------------------------------------------
 
 func TestRFC2617Vector(t *testing.T) {
@@ -245,12 +245,12 @@ func TestRFC2617Vector(t *testing.T) {
 		`nonce="dcd98b7102dd2f0e8b11d0f600bfb0c093", uri="/dir/index.html", ` +
 		`response="6629fae49393a05397450978507c4ef1", qop=auth, nc=00000001, cnonce="0a4f113b"`
 	if got != want {
-		t.Fatalf("en-tête =\n%s\nattendu\n%s", got, want)
+		t.Fatalf("header =\n%s\nwant\n%s", got, want)
 	}
 }
 
-// TestRFC2069Vector : sans qop, la réponse est celle de la forme RFC 2069
-// (MD5(HA1:nonce:HA2)), et ni qop, ni nc, ni cnonce n'apparaissent.
+// TestRFC2069Vector: without qop, the response is that of the RFC 2069 form
+// (MD5(HA1:nonce:HA2)), and neither qop, nor nc, nor cnonce appear.
 func TestRFC2069Vector(t *testing.T) {
 	cred := Credentials{Username: "Mufasa", Password: secret.New("Circle Of Life")}
 	ch := Challenge{Realm: "testrealm@host.com", Nonce: "dcd98b7102dd2f0e8b11d0f600bfb0c093"}
@@ -261,11 +261,11 @@ func TestRFC2069Vector(t *testing.T) {
 		md5hex("GET:/dir/index.html"))
 
 	if !strings.Contains(got, `response="`+want+`"`) {
-		t.Fatalf("en-tête = %s\nréponse attendue %s", got, want)
+		t.Fatalf("header = %s\nexpected response %s", got, want)
 	}
 	for _, absent := range []string{"qop", "nc=", "cnonce"} {
 		if strings.Contains(got, absent) {
-			t.Fatalf("%q ne doit pas apparaître sans qop : %s", absent, got)
+			t.Fatalf("%q must not appear without qop: %s", absent, got)
 		}
 	}
 }
@@ -276,33 +276,33 @@ func TestHeaderShape(t *testing.T) {
 
 	got := headerValue(ch, "GET", "/status/version", cred, 7, "0123456789abcdef")
 
-	// Ordre exact des champs.
+	// Exact order of the fields.
 	order := []string{`username="sim"`, `realm="r"`, `nonce="n"`, `uri="/status/version"`, `response="`, `opaque="op"`, `qop=auth`, `nc=00000007`, `cnonce="0123456789abcdef"`}
 	last := -1
 	for _, field := range order {
 		i := strings.Index(got, field)
 		if i < 0 {
-			t.Fatalf("champ %q absent de %s", field, got)
+			t.Fatalf("field %q absent from %s", field, got)
 		}
 		if i < last {
-			t.Fatalf("champ %q hors ordre dans %s", field, got)
+			t.Fatalf("field %q out of order in %s", field, got)
 		}
 		last = i
 	}
-	// qop et nc sans guillemets, cnonce entre guillemets.
+	// qop and nc without quotes, cnonce between quotes.
 	if strings.Contains(got, `qop="`) || strings.Contains(got, `nc="`) {
-		t.Fatalf("qop et nc ne doivent pas être entre guillemets : %s", got)
+		t.Fatalf("qop and nc must not be quoted: %s", got)
 	}
 	if !strings.Contains(got, `cnonce="`) {
-		t.Fatalf("cnonce doit être entre guillemets : %s", got)
+		t.Fatalf("cnonce must be quoted: %s", got)
 	}
-	// « algorithm » n'est jamais émis.
+	// "algorithm" is never emitted.
 	if strings.Contains(strings.ToLower(got), "algorithm") {
-		t.Fatalf("algorithm ne doit pas être émis : %s", got)
+		t.Fatalf("algorithm must not be emitted: %s", got)
 	}
-	// nc : huit chiffres décimaux zéro-complétés.
+	// nc: eight decimal digits, zero-padded.
 	if !strings.Contains(got, "nc=00000007") {
-		t.Fatalf("nc mal formé : %s", got)
+		t.Fatalf("malformed nc: %s", got)
 	}
 }
 
@@ -313,16 +313,16 @@ func TestHeaderValueStripsQuotes(t *testing.T) {
 	got := headerValue(ch, "GET", "/x", cred, 1, "abc")
 	for _, bad := range []string{`re"alm`, `no'nce`, `sim"x`} {
 		if strings.Contains(got, bad) {
-			t.Fatalf("guillemet non retiré : %s", got)
+			t.Fatalf("quote not stripped: %s", got)
 		}
 	}
 	if strings.Count(got, `"`)%2 != 0 {
-		t.Fatalf("guillemets déséquilibrés : %s", got)
+		t.Fatalf("unbalanced quotes: %s", got)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Comportement réseau
+// Network behaviour
 // ---------------------------------------------------------------------------
 
 func TestFreshChallengeCostsTwoRequests(t *testing.T) {
@@ -344,12 +344,12 @@ func TestFreshChallengeCostsTwoRequests(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	if body := readBody(t, resp); !strings.Contains(body, "SIMULATED-0001") {
-		t.Fatalf("corps = %s", body)
+		t.Fatalf("body = %s", body)
 	}
 
 	total, auth := d.counts()
 	if total != 2 || auth != 1 {
-		t.Fatalf("requêtes = %d dont %d authentifiées, attendu 2 dont 1", total, auth)
+		t.Fatalf("requests = %d of which %d authenticated, want 2 of which 1", total, auth)
 	}
 }
 
@@ -378,22 +378,22 @@ func TestCachedNonceCostsOneRequest(t *testing.T) {
 	after, auth := d.counts()
 
 	if after-before != 1 {
-		t.Fatalf("seconde requête : %d envois, attendu 1 (nonce en cache)", after-before)
+		t.Fatalf("second request: %d sends, want 1 (nonce in cache)", after-before)
 	}
 	if auth != 2 {
-		t.Fatalf("requêtes authentifiées = %d, attendu 2", auth)
+		t.Fatalf("authenticated requests = %d, want 2", auth)
 	}
 
-	// Le compteur de répétition augmente de 1 à chaque envoi authentifié.
+	// The retry counter increases by 1 on each authenticated send.
 	ncs := d.nonceCounts()
 	if len(ncs) != 2 || ncs[0] != "00000001" || ncs[1] != "00000002" {
-		t.Fatalf("nc observés = %v, attendu [00000001 00000002]", ncs)
+		t.Fatalf("observed nc = %v, want [00000001 00000002]", ncs)
 	}
 }
 
-// TestStaleCachedNonceRecoversInOneCall : le nonce en cache est refusé par
-// l'appareil ; le transport repart de la requête nue, obtient un défi frais et
-// réussit, sans troisième tentative.
+// TestStaleCachedNonceRecoversInOneCall: the nonce in cache is refused by the
+// device; the transport starts over from the bare request, obtains a fresh
+// challenge and succeeds, without a third attempt.
 func TestStaleCachedNonceRecoversInOneCall(t *testing.T) {
 	const freshNonce = "sim-nonce-2"
 
@@ -407,7 +407,7 @@ func TestStaleCachedNonceRecoversInOneCall(t *testing.T) {
 			return
 		}
 		if parseParams(header)["nonce"] != d.nonce() {
-			// Nonce périmé : le serveur en émet un nouveau avec stale=true.
+			// Stale nonce: the server emits a new one with stale=true.
 			challenge(w, "x-www-authenticate", testRealm, d.nonce(), "auth", "", true)
 			return
 		}
@@ -420,17 +420,17 @@ func TestStaleCachedNonceRecoversInOneCall(t *testing.T) {
 
 	tr := newTransport(t, d.srv.URL, Credentials{Username: testUser, Password: secret.New(testPassword)})
 
-	// Premier appel : défi frais, nonce-1 mis en cache.
+	// First call: fresh challenge, nonce-1 put in cache.
 	resp, err := get(t, tr, d.srv.URL+"/status/version")
 	if err != nil {
 		t.Fatalf("Do: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("premier appel : status = %d", resp.StatusCode)
+		t.Fatalf("first call: status = %d", resp.StatusCode)
 	}
 	_ = readBody(t, resp)
 
-	// Le serveur tourne son nonce : le nonce en cache devient périmé.
+	// The server rotates its nonce: the nonce in cache becomes stale.
 	d.setNonce(freshNonce)
 
 	before, _ := d.counts()
@@ -439,13 +439,13 @@ func TestStaleCachedNonceRecoversInOneCall(t *testing.T) {
 		t.Fatalf("Do: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("second appel : status = %d", resp.StatusCode)
+		t.Fatalf("second call: status = %d", resp.StatusCode)
 	}
 	_ = readBody(t, resp)
 	after, _ := d.counts()
 
 	if after-before != 3 {
-		t.Fatalf("envois = %d, attendu 3 (cache refusé, requête nue, défi frais)", after-before)
+		t.Fatalf("sends = %d, want 3 (cache refused, bare request, fresh challenge)", after-before)
 	}
 }
 
@@ -458,16 +458,16 @@ func TestUnauthorizedWithoutChallengeIsNotRetried(t *testing.T) {
 	tr := newTransport(t, d.srv.URL, Credentials{Username: testUser, Password: secret.New(testPassword)})
 	_, err := get(t, tr, d.srv.URL+"/status/version")
 	if err == nil {
-		t.Fatal("un 401 sans défi doit produire une erreur")
+		t.Fatal("a 401 without challenge must produce an error")
 	}
 	if kind, ok := froniuserr.KindOf(err); !ok || kind != froniuserr.KindUnauthorized {
-		t.Fatalf("nature = %q (ok=%v), attendu %q", kind, ok, froniuserr.KindUnauthorized)
+		t.Fatalf("nature = %q (ok=%v), want %q", kind, ok, froniuserr.KindUnauthorized)
 	}
 	if !errors.Is(err, ErrNoChallenge) {
-		t.Fatalf("erreur = %v, attendu ErrNoChallenge", err)
+		t.Fatalf("error = %v, want ErrNoChallenge", err)
 	}
 	if total, _ := d.counts(); total != 1 {
-		t.Fatalf("envois = %d, attendu 1 (aucun retry sans défi)", total)
+		t.Fatalf("sends = %d, want 1 (no retry without challenge)", total)
 	}
 }
 
@@ -480,13 +480,13 @@ func TestPersistentUnauthorizedStopsAfterTwoRequests(t *testing.T) {
 	tr := newTransport(t, d.srv.URL, Credentials{Username: testUser, Password: secret.New(testPassword)})
 	_, err := get(t, tr, d.srv.URL+"/status/version")
 	if err == nil {
-		t.Fatal("un 401 persistant doit produire une erreur")
+		t.Fatal("a persistent 401 must produce an error")
 	}
 	if !errors.Is(err, ErrRetryExhausted) {
-		t.Fatalf("erreur = %v, attendu ErrRetryExhausted", err)
+		t.Fatalf("error = %v, want ErrRetryExhausted", err)
 	}
 	if total, _ := d.counts(); total != 2 {
-		t.Fatalf("envois = %d, attendu 2 (aucune troisième tentative)", total)
+		t.Fatalf("sends = %d, want 2 (no third attempt)", total)
 	}
 }
 
@@ -510,7 +510,7 @@ func TestStandardChallengeHeaderIsRead(t *testing.T) {
 	}
 	_ = readBody(t, resp)
 	if total, auth := d.counts(); total != 2 || auth != 1 {
-		t.Fatalf("requêtes = %d dont %d authentifiées", total, auth)
+		t.Fatalf("requests = %d of which %d authenticated", total, auth)
 	}
 }
 
@@ -521,9 +521,9 @@ func TestNonStandardHeaderWins(t *testing.T) {
 			_, _ = io.WriteString(w, "ok")
 			return
 		}
-		// Le défi non standard est valide ; celui du standard est incomplet.
+		// The non-standard challenge is valid; the standard one is incomplete.
 		w.Header().Set("x-www-authenticate", `Digest realm="`+testRealm+`", nonce="`+testNonce+`", qop="auth"`)
-		w.Header().Set("www-authenticate", `Digest realm="autre"`)
+		w.Header().Set("www-authenticate", `Digest realm="other"`)
 		w.WriteHeader(http.StatusUnauthorized)
 	})
 
@@ -534,7 +534,7 @@ func TestNonStandardHeaderWins(t *testing.T) {
 	}
 	_ = readBody(t, resp)
 	if total, _ := d.counts(); total != 2 {
-		t.Fatalf("envois = %d, attendu 2 (défi non standard retenu)", total)
+		t.Fatalf("sends = %d, want 2 (non-standard challenge kept)", total)
 	}
 }
 
@@ -546,7 +546,7 @@ func TestOpaqueIsEchoed(t *testing.T) {
 			return
 		}
 		if got := parseParams(r.Header.Get("Authorization"))["opaque"]; got != "sim-opaque" {
-			t.Errorf("opaque renvoyé = %q", got)
+			t.Errorf("returned opaque = %q", got)
 		}
 		_, _ = io.WriteString(w, "ok")
 	})
@@ -568,10 +568,10 @@ func TestNoQopChallengeUsesRFC2069(t *testing.T) {
 		}
 		header := r.Header.Get("Authorization")
 		if strings.Contains(header, "qop") || strings.Contains(header, "nc=") {
-			t.Errorf("défi sans qop : l'en-tête ne doit porter ni qop ni nc : %s", header)
+			t.Errorf("challenge without qop: the header must carry neither qop nor nc: %s", header)
 		}
 		if !d.accept(t, r) {
-			t.Errorf("digest refusé : %s", header)
+			t.Errorf("digest refused: %s", header)
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -593,7 +593,7 @@ func TestNoCredentialsSendsRequestUnchanged(t *testing.T) {
 	d := newDevice(t, testUser, testPassword, testRealm)
 	d.start(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "" {
-			t.Errorf("en-tête Authorization émis sans identifiants : %q", got)
+			t.Errorf("Authorization header emitted without credentials: %q", got)
 		}
 		w.Header().Set("x-www-authenticate", `Digest realm="r", nonce="n"`)
 		w.WriteHeader(http.StatusUnauthorized)
@@ -606,11 +606,11 @@ func TestNoCredentialsSendsRequestUnchanged(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("status = %d, attendu 401 transmis tel quel", resp.StatusCode)
+		t.Fatalf("status = %d, want 401 passed through as-is", resp.StatusCode)
 	}
-	// Sans identifiants : un seul envoi, aucune authentification, aucun retry.
+	// Without credentials: a single send, no authentication, no retry.
 	if total, auth := d.counts(); total != 1 || auth != 0 {
-		t.Fatalf("requêtes = %d dont %d authentifiées, attendu 1 dont 0", total, auth)
+		t.Fatalf("requests = %d of which %d authenticated, want 1 of which 0", total, auth)
 	}
 }
 
@@ -618,7 +618,7 @@ func TestForeignHostIsRefusedWithoutSending(t *testing.T) {
 	var called bool
 	tr, err := New(doerFunc(func(*http.Request) (*http.Response, error) {
 		called = true
-		return nil, errors.New("ne doit pas être appelé")
+		return nil, errors.New("must not be called")
 	}), "http://192.0.2.10", Credentials{Username: "sim", Password: secret.New("x")},
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -631,22 +631,22 @@ func TestForeignHostIsRefusedWithoutSending(t *testing.T) {
 	}
 	_, err = tr.Do(req)
 	if !errors.Is(err, ErrForeignHost) {
-		t.Fatalf("erreur = %v, attendu ErrForeignHost", err)
+		t.Fatalf("error = %v, want ErrForeignHost", err)
 	}
 	if called {
-		t.Fatal("le transport sous-jacent ne doit pas être appelé pour un hôte étranger")
+		t.Fatal("the underlying transport must not be called for a foreign host")
 	}
-	// Une garde de programmation n'est pas une panne d'appareil : elle n'est pas
-	// classée (KindOf rend ok=false), et c'est documenté.
+	// A programming guard is not a device failure: it is not classified
+	// (KindOf returns ok=false), and this is documented.
 	if _, ok := froniuserr.KindOf(err); ok {
-		t.Fatalf("ErrForeignHost ne doit pas être une froniuserr.Error : %v", err)
+		t.Fatalf("ErrForeignHost must not be a froniuserr.Error: %v", err)
 	}
 }
 
 func TestNilRequestIsRejected(t *testing.T) {
 	tr := newTransport(t, "http://127.0.0.1:8081", Credentials{Username: "sim", Password: secret.New("x")})
 	if _, err := tr.Do(nil); err == nil {
-		t.Fatal("une requête nulle doit être refusée")
+		t.Fatal("a nil request must be refused")
 	}
 }
 
@@ -661,23 +661,23 @@ func TestCnonceIsRandomHex(t *testing.T) {
 	second := tr.newCnonce()
 
 	if first == "NaN" || second == "NaN" {
-		t.Fatal("le bug cnonce=\"NaN\" du client officiel ne doit pas être reproduit")
+		t.Fatal("the cnonce=\"NaN\" bug of the official client must not be reproduced")
 	}
 	if len(first) != 16 || len(second) != 16 {
-		t.Fatalf("cnonce = %q / %q, attendu 16 caractères hexadécimaux", first, second)
+		t.Fatalf("cnonce = %q / %q, want 16 hexadecimal characters", first, second)
 	}
 	for _, c := range first + second {
 		if !strings.ContainsRune("0123456789abcdef", c) {
-			t.Fatalf("cnonce non hexadécimal : %q", first+second)
+			t.Fatalf("non-hexadecimal cnonce: %q", first+second)
 		}
 	}
 	if first == second {
-		t.Fatal("deux cnonce identiques : la source aléatoire n'est pas utilisée")
+		t.Fatal("two identical cnonce: the random source is not used")
 	}
 }
 
-// TestConcurrentRequests : le compteur de répétition et le cache sont partagés ;
-// ce test est conçu pour être exécuté sous -race.
+// TestConcurrentRequests: the retry counter and the cache are shared; this test
+// is designed to be run under -race.
 func TestConcurrentRequests(t *testing.T) {
 	d := newDevice(t, testUser, testPassword, testRealm)
 	d.start(t, func(w http.ResponseWriter, r *http.Request) {
@@ -712,17 +712,17 @@ func TestConcurrentRequests(t *testing.T) {
 	wg.Wait()
 	close(errs)
 	for err := range errs {
-		t.Fatalf("requête concurrente: %v", err)
+		t.Fatalf("concurrent request: %v", err)
 	}
 
 	ncs := d.nonceCounts()
 	if len(ncs) == 0 {
-		t.Fatal("aucune requête authentifiée")
+		t.Fatal("no authenticated request")
 	}
 	seen := map[string]bool{}
 	for _, nc := range ncs {
 		if seen[nc] {
-			t.Fatalf("nc réutilisé : %s (les compteurs doivent être uniques)", nc)
+			t.Fatalf("nc reused: %s (counters must be unique)", nc)
 		}
 		seen[nc] = true
 	}

@@ -29,12 +29,12 @@ import { CODE_NO_DATA } from '@/lib/schema'
 import type { Bucket } from '@/lib/schema'
 
 /**
- * Tableau vide partagé : sans référence stable, `?? []` recréerait un tableau à
- * chaque rendu et invaliderait le mémo des points de graphique.
+ * Shared empty array: without a stable reference, `?? []` would recreate an
+ * array on every render and invalidate the memo of the chart points.
  */
 const NO_BUCKETS: Bucket[] = []
 
-/** « custom » désigne une plage saisie à la main. */
+/** "custom" denotes a range entered by hand. */
 type Selection = RangeKey | 'custom'
 
 const STEP_LABELS: Record<StepKey, string> = {
@@ -42,17 +42,17 @@ const STEP_LABELS: Record<StepKey, string> = {
   '1m': '1 minute',
   '5m': '5 minutes',
   '15m': '15 minutes',
-  '1h': '1 heure',
-  '1d': '1 jour',
+  '1h': '1 hour',
+  '1d': '1 day',
 }
 
 /**
- * Vue d'ensemble : production, énergies, état du collecteur et courbe.
+ * Overview: production, energies, collector status and curve.
  *
- * Aucune carte de consommation, d'import/export ou de batterie n'est écrite en
- * dur : ces grandeurs dépendent d'un Smart Meter ou d'une batterie, et la page
- * Capacités (source de vérité) décide de ce qui existe. Tant qu'elles sont
- * indisponibles, la page se contente de l'énoncer avec leur motif.
+ * No consumption, import/export or battery card is hard-coded: these quantities
+ * depend on a Smart Meter or a battery, and the Capabilities page (source of
+ * truth) decides what exists. As long as they are unavailable, the page merely
+ * states it with their reason.
  */
 export function Overview() {
   const { t } = useT()
@@ -82,18 +82,19 @@ export function Overview() {
   const sample = live.data?.data ?? null
   const meta = live.data?.meta
   const noData = live.data?.error?.code === CODE_NO_DATA
-  // « Injoignable » couvre deux situations indistinguables pour l'utilisateur :
-  // l'API ne répond pas (`network`) ou elle répond une erreur serveur — ce que
-  // fait aussi le proxy de développement quand `froniusd` est arrêté (502/500).
+  // "Unreachable" covers two situations indistinguishable to the user: the API
+  // does not answer (`network`) or it answers with a server error — which the
+  // development proxy also does when `froniusd` is stopped (502/500).
   const offline =
     live.error instanceof ApiError &&
     (live.error.kind === 'network' || (live.error.status ?? 0) >= 500)
 
   const buckets = series.data?.data ?? NO_BUCKETS
-  // La fenêtre est transmise pour que les buckets manquants deviennent des
-  // points `null` : sans cela, la courbe serait tracée en travers des trous.
-  // Le pas vient du serveur : le déduire de l'écart entre deux buckets renvoyés
-  // est faux dès qu'un bucket manque, et le trou disparaîtrait du graphique.
+  // The window is passed so that the missing buckets become `null` points:
+  // without it, the curve would be drawn across the gaps. The step comes from
+  // the server: inferring it from the gap between two returned buckets is wrong
+  // as soon as one bucket is missing, and the gap would disappear from the
+  // graph.
   const reportedStep = series.data?.meta.step_s
   const stepSeconds = reportedStep !== undefined && reportedStep > 0 ? reportedStep : inferStepSeconds(buckets)
   const points = useMemo(
@@ -147,24 +148,24 @@ export function Overview() {
           <KpiCard
             label={t('kpi.production')}
             value={formatW(sample.power_pv_w)}
-            hint={`${t('kpi.lastSample')} : ${formatAge(sample.ts)}`}
+            hint={`${t('kpi.lastSample')}: ${formatAge(sample.ts)}`}
           />
           <KpiCard
             label={t('kpi.energyToday')}
             value={formatKWh(sample.energy_day_wh)}
-            hint={`${t('kpi.lastSample')} : ${formatAge(sample.ts)}`}
+            hint={`${t('kpi.lastSample')}: ${formatAge(sample.ts)}`}
           />
           <KpiCard
             label={t('kpi.energyYear')}
             value={formatKWh(sample.energy_year_wh)}
-            hint={`${t('kpi.energyTotal')} : ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim()}
+            hint={`${t('kpi.energyTotal')}: ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim()}
           />
           <KpiCard
             label={t('kpi.collector')}
             value={{ value: healthData ? t(`health.${healthData.status}` as 'health.ok') : '—', unit: '' }}
             hint={
               healthData
-                ? `${t('kpi.samples')} : ${healthData.collector.samples_total} · ${t('kpi.runDuration')} : ${healthData.collector.last_run_ms} ms`
+                ? `${t('kpi.samples')}: ${healthData.collector.samples_total} · ${t('kpi.runDuration')}: ${healthData.collector.last_run_ms} ms`
                 : t('state.loading')
             }
           />

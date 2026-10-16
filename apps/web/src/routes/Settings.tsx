@@ -5,11 +5,10 @@ import { useT } from '@/i18n'
 import { useSystem } from '@/lib/queries'
 
 /**
- * Page Paramètres : configuration effective, en **lecture seule**.
+ * Settings page: effective configuration, **read-only**.
  *
- * Aucun formulaire n'est présent tant que l'API n'a pas d'authentification
- * (ADR 0005) : une interface d'édition sans contrôle d'accès serait un chemin
- * d'écriture ouvert.
+ * No form is present as long as the API has no authentication (ADR 0005): an
+ * editing interface without access control would be an open write path.
  */
 export function SettingsPage() {
   const { t } = useT()

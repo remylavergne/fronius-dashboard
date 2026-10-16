@@ -1,6 +1,6 @@
-# Inventaire statique des chemins présents dans le bundle
+# Static inventory of the paths present in the bundle
 
-> Extraction par expression régulière du JavaScript fourni. **Inventaire indicatif** : un chemin peut être utilisé en lecture, en écriture ou uniquement dans une fonctionnalité non disponible. Les chemins peuvent être incomplets lorsqu’ils sont construits dynamiquement ; la méthode et les arguments de chaque chemin réellement interrogé sont désormais relevés depuis le registre pollé et les sites d’appel du bundle, avec leurs numéros de ligne, dans `docs/ENDPOINTS.md`. Les permissions, elles, ne sont jamais inférées.
+> Regex extraction of the provided JavaScript. **Indicative inventory**: a path may be used for read, for write, or only in an unavailable feature. The paths may be incomplete when they are built dynamically; the method and arguments of each path actually queried are now extracted from the polled registry and the call sites in the bundle, with their line numbers, in `docs/ENDPOINTS.md`. Permissions, however, are never inferred.
 
 ## Endpoints `/commands/` (35)
 
@@ -67,7 +67,7 @@
 - `/config/timeofuse`
 - `/config/wizard`
 
-## Autres chemins repérés
+## Other paths found
 
 - `/components/BatteryManagementSystem/readable`
 - `/components/DataManager/readable`
@@ -91,11 +91,11 @@
 - `/status/version`
 - `/update/start`
 
-## API confirmées / essais historiques
+## Confirmed APIs / historical trials
 
-| Chemin                                        | Méthode  | Auth                | Résultat       | Source                 |
+| Path                                          | Method   | Auth                | Result         | Source                 |
 | --------------------------------------------- | -------- | ------------------- | -------------- | ---------------------- |
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET      | à documenter        | répond         | conversation           |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET      | to be documented    | responds       | conversation           |
 | `/config/common`                              | GET      | Customer Digest     | 200            | conversation           |
 | `/config/modbus`                              | GET      | Customer Digest     | 200            | conversation           |
 | `/config/meter`                               | GET      | Customer Digest     | 200            | conversation           |
@@ -103,29 +103,29 @@
 | `/config/powerlimits`                         | GET      | Customer Digest     | 200 `{}`       | conversation           |
 | `/config/setup/powerunit`                     | GET      | Customer Digest     | 200 `{}`       | conversation           |
 | `/config/setup/gridcode/general`              | GET      | Customer Digest     | 200 `{}`       | conversation           |
-| `/commands/Login?user=<username>`             | GET      | Digest passwordUser | défini dans JS | bundle `i3oe`          |
-| `/commands/PasswordRecovery?user=<username>`  | GET/POST | spécifique          | défini dans JS | bundle et conversation |
+| `/commands/Login?user=<username>`             | GET      | Digest passwordUser | defined in JS  | bundle `i3oe`          |
+| `/commands/PasswordRecovery?user=<username>`  | GET/POST | specific            | defined in JS  | bundle and conversation |
 
-## À relever par endpoint avant implémentation
+## To record per endpoint before implementation
 
-**Déjà relevé dans le bundle** (fait ; table par chemin et numéros de ligne dans
-`docs/ENDPOINTS.md`, section « Méthode, arguments et DTO par chemin (extraction
-bundle) ») : méthode HTTP, arguments d'URL, enveloppe de réponse, champs
-réellement lus par un consommateur, et rôle déclaré par le client — 54 chemins
-couverts, y compris les variantes `?sync=true`, `?status=true`, `?doScan=`,
-`?serviceId=`, `?componentId=`, `?testName=`.
+**Already recorded in the bundle** (done; table per path and line numbers in
+`docs/ENDPOINTS.md`, section "Method, arguments and DTO per path (bundle
+extraction)"): HTTP method, URL arguments, response envelope, fields
+actually read by a consumer, and role declared by the client — 54 paths
+covered, including the `?sync=true`, `?status=true`, `?doScan=`,
+`?serviceId=`, `?componentId=`, `?testName=` variants.
 
-**Reste à relever, et cela exige une capture sur l'appareil** (sonde
-`cmd/fronius-probe`, hors de cette étape) :
+**Remaining to record, and this requires a capture on the device** (probe
+`cmd/fronius-probe`, out of this step):
 
-- exemples de JSON **expurgés** : forme réelle des charges utiles, en particulier
-  celles marquées `[NON OBSERVÉ]` (aucun consommateur dans le client officiel
-  n'en lit les champs) et celles dont les clés sont dynamiques ;
-- unités, timestamps et erreurs effectivement renvoyés par le firmware
-  `1.19.7-1` ;
-- permissions réellement **vérifiées par le serveur** (401/403 par rôle) : le
-  bundle ne prouve que des conditions d'affichage (`docs/UNKNOWNS.md` #6) ;
-- fréquence d'échantillonnage raisonnable et timeout adaptés à l'appareil ;
-- effets de bord observés et classification `read-only` / `mutation` /
-  `dangerous` confirmée par l'usage ;
-- documentation officielle ou tests de contrat disponibles.
+- **redacted** JSON examples: real shape of the payloads, in particular
+  those marked `[NOT OBSERVED]` (no consumer in the official client
+  reads their fields) and those with dynamic keys;
+- units, timestamps and errors actually returned by the firmware
+  `1.19.7-1`;
+- permissions actually **verified by the server** (401/403 per role): the
+  bundle only proves display conditions (`docs/UNKNOWNS.md` #6);
+- reasonable sampling frequency and timeout adapted to the device;
+- observed side effects and `read-only` / `mutation` /
+  `dangerous` classification confirmed by usage;
+- official documentation or available contract tests.

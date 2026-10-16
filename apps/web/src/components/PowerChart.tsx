@@ -8,24 +8,24 @@ import type { PowerPoint } from '@/lib/chart'
 import { formatW } from '@/lib/format'
 
 const chartConfig = {
-  powerW: { label: 'Puissance', color: 'var(--chart-1)' },
+  powerW: { label: 'Power', color: 'var(--chart-1)' },
 } satisfies ChartConfig
 
 export type PowerChartProps = {
-  /** Points de la série, trous compris (`powerW === null`). */
+  /** Series points, gaps included (`powerW === null`). */
   points: PowerPoint[]
 }
 
 /**
- * Courbe de puissance produite.
+ * Produced power curve.
  *
- * `connectNulls={false}` : un bucket sans mesure laisse un trou dans la courbe.
- * Aucune interpolation n'est faite entre deux points, et une absence n'est
- * jamais remplacée par zéro.
+ * `connectNulls={false}`: a bucket without a measurement leaves a gap in the
+ * curve. No interpolation is done between two points, and an absence is never
+ * replaced by zero.
  *
- * Accessibilité : le conteneur porte un `role="img"` avec un intitulé, et un
- * résumé textuel décrivant les valeurs est fourni aux lecteurs d'écran — la
- * courbe seule ne dit rien à une synthèse vocale.
+ * Accessibility: the container carries a `role="img"` with a title, and a
+ * textual summary describing the values is provided to screen readers — the
+ * curve alone says nothing to a voice synthesis.
  */
 export function PowerChart({ points }: PowerChartProps) {
   const { t } = useT()
@@ -35,10 +35,10 @@ export function PowerChart({ points }: PowerChartProps) {
     return <EmptyState title={t('chart.empty')} hint={t('chart.noPower')} />
   }
 
-  // Une seule unité pour tout l'axe : kW dès que le maximum dépasse 1 kW.
+  // A single unit for the whole axis: kW as soon as the maximum exceeds 1 kW.
   const useKilowatts = summary.maxW !== null && summary.maxW >= 1000
   const axisValue = (watts: number) => (useKilowatts ? watts / 1000 : watts)
-  const fmtAxis = new Intl.NumberFormat('fr-BE', { maximumFractionDigits: useKilowatts ? 2 : 0 })
+  const fmtAxis = new Intl.NumberFormat('en-GB', { maximumFractionDigits: useKilowatts ? 2 : 0 })
 
   const summaryText = buildSummaryText({
     measured: summary.measured,
@@ -103,13 +103,13 @@ type SummaryInput = {
 }
 
 /**
- * Résumé lisible d'une série : sert de description accessible et d'explication
- * lorsque la courbe est difficile à lire (trous, valeurs extrêmes).
+ * Readable summary of a series: serves as an accessible description and as an
+ * explanation when the curve is hard to read (gaps, extreme values).
  */
 function buildSummaryText({ measured, withoutMeasure, minW, maxW, avgW }: SummaryInput): string {
-  const parts = [`${measured} point(s) de mesure`]
+  const parts = [`${measured} measurement point(s)`]
   if (withoutMeasure > 0) {
-    parts.push(`${withoutMeasure} point(s) sans mesure (trou dans la courbe)`)
+    parts.push(`${withoutMeasure} point(s) without a measurement (gap in the curve)`)
   }
   if (minW !== null && maxW !== null) {
     const min = formatW(minW)
@@ -118,7 +118,7 @@ function buildSummaryText({ measured, withoutMeasure, minW, maxW, avgW }: Summar
   }
   if (avgW !== null) {
     const avg = formatW(avgW)
-    parts.push(`moyenne ${avg.value} ${avg.unit}`)
+    parts.push(`average ${avg.value} ${avg.unit}`)
   }
   return parts.join(' · ')
 }

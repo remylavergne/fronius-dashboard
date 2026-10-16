@@ -2,7 +2,7 @@ package model
 
 import "time"
 
-// Severity classe un événement local du collecteur.
+// Severity classifies a local collector event.
 type Severity string
 
 const (
@@ -11,27 +11,27 @@ const (
 	SeverityError   Severity = "error"
 )
 
-// Natures d'événements : les unes produites localement par le collecteur, les
-// autres republiées depuis l'appareil.
+// Event kinds: some produced locally by the collector, the others republished
+// from the device.
 const (
-	// EventCollectorError : échec de collecte (appareil injoignable, réponse
-	// invalide, erreur applicative signalée par l'appareil).
+	// EventCollectorError: collection failure (device unreachable, invalid
+	// response, application error reported by the device).
 	EventCollectorError = "collector_error"
-	// EventCollectorRecovered : reprise après une série d'échecs.
+	// EventCollectorRecovered: recovery after a series of failures.
 	EventCollectorRecovered = "collector_recovered"
-	// EventStartup : démarrage du collecteur.
+	// EventStartup: collector startup.
 	EventStartup = "collector_started"
-	// EventPurge : purge de rétention exécutée.
+	// EventPurge: retention purge executed.
 	EventPurge = "retention_purge"
-	// EventDevice : événement signalé par l'appareil lui-même (/status/activeEvents).
-	// Sa déduplication repose sur device_events_seen (internal/storage) : le flux
-	// est republié en entier à chaque interrogation.
+	// EventDevice: event reported by the device itself (/status/activeEvents).
+	// Its deduplication relies on device_events_seen (internal/storage): the
+	// stream is republished in full on every poll.
 	EventDevice = "device_event"
 )
 
-// Event est un événement local, conservé dans la base et exposé par
-// /api/v1/events. Les événements matériels (EventDevice) proviennent de
-// /status/activeEvents ; les autres sont produits localement par le collecteur.
+// Event is a local event, kept in the database and exposed by
+// /api/v1/events. Hardware events (EventDevice) come from
+// /status/activeEvents; the others are produced locally by the collector.
 type Event struct {
 	TS       time.Time
 	Kind     string

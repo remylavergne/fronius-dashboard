@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// wantOrder est l'ordre stable attendu des capacités.
+// wantOrder is the expected stable order of the capabilities.
 var wantOrder = []string{
 	"production.power",
 	"production.energy_day",
@@ -20,65 +20,65 @@ var wantOrder = []string{
 	"system.collector",
 }
 
-// detectionWith construit une détection explicite pour les tests.
+// detectionWith builds an explicit detection for the tests.
 func detectionWith(meter, battery, identity, events DetectionState) Detection {
 	return Detection{
-		Meter:        ResourceDetection{State: meter, Source: "/components/PowerMeter/readable", Reason: "cause compteur"},
-		Battery:      ResourceDetection{State: battery, Source: "/components/BatteryManagementSystem/readable", Reason: "cause batterie"},
-		Identity:     ResourceDetection{State: identity, Source: "/status/version", Reason: "cause identité"},
-		DeviceEvents: ResourceDetection{State: events, Source: "/status/activeEvents", Reason: "cause événements"},
+		Meter:        ResourceDetection{State: meter, Source: "/components/PowerMeter/readable", Reason: "meter cause"},
+		Battery:      ResourceDetection{State: battery, Source: "/components/BatteryManagementSystem/readable", Reason: "battery cause"},
+		Identity:     ResourceDetection{State: identity, Source: "/status/version", Reason: "identity cause"},
+		DeviceEvents: ResourceDetection{State: events, Source: "/status/activeEvents", Reason: "events cause"},
 	}
 }
 
-// allUnknown est l'état d'un démarrage sans aucune lecture aboutie.
+// allUnknown is the state of a startup with no successful read.
 func allUnknown() Detection {
 	return Detection{
-		Identity:     ResourceDetection{State: StateUnknown, Reason: "aucune lecture d'identité n'a encore abouti"},
-		Meter:        ResourceDetection{State: StateUnknown, Reason: "aucune lecture d'identité n'a encore abouti"},
-		Battery:      ResourceDetection{State: StateUnknown, Reason: "aucune lecture d'identité n'a encore abouti"},
-		DeviceEvents: ResourceDetection{State: StateUnknown, Reason: "aucune lecture d'identité n'a encore abouti"},
+		Identity:     ResourceDetection{State: StateUnknown, Reason: "no identity read has succeeded yet"},
+		Meter:        ResourceDetection{State: StateUnknown, Reason: "no identity read has succeeded yet"},
+		Battery:      ResourceDetection{State: StateUnknown, Reason: "no identity read has succeeded yet"},
+		DeviceEvents: ResourceDetection{State: StateUnknown, Reason: "no identity read has succeeded yet"},
 	}
 }
 
 func TestCapabilitiesOrderIsStable(t *testing.T) {
 	caps := Capabilities(allUnknown())
 	if len(caps) != len(wantOrder) {
-		t.Fatalf("len = %d, attendu %d", len(caps), len(wantOrder))
+		t.Fatalf("len = %d, want %d", len(caps), len(wantOrder))
 	}
 	for i, want := range wantOrder {
 		if caps[i].ID != want {
-			t.Fatalf("position %d = %q, attendu %q", i, caps[i].ID, want)
+			t.Fatalf("position %d = %q, want %q", i, caps[i].ID, want)
 		}
 	}
 }
 
 func TestCapabilitiesAlwaysAvailable(t *testing.T) {
-	// production.* et system.collector ne dépendent d'aucune détection.
+	// production.* and system.collector depend on no detection.
 	for _, d := range []Detection{allUnknown(), detectionWith(StatePresent, StatePresent, StatePresent, StatePresent)} {
 		caps := byID(t, Capabilities(d))
 		for _, id := range []string{"production.power", "production.energy_day", "production.energy_total", "system.collector"} {
 			if !caps[id].Available {
-				t.Fatalf("%s devrait être disponible (reason=%q)", id, caps[id].Reason)
+				t.Fatalf("%s should be available (reason=%q)", id, caps[id].Reason)
 			}
 			if caps[id].Quality == QualityMissing {
-				t.Fatalf("%s : une capacité disponible ne peut pas être de qualité missing", id)
+				t.Fatalf("%s: an available capability cannot have quality missing", id)
 			}
 		}
 		if !caps["system.collector"].Verified {
-			t.Fatal("system.collector doit être vérifié (propriété de l'application)")
+			t.Fatal("system.collector must be verified (property of the application)")
 		}
 		for _, id := range []string{"production.power", "production.energy_day", "production.energy_total"} {
 			if caps[id].Verified {
-				t.Fatalf("%s ne peut pas être vérifié avant capture matérielle", id)
+				t.Fatalf("%s cannot be verified before a hardware capture", id)
 			}
-			if !strings.Contains(caps[id].Reason, "non validé") {
-				t.Fatalf("%s : Reason = %q doit signaler le schéma non validé", id, caps[id].Reason)
+			if !strings.Contains(caps[id].Reason, "not validated") {
+				t.Fatalf("%s: Reason = %q must signal the unvalidated schema", id, caps[id].Reason)
 			}
 		}
 	}
 }
 
-// TestMeterCapabilitiesMatrix : les trois états du compteur, avec le motif exact.
+// TestMeterCapabilitiesMatrix: the three meter states, with the exact reason.
 func TestMeterCapabilitiesMatrix(t *testing.T) {
 	meterIDs := []string{"grid.import_export", "load.consumption", "autoconsumption.ratio"}
 
@@ -89,7 +89,7 @@ func TestMeterCapabilitiesMatrix(t *testing.T) {
 	}{
 		{StatePresent, true, ""},
 		{StateAbsent, false, ReasonNoSmartMeter},
-		{StateUnknown, false, "Présence d'un Smart Meter non déterminée : cause compteur"},
+		{StateUnknown, false, "Smart Meter presence not determined: meter cause"},
 	}
 
 	for _, tc := range cases {
@@ -98,24 +98,24 @@ func TestMeterCapabilitiesMatrix(t *testing.T) {
 			for _, id := range meterIDs {
 				cap := caps[id]
 				if cap.Available != tc.available {
-					t.Fatalf("%s : disponible = %v, attendu %v", id, cap.Available, tc.available)
+					t.Fatalf("%s: available = %v, want %v", id, cap.Available, tc.available)
 				}
 				if cap.Reason != tc.reason {
-					t.Fatalf("%s : motif = %q, attendu %q", id, cap.Reason, tc.reason)
+					t.Fatalf("%s: reason = %q, want %q", id, cap.Reason, tc.reason)
 				}
 				if !tc.available && cap.Quality != QualityMissing {
-					t.Fatalf("%s : qualité = %q", id, cap.Quality)
+					t.Fatalf("%s: quality = %q", id, cap.Quality)
 				}
 				if len(cap.Requires) == 0 {
-					t.Fatalf("%s : Requires doit nommer le prérequis", id)
+					t.Fatalf("%s: Requires must name the prerequisite", id)
 				}
 			}
 		})
 	}
 }
 
-// TestBatterySocIsNeverAvailableInPhase2 : la détection de présence ne prouve
-// pas qu'une mesure d'état de charge existe côté API.
+// TestBatterySocIsNeverAvailableInPhase2: presence detection does not prove
+// that a state-of-charge measurement exists on the API side.
 func TestBatterySocIsNeverAvailableInPhase2(t *testing.T) {
 	cases := []struct {
 		state  DetectionState
@@ -123,20 +123,20 @@ func TestBatterySocIsNeverAvailableInPhase2(t *testing.T) {
 	}{
 		{StatePresent, ReasonBatteryReadout},
 		{StateAbsent, ReasonNoBattery},
-		{StateUnknown, "Présence d'une batterie non déterminée : cause batterie"},
+		{StateUnknown, "Battery presence not determined: battery cause"},
 	}
 	for _, tc := range cases {
 		t.Run(string(tc.state), func(t *testing.T) {
 			caps := byID(t, Capabilities(detectionWith(StateUnknown, tc.state, StateUnknown, StateUnknown)))
 			cap := caps["battery.soc"]
 			if cap.Available {
-				t.Fatal("battery.soc ne doit jamais être disponible en phase 2")
+				t.Fatal("battery.soc must never be available in phase 2")
 			}
 			if cap.Reason != tc.reason {
-				t.Fatalf("motif = %q, attendu %q", cap.Reason, tc.reason)
+				t.Fatalf("reason = %q, want %q", cap.Reason, tc.reason)
 			}
 			if cap.Quality != QualityMissing {
-				t.Fatalf("qualité = %q", cap.Quality)
+				t.Fatalf("quality = %q", cap.Quality)
 			}
 		})
 	}
@@ -151,17 +151,17 @@ func TestIdentityAndEventsMatrix(t *testing.T) {
 		events    string
 	}{
 		{
-			name: "présents", state: StatePresent, available: true,
+			name: "present", state: StatePresent, available: true,
 		},
 		{
-			name: "absents", state: StateAbsent, available: false,
-			identity: "Identité de l'onduleur non déterminée : cause identité",
-			events:   "Événements de l'appareil non déterminés : cause événements",
+			name: "absent", state: StateAbsent, available: false,
+			identity: "Inverter identity not determined: identity cause",
+			events:   "Device events not determined: events cause",
 		},
 		{
-			name: "non déterminés", state: StateUnknown, available: false,
-			identity: "Identité de l'onduleur non déterminée : cause identité",
-			events:   "Événements de l'appareil non déterminés : cause événements",
+			name: "unknown", state: StateUnknown, available: false,
+			identity: "Inverter identity not determined: identity cause",
+			events:   "Device events not determined: events cause",
 		},
 	}
 
@@ -169,46 +169,46 @@ func TestIdentityAndEventsMatrix(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			caps := byID(t, Capabilities(detectionWith(StateUnknown, StateUnknown, tc.state, tc.state)))
 			if got := caps["device.identity"].Available; got != tc.available {
-				t.Fatalf("device.identity disponible = %v", got)
+				t.Fatalf("device.identity available = %v", got)
 			}
 			if got := caps["device.events"].Available; got != tc.available {
-				t.Fatalf("device.events disponible = %v", got)
+				t.Fatalf("device.events available = %v", got)
 			}
 			if caps["device.identity"].Reason != tc.identity {
-				t.Fatalf("motif identité = %q, attendu %q", caps["device.identity"].Reason, tc.identity)
+				t.Fatalf("identity reason = %q, want %q", caps["device.identity"].Reason, tc.identity)
 			}
 			if caps["device.events"].Reason != tc.events {
-				t.Fatalf("motif événements = %q, attendu %q", caps["device.events"].Reason, tc.events)
+				t.Fatalf("events reason = %q, want %q", caps["device.events"].Reason, tc.events)
 			}
 		})
 	}
 }
 
-// TestCapabilitiesIndependence : une détection ne débloque pas une autre.
+// TestCapabilitiesIndependence: one detection does not unlock another.
 func TestCapabilitiesIndependence(t *testing.T) {
 	onlyMeter := byID(t, Capabilities(detectionWith(StatePresent, StateUnknown, StateUnknown, StateUnknown)))
 	if !onlyMeter["grid.import_export"].Available {
-		t.Fatal("grid.import_export doit être disponible avec un Smart Meter détecté")
+		t.Fatal("grid.import_export must be available with a detected Smart Meter")
 	}
 	if onlyMeter["battery.soc"].Available {
-		t.Fatal("battery.soc ne doit pas dépendre du Smart Meter")
+		t.Fatal("battery.soc must not depend on the Smart Meter")
 	}
 	if onlyMeter["device.identity"].Available {
-		t.Fatal("device.identity ne doit pas dépendre du Smart Meter")
+		t.Fatal("device.identity must not depend on the Smart Meter")
 	}
 
 	onlyBattery := byID(t, Capabilities(detectionWith(StateUnknown, StatePresent, StateUnknown, StateUnknown)))
 	if onlyBattery["grid.import_export"].Available {
-		t.Fatal("grid.import_export ne doit pas dépendre de la batterie")
+		t.Fatal("grid.import_export must not depend on the battery")
 	}
 
 	onlyIdentity := byID(t, Capabilities(detectionWith(StateUnknown, StateUnknown, StatePresent, StateUnknown)))
 	if onlyIdentity["device.events"].Available {
-		t.Fatal("device.events ne doit pas dépendre de l'identité")
+		t.Fatal("device.events must not depend on the identity")
 	}
 }
 
-// TestCapabilitiesEveryUnavailableHasReason : invariant porté jusqu'à l'API.
+// TestCapabilitiesEveryUnavailableHasReason: invariant carried through to the API.
 func TestCapabilitiesEveryUnavailableHasReason(t *testing.T) {
 	states := []DetectionState{StateUnknown, StateAbsent, StatePresent}
 	for _, meter := range states {
@@ -221,11 +221,11 @@ func TestCapabilitiesEveryUnavailableHasReason(t *testing.T) {
 							continue
 						}
 						if cap.Reason == "" {
-							t.Fatalf("capacité %q indisponible sans motif (meter=%s battery=%s identity=%s events=%s)",
+							t.Fatalf("capability %q unavailable without reason (meter=%s battery=%s identity=%s events=%s)",
 								cap.ID, meter, battery, identity, events)
 						}
 						if cap.Quality != QualityMissing {
-							t.Fatalf("capacité %q indisponible avec qualité %q", cap.ID, cap.Quality)
+							t.Fatalf("capability %q unavailable with quality %q", cap.ID, cap.Quality)
 						}
 					}
 				}
@@ -234,13 +234,13 @@ func TestCapabilitiesEveryUnavailableHasReason(t *testing.T) {
 	}
 }
 
-// TestReasonsNeverEndWithSeparator : un motif qui se termine par « : » annonce
-// une cause qu'il ne nomme pas.
+// TestReasonsNeverEndWithSeparator: a reason that ends with ":" announces
+// a cause it does not name.
 func TestReasonsNeverEndWithSeparator(t *testing.T) {
 	states := []DetectionState{StateUnknown, StateAbsent, StatePresent}
 
-	// Détection dont les causes sont volontairement vides : le repli doit
-	// produire un motif complet, jamais un séparateur orphelin.
+	// Detection whose causes are deliberately empty: the fallback must
+	// produce a complete reason, never an orphan separator.
 	empty := Detection{
 		Meter:        ResourceDetection{State: StateUnknown},
 		Battery:      ResourceDetection{State: StateUnknown},
@@ -258,7 +258,7 @@ func TestReasonsNeverEndWithSeparator(t *testing.T) {
 								continue
 							}
 							if strings.HasSuffix(cap.Reason, ": ") || strings.HasSuffix(cap.Reason, ":") {
-								t.Fatalf("capacité %q : motif tronqué %q", cap.ID, cap.Reason)
+								t.Fatalf("capability %q: truncated reason %q", cap.ID, cap.Reason)
 							}
 						}
 					}
@@ -268,19 +268,19 @@ func TestReasonsNeverEndWithSeparator(t *testing.T) {
 	}
 }
 
-// TestCapabilitiesReturnsFreshSlice : l'appelant ne doit pas pouvoir corrompre
-// l'état renvoyé par un appel suivant.
+// TestCapabilitiesReturnsFreshSlice: the caller must not be able to corrupt
+// the state returned by a following call.
 func TestCapabilitiesReturnsFreshSlice(t *testing.T) {
 	first := Capabilities(allUnknown())
 	first[0].Available = false
-	first[3].Requires = append(first[3].Requires, "corrompu")
+	first[3].Requires = append(first[3].Requires, "corrupted")
 
 	second := Capabilities(allUnknown())
 	if !second[0].Available {
-		t.Fatal("le premier appel a modifié l'état d'un appel ultérieur")
+		t.Fatal("the first call modified the state of a later call")
 	}
 	if !reflect.DeepEqual(second[3].Requires, Capabilities(allUnknown())[3].Requires) {
-		t.Fatal("les tranches Requires sont partagées entre appels")
+		t.Fatal("the Requires slices are shared between calls")
 	}
 }
 
@@ -289,16 +289,16 @@ func byID(t *testing.T, caps []Capability) map[string]Capability {
 	out := make(map[string]Capability, len(caps))
 	for _, c := range caps {
 		if _, dup := out[c.ID]; dup {
-			t.Fatalf("capacité %q en double", c.ID)
+			t.Fatalf("capability %q duplicated", c.ID)
 		}
 		if c.ID == "" || c.Label == "" {
-			t.Fatalf("capacité incomplète : %+v", c)
+			t.Fatalf("incomplete capability: %+v", c)
 		}
 		if !c.ReadOnly {
-			t.Fatalf("%s doit être en lecture seule", c.ID)
+			t.Fatalf("%s must be read-only", c.ID)
 		}
 		if len(c.Evidence) == 0 {
-			t.Fatalf("%s : la provenance doit être renseignée", c.ID)
+			t.Fatalf("%s: the provenance must be filled in", c.ID)
 		}
 		out[c.ID] = c
 	}

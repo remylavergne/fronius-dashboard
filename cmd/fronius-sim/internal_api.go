@@ -1,14 +1,14 @@
-// Endpoints internes du Webinterface Fronius, servis par le simulateur.
+// Internal endpoints of the Fronius Webinterface, served by the simulator.
 //
-// Deux voies HTTP distinctes mènent aux mêmes chemins internes (voir
-// docs/SOURCES.md, modules `aYRN` et `yTJA`) : le registre pollé du client
-// officiel envoie un en-tête Authorization, le service d'état lit les mêmes
-// chemins sans en-tête. Le simulateur reproduit les deux : sans --api-user les
-// quatre chemins répondent sans authentification, avec --api-user ils exigent
-// un Digest vérifié et rejettent le rejeu (nc strictement croissant).
+// Two distinct HTTP routes lead to the same internal paths (see
+// docs/SOURCES.md, modules `aYRN` and `yTJA`): the polled registry of the
+// official client sends an Authorization header, the status service reads the same
+// paths without a header. The simulator reproduces both: without --api-user the
+// four paths respond without authentication, with --api-user they require
+// a verified Digest and reject replay (strictly increasing nc).
 //
-// Tous les corps sont déterministes : le nonce ne figure que dans l'en-tête du
-// défi, jamais dans le corps, et aucun horodatage n'y apparaît.
+// All the bodies are deterministic: the nonce appears only in the header of the
+// challenge, never in the body, and no timestamp appears there.
 package main
 
 import (
@@ -22,8 +22,8 @@ import (
 	"sync"
 )
 
-// Chemins internes servis. La liste est strictement égale à celle du client
-// (internal/fronius/internalapi) : un chemin qui n'est pas ici n'existe pas.
+// Internal paths served. The list is strictly equal to that of the client
+// (internal/fronius/internalapi): a path that is not here does not exist.
 const (
 	versionPath      = "/status/version"
 	activeEventsPath = "/status/activeEvents"
@@ -31,21 +31,21 @@ const (
 	batteryPath      = "/components/BatteryManagementSystem/readable"
 )
 
-// internalPaths est la liste figée des chemins internes.
+// internalPaths is the frozen list of internal paths.
 var internalPaths = []string{versionPath, activeEventsPath, powerMeterPath, batteryPath}
 
-// En-têtes de défi.
+// Challenge headers.
 const (
 	nonStandardChallengeHeader = "x-www-authenticate"
 	standardChallengeHeader    = "www-authenticate"
 )
 
-// simulatedSerial est un identifiant visiblement faux : le numéro de série
-// observé sur l'installation réelle ne doit jamais entrer dans le dépôt
-// (internal/fronius/solarapi/contract_test.go l'interdit).
+// simulatedSerial is an obviously fake identifier: the serial number
+// observed on the real installation must never enter the repository
+// (internal/fronius/solarapi/contract_test.go forbids it).
 const simulatedSerial = "SIMULATED-0001"
 
-// Pannes propres aux chemins internes.
+// Faults specific to the internal paths.
 const (
 	faultNoChallenge  = "401-no-challenge"
 	faultStandardOnly = "401-standard-only"
@@ -53,11 +53,11 @@ const (
 	faultOpaque       = "401-opaque"
 	faultStaleNonce   = "401-stale-nonce"
 	faultBadDigest    = "401-bad-digest"
-	// recentNonceWindow borne la mémoire des nonces émis.
+	// recentNonceWindow bounds the memory of the nonces issued.
 	recentNonceWindow = 8
 )
 
-// digestAuth porte l'état de l'authentification Digest du simulateur.
+// digestAuth carries the state of the simulator's Digest authentication.
 type digestAuth struct {
 	mu           sync.Mutex
 	nonceSeq     int
@@ -70,7 +70,7 @@ func newDigestAuth() *digestAuth {
 	return &digestAuth{lastNC: map[string]uint64{}}
 }
 
-// registerInternal enregistre les quatre chemins internes.
+// registerInternal registers the four internal paths.
 func (s *simulator) registerInternal(mux *http.ServeMux) {
 	for _, path := range internalPaths {
 		mux.HandleFunc(path, s.logged(s.internalHandler(path)))
@@ -106,15 +106,15 @@ func (s *simulator) internalHandler(path string) http.HandlerFunc {
 }
 
 // ---------------------------------------------------------------------------
-// Corps des réponses
+// Response bodies
 // ---------------------------------------------------------------------------
 
-// versionJSON est la forme de /status/version.
+// versionJSON is the shape of /status/version.
 //
-// `serialNumber`, `devicegroup` et `numberOfPhases` sont les seules clés que le
-// bundle établit (docs/SOURCES.md) ; `firmwareVersion` et `modelName` sont des
-// CANDIDATS propres au simulateur, avec des valeurs visiblement fausses, qui
-// n'existent que pour exercer la tolérance de lecture du client.
+// `serialNumber`, `devicegroup` and `numberOfPhases` are the only keys that the
+// bundle establishes (docs/SOURCES.md); `firmwareVersion` and `modelName` are
+// CANDIDATES specific to the simulator, with obviously fake values, that
+// exist only to exercise the client's tolerant reading.
 type versionJSON struct {
 	SerialNumber    string `json:"serialNumber"`
 	DeviceGroup     string `json:"devicegroup"`
@@ -129,12 +129,12 @@ func (s *simulator) versionBody() versionJSON {
 		DeviceGroup:     "GEN24PRIMO",
 		NumberOfPhases:  3,
 		FirmwareVersion: "1.24.3-sim",
-		ModelName:       "Fronius Primo GEN24 3.6 Plus (simulé)",
+		ModelName:       "Fronius Primo GEN24 3.6 Plus (simulated)",
 	}
 }
 
-// cgiJSON est l'enveloppe de type `Cgi` : la charge utile est Body.Data, objet
-// indexé par identifiant de composant.
+// cgiJSON is the `Cgi` envelope: the payload is Body.Data, an object
+// indexed by component id.
 type cgiJSON struct {
 	Body struct {
 		Data map[string]any `json:"Data"`
@@ -147,10 +147,10 @@ func cgiBody(data map[string]any) cgiJSON {
 	return out
 }
 
-// componentData retourne le contenu de Body.Data pour un composant.
+// componentData returns the content of Body.Data for a component.
 //
-// La clé d'index est celle du composant (ici « 0 ») : c'est la seule forme que
-// le client exploite, et une carte vide signifie « composant absent ».
+// The indexing key is that of the component (here "0"): it is the only shape
+// that the client exploits, and an empty map means "component absent".
 func (s *simulator) componentData(path string) map[string]any {
 	present, serial := false, ""
 	switch path {
@@ -179,27 +179,27 @@ func (s *simulator) activeEventsData() map[string]any {
 			Code:     fmt.Sprintf("SIM-%d", i),
 			State:    "active",
 			Severity: "warning",
-			Message:  fmt.Sprintf("Événement simulé %d", i),
+			Message:  fmt.Sprintf("Simulated event %d", i),
 		}
 	}
 	return out
 }
 
 // ---------------------------------------------------------------------------
-// Authentification Digest
+// Digest authentication
 // ---------------------------------------------------------------------------
 
-// challengeOptions décrit le défi à écrire.
+// challengeOptions describes the challenge to write.
 type challengeOptions struct {
-	header string // en-tête qui porte le défi
-	qop    string // "" = pas de qop (forme RFC 2069)
+	header string // header that carries the challenge
+	qop    string // "" = no qop (RFC 2069 form)
 	opaque string
 	stale  bool
 }
 
-// authorize vérifie l'en-tête Authorization et écrit un 401 sinon.
+// authorize checks the Authorization header and writes a 401 otherwise.
 //
-// Retourne true quand la requête peut être servie.
+// Returns true when the request can be served.
 func (s *simulator) authorize(w http.ResponseWriter, r *http.Request) bool {
 	fault := s.faultFor(r)
 
@@ -211,7 +211,7 @@ func (s *simulator) authorize(w http.ResponseWriter, r *http.Request) bool {
 		s.writeChallenge(w, challengeOptions{header: standardChallengeHeader, qop: "auth"})
 		return false
 	case faultBadDigest:
-		// Tout en-tête est rejeté, même correct.
+		// Any header is rejected, even a correct one.
 		s.writeChallenge(w, challengeOptions{header: nonStandardChallengeHeader, qop: "auth"})
 		return false
 	}
@@ -242,7 +242,7 @@ func (s *simulator) authorize(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// writeChallenge écrit un 401 portant un défi neuf.
+// writeChallenge writes a 401 carrying a fresh challenge.
 func (s *simulator) writeChallenge(w http.ResponseWriter, opts challengeOptions) {
 	nonce := s.nextNonce()
 
@@ -259,15 +259,15 @@ func (s *simulator) writeChallenge(w http.ResponseWriter, opts challengeOptions)
 	}
 	w.Header().Set(opts.header, b.String())
 	if s.opt.emitStandardChallenge && opts.header != standardChallengeHeader {
-		// Sert à faire authentifier un client tiers (curl --digest), qui ne lit
-		// que l'en-tête standard.
+		// Serves to authenticate a third-party client (curl --digest), which reads
+		// only the standard header.
 		w.Header().Set(standardChallengeHeader, b.String())
 	}
 	w.WriteHeader(http.StatusUnauthorized)
 	_, _ = io.WriteString(w, "Unauthorized")
 }
 
-// nextNonce émet un nonce neuf et mémorise qu'il a été émis.
+// nextNonce issues a fresh nonce and remembers that it was issued.
 func (s *simulator) nextNonce() string {
 	s.auth.mu.Lock()
 	defer s.auth.mu.Unlock()
@@ -291,13 +291,13 @@ func (s *simulator) nonceWasIssued(nonce string) bool {
 	return false
 }
 
-// acceptNonceCount exige un compteur strictement croissant pour un même nonce :
-// c'est la protection contre le rejeu, et elle exerce réellement le compteur du
-// client.
+// acceptNonceCount requires a strictly increasing counter for a same nonce:
+// that is the protection against replay, and it genuinely exercises the client's
+// counter.
 func (s *simulator) acceptNonceCount(params map[string]string) bool {
 	nc := params["nc"]
 	if nc == "" {
-		return true // forme RFC 2069, sans compteur
+		return true // RFC 2069 form, without a counter
 	}
 	value, err := strconv.ParseUint(nc, 10, 64)
 	if err != nil {
@@ -312,8 +312,8 @@ func (s *simulator) acceptNonceCount(params map[string]string) bool {
 	return true
 }
 
-// issueStaleChallenge retourne true une seule fois : la première tentative
-// authentifiée reçoit un 401 stale=true, les suivantes sont acceptées.
+// issueStaleChallenge returns true only once: the first authenticated
+// attempt receives a 401 stale=true, the following ones are accepted.
 func (s *simulator) issueStaleChallenge() bool {
 	s.auth.mu.Lock()
 	defer s.auth.mu.Unlock()
@@ -324,7 +324,7 @@ func (s *simulator) issueStaleChallenge() bool {
 	return true
 }
 
-// verifyDigest recalcule la réponse attendue et la compare.
+// verifyDigest recomputes the expected response and compares it.
 func (s *simulator) verifyDigest(r *http.Request, params map[string]string) bool {
 	if params["username"] != s.opt.apiUser || params["realm"] != s.opt.challengeRealm {
 		return false
@@ -350,11 +350,11 @@ func (s *simulator) verifyDigest(r *http.Request, params map[string]string) bool
 	return simMD5(input) == params["response"]
 }
 
-// parseDigestHeader découpe un en-tête Authorization en paires clé/valeur.
+// parseDigestHeader splits an Authorization header into key/value pairs.
 //
-// Implémentation locale et volontairement indépendante de
-// internal/fronius/digest : le simulateur doit vérifier le client, non partager
-// son analyse — sinon une erreur de format passerait inaperçue des deux côtés.
+// Local implementation deliberately independent of
+// internal/fronius/digest: the simulator must verify the client, not share
+// its parsing — otherwise a format error would go unnoticed on both sides.
 func parseDigestHeader(header string) map[string]string {
 	out := map[string]string{}
 	for _, part := range strings.Split(header, ", ") {

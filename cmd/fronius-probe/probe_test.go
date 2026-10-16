@@ -28,25 +28,25 @@ func TestRedactJSONPreservesMeasurements(t *testing.T) {
 
 	out := string(redactBody(body))
 
-	// Les mesures et l'horodatage doivent survivre intacts.
+	// The measurements and the timestamp must survive intact.
 	for _, keep := range []string{"1902.4", "14236126.1", "produce-only", "2026-06-21T12:00:00+02:00"} {
 		if !strings.Contains(out, keep) {
-			t.Fatalf("valeur légitime %q supprimée :\n%s", keep, out)
+			t.Fatalf("legitimate value %q removed:\n%s", keep, out)
 		}
 	}
-	// Aucune donnée identifiante ne doit subsister.
+	// No identifying data must remain.
 	for _, gone := range []string{"33319328", "192.0.2.10", "fronius-web.local", "aa:bb:cc:dd:ee:ff", "abc123", "hunter2"} {
 		if strings.Contains(out, gone) {
-			t.Fatalf("donnée sensible %q non expurgée :\n%s", gone, out)
+			t.Fatalf("sensitive data %q not redacted:\n%s", gone, out)
 		}
 	}
-	// Le résultat reste un JSON exploitable.
+	// The result remains usable JSON.
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("corps expurgé non décodable : %v", err)
+		t.Fatalf("redacted body not decodable: %v", err)
 	}
 	if strings.Count(out, redactedValue) < 6 {
-		t.Fatalf("trop peu de valeurs expurgées (%d) :\n%s", strings.Count(out, redactedValue), out)
+		t.Fatalf("too few redacted values (%d):\n%s", strings.Count(out, redactedValue), out)
 	}
 }
 
@@ -55,10 +55,10 @@ func TestRedactJSONNestedAndArrays(t *testing.T) {
 	out := string(redactBody(body))
 
 	if strings.Contains(out, "10.0.0.1") || strings.Contains(out, "12345") {
-		t.Fatalf("donnée sensible non expurgée :\n%s", out)
+		t.Fatalf("sensitive data not redacted:\n%s", out)
 	}
 	if !strings.Contains(out, "10.5") || !strings.Contains(out, "3") {
-		t.Fatalf("mesures supprimées :\n%s", out)
+		t.Fatalf("measurements removed:\n%s", out)
 	}
 }
 
@@ -68,11 +68,11 @@ func TestRedactNonJSONBody(t *testing.T) {
 
 	for _, gone := range []string{"hunter2", "192.168.0.10", "33319328"} {
 		if strings.Contains(out, gone) {
-			t.Fatalf("%q non expurgé :\n%s", gone, out)
+			t.Fatalf("%q not redacted:\n%s", gone, out)
 		}
 	}
 	if !strings.Contains(out, "html") {
-		t.Fatalf("le corps textuel a été perdu :\n%s", out)
+		t.Fatalf("the textual body was lost:\n%s", out)
 	}
 }
 
@@ -86,52 +86,52 @@ func TestMaskHeaderValue(t *testing.T) {
 		{"Set-Cookie", "session=abc", redactedValue},
 		{"Content-Type", "application/json", "application/json"},
 		{"Location", "http://192.168.1.5/next", redactedValue},
-		{"X-Custom", "valeur quelconque", "valeur quelconque"},
+		{"X-Custom", "arbitrary value", "arbitrary value"},
 	}
 	for _, tc := range cases {
 		if got := maskHeaderValue(tc.name, tc.value); got != tc.want {
-			t.Fatalf("maskHeaderValue(%s) = %q, attendu %q", tc.name, got, tc.want)
+			t.Fatalf("maskHeaderValue(%s) = %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }
 
 func TestWhitelistIsGetOnly(t *testing.T) {
 	if len(whitelist) != 5 {
-		t.Fatalf("liste blanche = %d entrées, attendu 5", len(whitelist))
+		t.Fatalf("allowlist = %d entries, want 5", len(whitelist))
 	}
 	seen := map[string]bool{}
 	for _, ep := range whitelist {
 		if ep.method != http.MethodGet {
-			t.Fatalf("%s : méthode %q, seul GET est autorisé", ep.path, ep.method)
+			t.Fatalf("%s: method %q, only GET is allowed", ep.path, ep.method)
 		}
 		if ep.classification != "READ" {
-			t.Fatalf("%s : classification %q", ep.path, ep.classification)
+			t.Fatalf("%s: classification %q", ep.path, ep.classification)
 		}
 		if ep.note == "" {
-			t.Fatalf("%s : la note est obligatoire", ep.path)
+			t.Fatalf("%s: the note is mandatory", ep.path)
 		}
 		if seen[ep.path] {
-			t.Fatalf("%s : chemin en double", ep.path)
+			t.Fatalf("%s: duplicate path", ep.path)
 		}
 		seen[ep.path] = true
 	}
 
-	// Les quatre chemins internes exigent un Digest côté client officiel ;
-	// l'endpoint Solar API n'envoie jamais d'en-tête d'authentification.
+	// The four internal paths require a Digest on the official client side;
+	// the Solar API endpoint never sends an authentication header.
 	for _, ep := range whitelist {
 		wantDigest := ep.path != "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 		if ep.digest != wantDigest {
-			t.Fatalf("%s : digest = %v, attendu %v", ep.path, ep.digest, wantDigest)
+			t.Fatalf("%s: digest = %v, want %v", ep.path, ep.digest, wantDigest)
 		}
 	}
 
-	// Les noms de fichiers dérivés des chemins doivent être distincts : deux
-	// chemins internes se terminent tous deux par « readable ».
+	// The file names derived from the paths must be distinct: two
+	// internal paths both end with "readable".
 	names := map[string]bool{}
 	for _, ep := range whitelist {
 		name := saveName(ep.path)
 		if names[name] {
-			t.Fatalf("%s : nom de fichier en collision (%s)", ep.path, name)
+			t.Fatalf("%s: file name collision (%s)", ep.path, name)
 		}
 		names[name] = true
 	}
@@ -144,14 +144,14 @@ func TestWhitelistIsGetOnly(t *testing.T) {
 }
 
 func TestEndpointSelection(t *testing.T) {
-	// « all » et la chaîne vide sélectionnent toute la liste.
+	// "all" and the empty string select the whole list.
 	for _, name := range []string{"all", ""} {
 		got, err := selectEndpoints(name)
 		if err != nil {
 			t.Fatalf("selectEndpoints(%q): %v", name, err)
 		}
 		if len(got) != len(whitelist) {
-			t.Fatalf("selectEndpoints(%q) = %d entrées", name, len(got))
+			t.Fatalf("selectEndpoints(%q) = %d entries", name, len(got))
 		}
 	}
 
@@ -160,59 +160,59 @@ func TestEndpointSelection(t *testing.T) {
 		t.Fatalf("selectEndpoints: %v", err)
 	}
 	if len(got) != 1 || got[0].path != "/status/version" {
-		t.Fatalf("sélection = %+v", got)
+		t.Fatalf("selection = %+v", got)
 	}
 
-	// Tout chemin hors liste est refusé.
+	// Any path outside the list is refused.
 	for _, name := range []string{"/config/modbus", "/status/events", "http://192.168.1.5/status/version", "version"} {
 		if _, err := selectEndpoints(name); err == nil {
-			t.Fatalf("%q devait être refusé", name)
+			t.Fatalf("%q should have been refused", name)
 		} else if !errors.Is(err, errNotWhitelisted) {
-			t.Fatalf("%q : erreur = %v", name, err)
+			t.Fatalf("%q: error = %v", name, err)
 		}
 	}
 }
 
-// TestCredentialsComeFromEnvironment : aucun mot de passe ne passe par un
-// argument de ligne de commande.
+// TestCredentialsComeFromEnvironment: no password goes through a
+// command-line argument.
 func TestCredentialsComeFromEnvironment(t *testing.T) {
-	t.Setenv("FRONIUS_DEVICE_USER", "installateur")
-	t.Setenv("FRONIUS_DEVICE_PASSWORD", "depuis-l-environnement")
+	t.Setenv("FRONIUS_DEVICE_USER", "installer")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "from-the-environment")
 
 	cred, err := readCredentials(options{})
 	if err != nil {
 		t.Fatalf("readCredentials: %v", err)
 	}
-	if cred.user != "installateur" || cred.password.Reveal() != "depuis-l-environnement" {
-		t.Fatalf("identifiants = %+v", cred)
+	if cred.user != "installer" || cred.password.Reveal() != "from-the-environment" {
+		t.Fatalf("credentials = %+v", cred)
 	}
 
-	// --password-stdin remplace le mot de passe de l'environnement.
-	cred, err = readCredentials(options{passwordStdin: true, stdin: strings.NewReader("depuis-stdin\nsuite\n")})
+	// --password-stdin replaces the environment password.
+	cred, err = readCredentials(options{passwordStdin: true, stdin: strings.NewReader("from-stdin\nnext\n")})
 	if err != nil {
 		t.Fatalf("readCredentials: %v", err)
 	}
-	if cred.password.Reveal() != "depuis-stdin" {
-		t.Fatalf("mot de passe = %q", cred.password.Reveal())
+	if cred.password.Reveal() != "from-stdin" {
+		t.Fatalf("password = %q", cred.password.Reveal())
 	}
 
-	// Une paire incomplète est refusée.
+	// An incomplete pair is refused.
 	t.Setenv("FRONIUS_DEVICE_PASSWORD", "")
 	if _, err := readCredentials(options{}); err == nil {
-		t.Fatal("un utilisateur sans mot de passe doit être refusé")
+		t.Fatal("a user without a password must be refused")
 	}
 }
 
-// TestProbeSendsNoCredentialsPreemptively : l'en-tête Authorization n'est émis
-// qu'en réponse à un 401, et il n'apparaît jamais dans la sortie ni dans le
-// fichier écrit.
+// TestProbeSendsNoCredentialsPreemptively: the Authorization header is sent
+// only in response to a 401, and it never appears in the output nor in the
+// written file.
 func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
-	const password = "mot-de-passe-de-sonde"
+	const password = "probe-password"
 
 	var (
 		mu          sync.Mutex
-		seen        []string // en-têtes Authorization reçus, dans l'ordre
-		pathsSeen   []string // chemins reçus, dans le même ordre
+		seen        []string // Authorization headers received, in order
+		pathsSeen   []string // paths received, in the same order
 		hitsPerPath = map[string]int{}
 	)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -222,8 +222,8 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 		hitsPerPath[r.URL.Path]++
 		mu.Unlock()
 
-		// Seuls les chemins internes exigent un Digest ; l'endpoint Solar API
-		// répond sans en-tête (deux voies distinctes, voir docs/SOURCES.md).
+		// Only the internal paths require a Digest; the Solar API endpoint
+		// responds without a header (two distinct routes, see docs/SOURCES.md).
 		if r.Header.Get("Authorization") == "" && r.URL.Path != "/solar_api/v1/GetPowerFlowRealtimeData.fcgi" {
 			w.Header().Set("x-www-authenticate", `Digest realm="Webinterface area", nonce="sim-nonce-1", qop="auth"`)
 			w.WriteHeader(http.StatusUnauthorized)
@@ -247,36 +247,36 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Chemin Solar API : une seule requête, sans en-tête.
+	// Solar API path: a single request, without a header.
 	if hitsPerPath["/solar_api/v1/GetPowerFlowRealtimeData.fcgi"] != 1 {
-		t.Fatalf("solar api : %d requêtes, attendu 1", hitsPerPath["/solar_api/v1/GetPowerFlowRealtimeData.fcgi"])
+		t.Fatalf("solar api: %d requests, want 1", hitsPerPath["/solar_api/v1/GetPowerFlowRealtimeData.fcgi"])
 	}
-	// Premier chemin interne : requête nue (401), puis requête authentifiée.
-	// Les suivants réutilisent le nonce mis en cache : une seule requête chacun.
+	// First internal path: bare request (401), then authenticated request.
+	// The following ones reuse the cached nonce: a single request each.
 	if hitsPerPath["/status/version"] != 2 {
-		t.Fatalf("version : %d requêtes, attendu 2 (nue puis authentifiée)", hitsPerPath["/status/version"])
+		t.Fatalf("version: %d requests, want 2 (bare then authenticated)", hitsPerPath["/status/version"])
 	}
 	for _, ep := range whitelist {
 		if ep.path == "/status/version" || !ep.digest {
 			continue
 		}
 		if hitsPerPath[ep.path] != 1 {
-			t.Fatalf("%s : %d requêtes, attendu 1 (nonce en cache)", ep.path, hitsPerPath[ep.path])
+			t.Fatalf("%s: %d requests, want 1 (nonce cached)", ep.path, hitsPerPath[ep.path])
 		}
 	}
 
-	// Aucune authentification n'est envoyée avant un 401 : la seule requête nue
-	// vers un chemin interne est la première, et les suivantes portent le Digest
-	// issu du défi déjà reçu.
+	// No authentication is sent before a 401: the only bare request
+	// towards an internal path is the first, and the following ones carry the Digest
+	// from the challenge already received.
 	byPath := map[string][]string{}
 	for i, p := range pathsSeen {
 		byPath[p] = append(byPath[p], seen[i])
 	}
 	if got := byPath["/status/version"]; len(got) != 2 || got[0] != "" || !strings.HasPrefix(got[1], "Digest ") {
-		t.Fatalf("version : en-têtes = %q", got)
+		t.Fatalf("version: headers = %q", got)
 	}
 	if got := byPath["/solar_api/v1/GetPowerFlowRealtimeData.fcgi"]; len(got) != 1 || got[0] != "" {
-		t.Fatalf("solar api : en-têtes = %q", got)
+		t.Fatalf("solar api: headers = %q", got)
 	}
 	unauthenticated := 0
 	for _, header := range seen {
@@ -285,32 +285,32 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 		}
 	}
 	if unauthenticated != 2 {
-		t.Fatalf("requêtes sans en-tête = %d, attendu 2 (solar api + premier défi)", unauthenticated)
+		t.Fatalf("requests without header = %d, want 2 (solar api + first challenge)", unauthenticated)
 	}
 	for _, header := range seen {
 		if header != "" && !strings.HasPrefix(header, "Digest ") {
-			t.Fatalf("en-tête inattendu : %q", header)
+			t.Fatalf("unexpected header: %q", header)
 		}
 		if strings.Contains(header, password) {
-			t.Fatalf("le mot de passe apparaît dans l'en-tête : %q", header)
+			t.Fatalf("the password appears in the header: %q", header)
 		}
 	}
 
-	// Le mot de passe n'apparaît ni dans la sortie, ni dans les fichiers écrits.
+	// The password appears neither in the output, nor in the written files.
 	if strings.Contains(buf.String(), password) {
-		t.Fatalf("le mot de passe apparaît dans la sortie :\n%s", buf.String())
+		t.Fatalf("the password appears in the output:\n%s", buf.String())
 	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
 	if err != nil || len(files) != len(whitelist) {
-		t.Fatalf("fichiers écrits = %v (err=%v), attendu %d", files, err, len(whitelist))
+		t.Fatalf("written files = %v (err=%v), want %d", files, err, len(whitelist))
 	}
 	for _, f := range files {
 		body, err := os.ReadFile(f)
 		if err != nil {
-			t.Fatalf("lecture de %s: %v", f, err)
+			t.Fatalf("reading %s: %v", f, err)
 		}
 		if strings.Contains(string(body), password) {
-			t.Fatalf("%s contient le mot de passe", f)
+			t.Fatalf("%s contains the password", f)
 		}
 	}
 }
@@ -319,25 +319,25 @@ func TestNonLoopbackIsRefusedWithoutFlag(t *testing.T) {
 	var buf bytes.Buffer
 	err := run(options{baseURL: "http://192.0.2.10", timeout: time.Second, out: &buf})
 	if err == nil {
-		t.Fatal("une adresse non locale devait être refusée")
+		t.Fatal("a non-local address should have been refused")
 	}
-	for _, want := range []string{"refus", "--allow-non-loopback", "PROBE-READONLY.md"} {
+	for _, want := range []string{"refusal", "--allow-non-loopback", "PROBE-READONLY.md"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("message %q ne mentionne pas %q", err, want)
+			t.Fatalf("message %q does not mention %q", err, want)
 		}
 	}
 }
 
 func TestLoopbackHostIsAccepted(t *testing.T) {
-	// Le refus ne doit pas se déclencher sur une adresse locale : l'erreur
-	// attendue ici vient de l'absence de serveur, pas de la garde.
+	// The refusal must not trigger on a local address: the error
+	// expected here comes from the absence of a server, not from the guard.
 	var buf bytes.Buffer
 	err := run(options{baseURL: "http://127.0.0.1:1", timeout: 300 * time.Millisecond, out: &buf})
 	if err == nil {
-		t.Skip("aucun serveur sur le port 1 : erreur attendue")
+		t.Skip("no server on port 1: error expected")
 	}
-	if strings.Contains(err.Error(), "n'est pas une adresse locale") {
-		t.Fatalf("une adresse locale a été refusée : %v", err)
+	if strings.Contains(err.Error(), "is not a local address") {
+		t.Fatalf("a local address was refused: %v", err)
 	}
 }
 
@@ -347,19 +347,19 @@ func TestListPrintsWhitelist(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{"Liste blanche", "GET", "/solar_api/v1/GetPowerFlowRealtimeData.fcgi", "READ"} {
+	for _, want := range []string{"allowlist", "GET", "/solar_api/v1/GetPowerFlowRealtimeData.fcgi", "READ"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("sortie --list incomplète (%q manquant) :\n%s", want, out)
+			t.Fatalf("--list output incomplete (%q missing):\n%s", want, out)
 		}
 	}
-	// Un seul endpoint Solar API, et les quatre chemins internes.
+	// A single Solar API endpoint, and the four internal paths.
 	if n := strings.Count(out, "/solar_api/"); n != 1 {
-		t.Fatalf("la liste blanche doit citer un seul chemin Solar API (%d) :\n%s", n, out)
+		t.Fatalf("the allowlist must cite a single Solar API path (%d):\n%s", n, out)
 	}
 	for _, want := range []string{"/status/version", "/status/activeEvents", "/components/PowerMeter/readable",
 		"/components/BatteryManagementSystem/readable", "digest=true", "FRONIUS_DEVICE_USER", "--password-stdin"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("sortie --list incomplète (%q manquant) :\n%s", want, out)
+			t.Fatalf("--list output incomplete (%q missing):\n%s", want, out)
 		}
 	}
 }
@@ -389,56 +389,56 @@ func TestProbeSendsGetAndSavesRedactedBody(t *testing.T) {
 	}
 
 	if len(paths) != len(whitelist) {
-		t.Fatalf("requêtes émises = %d, attendu %d (une par endpoint)", len(paths), len(whitelist))
+		t.Fatalf("requests sent = %d, want %d (one per endpoint)", len(paths), len(whitelist))
 	}
 	for i, ep := range whitelist {
 		if methods[i] != http.MethodGet {
-			t.Fatalf("%s : méthode émise = %q, attendu GET", ep.path, methods[i])
+			t.Fatalf("%s: method sent = %q, want GET", ep.path, methods[i])
 		}
 		if paths[i] != ep.path {
-			t.Fatalf("chemin appelé = %q, attendu %q", paths[i], ep.path)
+			t.Fatalf("path called = %q, want %q", paths[i], ep.path)
 		}
 	}
 
 	out := buf.String()
-	for _, want := range []string{"GET", "200 OK", "Corps expurgé", "192"} {
+	for _, want := range []string{"GET", "200 OK", "Redacted body", "192"} {
 		if !strings.Contains(out, want) && want != "192" {
-			t.Fatalf("sortie incomplète (%q manquant) :\n%s", want, out)
+			t.Fatalf("output incomplete (%q missing):\n%s", want, out)
 		}
 	}
 	if strings.Contains(out, "33319328") || strings.Contains(out, "192.0.2.10") || strings.Contains(out, "sim-nonce") {
-		t.Fatalf("une donnée sensible apparaît dans la sortie :\n%s", out)
+		t.Fatalf("sensitive data appears in the output:\n%s", out)
 	}
 	if !strings.Contains(out, redactedValue) {
-		t.Fatalf("aucune mention d'expurgation :\n%s", out)
+		t.Fatalf("no mention of redaction:\n%s", out)
 	}
 
 	files, err := filepath.Glob(filepath.Join(dir, "probe_solar_api_v1_getpowerflowrealtimedata_*.json"))
 	if err != nil || len(files) != 1 {
-		t.Fatalf("fichiers écrits = %v (err=%v)", files, err)
+		t.Fatalf("written files = %v (err=%v)", files, err)
 	}
 	saved, err := os.ReadFile(files[0])
 	if err != nil {
-		t.Fatalf("lecture du fichier écrit: %v", err)
+		t.Fatalf("reading the written file: %v", err)
 	}
 	if strings.Contains(string(saved), "33319328") || strings.Contains(string(saved), "192.0.2.10") {
-		t.Fatalf("le fichier écrit contient une donnée sensible :\n%s", saved)
+		t.Fatalf("the written file contains sensitive data:\n%s", saved)
 	}
 	if !strings.Contains(string(saved), "1902.4") {
-		t.Fatalf("le fichier écrit a perdu la mesure :\n%s", saved)
+		t.Fatalf("the written file lost the measurement:\n%s", saved)
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal(saved, &parsed); err != nil {
-		t.Fatalf("le fichier écrit doit rester du JSON : %v", err)
+		t.Fatalf("the written file must remain JSON: %v", err)
 	}
 
-	// Les permissions du fichier ne doivent pas être plus larges que 0600.
+	// The file permissions must not be wider than 0600.
 	info, err := os.Stat(files[0])
 	if err != nil {
 		t.Fatalf("Stat: %v", err)
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("permissions = %o, attendu 600", perm)
+		t.Fatalf("permissions = %o, want 600", perm)
 	}
 }
 
@@ -451,16 +451,16 @@ func TestProbeReportsHTTPError(t *testing.T) {
 	var buf bytes.Buffer
 	err := run(options{baseURL: srv.URL, timeout: 2 * time.Second, out: &buf})
 	if err == nil {
-		t.Fatal("un 401 doit être signalé comme erreur")
+		t.Fatal("a 401 must be reported as an error")
 	}
 	if !strings.Contains(err.Error(), "401") {
-		t.Fatalf("erreur = %v", err)
+		t.Fatalf("error = %v", err)
 	}
 }
 
-// TestIPv6DetectionDoesNotTouchTimestamps : le motif IPv6 ne doit jamais
-// masquer une heure ni un horodatage, sans quoi les fixtures deviennent
-// inutilisables.
+// TestIPv6DetectionDoesNotTouchTimestamps: the IPv6 pattern must never
+// mask a time nor a timestamp, otherwise the fixtures become
+// unusable.
 func TestIPv6DetectionDoesNotTouchTimestamps(t *testing.T) {
 	preserved := []string{
 		"12:00:00",
@@ -472,7 +472,7 @@ func TestIPv6DetectionDoesNotTouchTimestamps(t *testing.T) {
 	}
 	for _, v := range preserved {
 		if got := redactString(v); got != v {
-			t.Fatalf("redactString(%q) = %q : valeur légitime expurgée", v, got)
+			t.Fatalf("redactString(%q) = %q: legitimate value redacted", v, got)
 		}
 	}
 
@@ -487,7 +487,7 @@ func TestIPv6DetectionDoesNotTouchTimestamps(t *testing.T) {
 	}
 	for _, v := range masked {
 		if got := redactString(v); got != redactedValue {
-			t.Fatalf("redactString(%q) = %q : valeur sensible conservée", v, got)
+			t.Fatalf("redactString(%q) = %q: sensitive value kept", v, got)
 		}
 	}
 }
@@ -497,6 +497,6 @@ func TestRedactBodyIsIdempotent(t *testing.T) {
 	once := redactBody(body)
 	twice := redactBody(once)
 	if string(once) != string(twice) {
-		t.Fatalf("expurgation non idempotente :\n%s\n%s", once, twice)
+		t.Fatalf("redaction not idempotent:\n%s\n%s", once, twice)
 	}
 }

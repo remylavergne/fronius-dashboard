@@ -6,36 +6,36 @@ import type { Capability } from '@/lib/schema'
 const capabilities: Capability[] = [
   {
     id: 'production.power',
-    label: 'Production instantanée',
+    label: 'Instantaneous production',
     available: true,
     quality: 'measured',
     requires: [],
     read_only: true,
     verified: false,
     evidence: ['conversation', 'simulator'],
-    reason: 'Schéma non validé sur firmware 1.19.7-1',
+    reason: 'Schema not validated on firmware 1.19.7-1',
   },
   {
     id: 'battery.soc',
-    label: 'État de charge de la batterie',
+    label: 'Battery state of charge',
     available: false,
     quality: 'missing',
     requires: ['battery'],
     read_only: true,
     verified: false,
     evidence: ['conversation'],
-    reason: 'Aucune batterie installée',
+    reason: 'No battery installed',
   },
   {
     id: 'grid.import_export',
-    label: 'Import / export réseau',
+    label: 'Grid import / export',
     available: false,
     quality: 'missing',
     requires: ['smart_meter'],
     read_only: true,
     verified: false,
     evidence: ['conversation'],
-    reason: 'Aucun Fronius Smart Meter détecté',
+    reason: 'No Fronius Smart Meter detected',
   },
 ]
 
@@ -47,10 +47,10 @@ function rowFor(label: string): HTMLElement {
 }
 
 describe('CapabilitiesTable', () => {
-  it('liste toutes les capacités, triées par identifiant', () => {
+  it('lists all capabilities, sorted by identifier', () => {
     render(<CapabilitiesTable capabilities={capabilities} />)
 
-    // Les identifiants sont les seules chaînes contenant un point.
+    // Identifiers are the only strings containing a dot.
     expect(screen.getAllByText(/^[a-z_]+\.[a-z_.]+$/).map((node) => node.textContent)).toEqual([
       'battery.soc',
       'grid.import_export',
@@ -58,46 +58,46 @@ describe('CapabilitiesTable', () => {
     ])
   })
 
-  it('affiche le motif d’une capacité indisponible', () => {
+  it('shows the reason of an unavailable capability', () => {
     render(<CapabilitiesTable capabilities={capabilities} />)
 
-    const row = rowFor('État de charge de la batterie')
-    expect(within(row).getByText('indisponible')).toBeInTheDocument()
-    expect(within(row).getByText('Aucune batterie installée')).toBeInTheDocument()
+    const row = rowFor('Battery state of charge')
+    expect(within(row).getByText('unavailable')).toBeInTheDocument()
+    expect(within(row).getByText('No battery installed')).toBeInTheDocument()
     expect(within(row).getByText('battery')).toBeInTheDocument()
     expect(row).toHaveAttribute('data-available', 'false')
   })
 
-  it('n’affiche aucune valeur numérique nulle pour une capacité indisponible', () => {
+  it('shows no zero numeric value for an unavailable capability', () => {
     render(<CapabilitiesTable capabilities={capabilities} />)
 
-    // Invariant « pas de zéro inventé » : la ligne d'une capacité indisponible
-    // ne doit contenir aucun nombre, donc aucun 0 de remplissage.
-    for (const label of ['État de charge de la batterie', 'Import / export réseau']) {
+    // "No invented zero" invariant: the row of an unavailable capability must
+    // contain no number, therefore no padding 0.
+    for (const label of ['Battery state of charge', 'Grid import / export']) {
       expect(rowFor(label).textContent).not.toMatch(/\d/)
     }
   })
 
-  it('distingue une capacité disponible non vérifiée', () => {
+  it('distinguishes an available capability that is not verified', () => {
     render(<CapabilitiesTable capabilities={capabilities} />)
 
-    const row = rowFor('Production instantanée')
-    expect(within(row).getByText('disponible')).toBeInTheDocument()
-    expect(within(row).getByText('non vérifié')).toBeInTheDocument()
-    expect(within(row).getByText('mesuré')).toBeInTheDocument()
+    const row = rowFor('Instantaneous production')
+    expect(within(row).getByText('available')).toBeInTheDocument()
+    expect(within(row).getByText('unverified')).toBeInTheDocument()
+    expect(within(row).getByText('measured')).toBeInTheDocument()
     expect(row).toHaveAttribute('data-available', 'true')
   })
 
-  it('rend un tiret plutôt qu’une cellule vide', () => {
+  it('renders a dash rather than an empty cell', () => {
     render(<CapabilitiesTable capabilities={capabilities} />)
 
-    const row = rowFor('Production instantanée')
-    // `requires` est vide : tiret. `evidence` est renseigné : liste jointe.
+    const row = rowFor('Instantaneous production')
+    // `requires` is empty: dash. `evidence` is set: joined list.
     expect(within(row).getByText('—')).toBeInTheDocument()
     expect(within(row).getByText('conversation, simulator')).toBeInTheDocument()
   })
 
-  it('accepte une liste vide', () => {
+  it('accepts an empty list', () => {
     render(<CapabilitiesTable capabilities={[]} />)
     expect(screen.queryAllByRole('row')).toHaveLength(1)
   })

@@ -34,9 +34,9 @@ func (f *fakeSource) GetPowerFlowRealtimeData(context.Context) (solarapi.PowerFl
 		f.idx++
 		return r.env, r.err
 	}
-	// Toute itération au-delà du programme échoue : un test ne doit pas boucler
-	// indéfiniment sur un succès implicite.
-	return solarapi.PowerFlowEnvelope{}, errors.New("source: plus de résultat programmé")
+	// Any iteration beyond the program fails: a test must not loop
+	// indefinitely on an implicit success.
+	return solarapi.PowerFlowEnvelope{}, errors.New("source: no more programmed result")
 }
 
 type fakeSink struct {
@@ -113,28 +113,28 @@ func TestCollectOnceSuccess(t *testing.T) {
 		t.Fatalf("CollectOnce: %v", err)
 	}
 	if sm.PowerPVW == nil || *sm.PowerPVW != 1902.4 {
-		t.Fatalf("échantillon = %+v", sm)
+		t.Fatalf("sample = %+v", sm)
 	}
 	if len(sink.samples) != 1 {
-		t.Fatalf("échantillons insérés = %d, attendu 1", len(sink.samples))
+		t.Fatalf("inserted samples = %d, want 1", len(sink.samples))
 	}
 	if len(sink.runs) != 1 || !sink.runs[0].OK || sink.runs[0].HTTPStatus != 200 {
-		t.Fatalf("cycle = %+v", sink.runs)
+		t.Fatalf("run = %+v", sink.runs)
 	}
-	// last_success_utc est l'horloge du collecteur (instant du cycle réussi),
-	// pas l'horodatage de l'appareil.
+	// last_success_utc is the collector clock (instant of the successful cycle),
+	// not the device timestamp.
 	gotSuccess := sink.state[StateLastSuccess]
 	if _, err := time.Parse(time.RFC3339, gotSuccess); err != nil {
-		t.Fatalf("last_success_utc = %q, RFC3339 attendu : %v", gotSuccess, err)
+		t.Fatalf("last_success_utc = %q, want RFC3339: %v", gotSuccess, err)
 	}
 	if sink.samples[0].TS.Format(time.RFC3339) != "2026-10-16T07:17:43Z" {
-		t.Fatalf("TS de l'échantillon = %v (horodatage appareil attendu)", sink.samples[0].TS)
+		t.Fatalf("sample TS = %v (device timestamp expected)", sink.samples[0].TS)
 	}
 	if v, ok := sink.state[StateLastError]; !ok || v != "" {
-		t.Fatalf("last_error = %q (présent=%v)", v, ok)
+		t.Fatalf("last_error = %q (present=%v)", v, ok)
 	}
 	if len(sink.events) != 0 {
-		t.Fatalf("aucun événement attendu au premier succès : %+v", sink.events)
+		t.Fatalf("no event expected on the first success: %+v", sink.events)
 	}
 }
 
@@ -145,31 +145,31 @@ func TestCollectOnceFailureInsertsNoSample(t *testing.T) {
 	c := newCollector(src, sink)
 
 	if _, err := c.CollectOnce(context.Background()); !errors.Is(err, failure) {
-		t.Fatalf("CollectOnce = %v, attendu l'erreur source", err)
+		t.Fatalf("CollectOnce = %v, want the source error", err)
 	}
 	if len(sink.samples) != 0 {
-		t.Fatalf("un échec ne doit insérer aucun échantillon (%d insérés)", len(sink.samples))
+		t.Fatalf("a failure must insert no sample (%d inserted)", len(sink.samples))
 	}
 	if len(sink.runs) != 1 {
-		t.Fatalf("cycles enregistrés = %d, attendu 1", len(sink.runs))
+		t.Fatalf("recorded runs = %d, want 1", len(sink.runs))
 	}
 	run := sink.runs[0]
 	if run.OK || run.HTTPStatus != 503 || run.ErrorKind != "server" || run.Error == "" {
-		t.Fatalf("cycle = %+v", run)
+		t.Fatalf("run = %+v", run)
 	}
 	if sink.state[StateLastError] == "" {
-		t.Fatal("last_error doit être renseigné")
+		t.Fatal("last_error must be filled in")
 	}
 	if len(sink.events) != 1 {
-		t.Fatalf("événements = %d, attendu 1", len(sink.events))
+		t.Fatalf("events = %d, want 1", len(sink.events))
 	}
 	if sink.events[0].Severity != model.SeverityWarning || sink.events[0].Kind != model.EventCollectorError {
-		t.Fatalf("événement = %+v", sink.events[0])
+		t.Fatalf("event = %+v", sink.events[0])
 	}
 }
 
-// TestDeviceStatusErrorIsNotPersisted : un appareil qui répond 200 mais signale
-// une erreur applicative ne produit pas de mesure.
+// TestDeviceStatusErrorIsNotPersisted: a device that answers 200 but reports
+// an application error produces no measurement.
 func TestDeviceStatusErrorIsNotPersisted(t *testing.T) {
 	env := okEnvelope("2026-10-16T09:17:43+02:00", 0)
 	env.Head.Status = solarapi.HeadStatus{Code: 7, Reason: "Simulated device error"}
@@ -180,16 +180,16 @@ func TestDeviceStatusErrorIsNotPersisted(t *testing.T) {
 	src := &fakeSource{results: []result{{env: env, err: statusErr}}}
 	sink := newFakeSink()
 	if _, err := newCollector(src, sink).CollectOnce(context.Background()); err == nil {
-		t.Fatal("une erreur était attendue")
+		t.Fatal("an error was expected")
 	}
 	if len(sink.samples) != 0 {
-		t.Fatalf("échantillons insérés = %d", len(sink.samples))
+		t.Fatalf("inserted samples = %d", len(sink.samples))
 	}
 	if len(sink.events) != 1 {
-		t.Fatalf("événements = %d, attendu 1", len(sink.events))
+		t.Fatalf("events = %d, want 1", len(sink.events))
 	}
 	if sink.runs[0].ErrorKind != string(froniuserr.KindStatus) {
-		t.Fatalf("cycle = %+v", sink.runs[0])
+		t.Fatalf("run = %+v", sink.runs[0])
 	}
 }
 
@@ -207,57 +207,57 @@ func TestFailureEventIsNotDuplicated(t *testing.T) {
 
 	for range 5 {
 		if _, err := c.CollectOnce(ctx); err == nil {
-			t.Fatal("une erreur était attendue")
+			t.Fatal("an error was expected")
 		}
 	}
-	// Trois échecs identiques → un seul événement ; un message différent → un
-	// second événement.
+	// Three identical failures → a single event; a different message → a
+	// second event.
 	if len(sink.events) != 2 {
-		t.Fatalf("événements = %d, attendu 2 (anti-duplication) : %+v", len(sink.events), sink.events)
+		t.Fatalf("events = %d, want 2 (anti-duplication): %+v", len(sink.events), sink.events)
 	}
-	// Tous les cycles sont en revanche tracés individuellement.
+	// All cycles are however traced individually.
 	if len(sink.runs) != 5 {
-		t.Fatalf("cycles = %d, attendu 5", len(sink.runs))
+		t.Fatalf("runs = %d, want 5", len(sink.runs))
 	}
 
-	// La reprise insère un événement et remet l'état d'erreur à zéro.
+	// The recovery inserts an event and resets the error state to zero.
 	if _, err := c.CollectOnce(ctx); err != nil {
 		t.Fatalf("CollectOnce: %v", err)
 	}
 	if len(sink.events) != 3 {
-		t.Fatalf("événements = %d, attendu 3 : %+v", len(sink.events), sink.events)
+		t.Fatalf("events = %d, want 3: %+v", len(sink.events), sink.events)
 	}
 	recovery := sink.events[2]
 	if recovery.Kind != model.EventCollectorRecovered || recovery.Severity != model.SeverityInfo {
-		t.Fatalf("événement de reprise = %+v", recovery)
+		t.Fatalf("recovery event = %+v", recovery)
 	}
 	if sink.state[StateLastError] != "" {
-		t.Fatalf("last_error = %q, attendu vide", sink.state[StateLastError])
+		t.Fatalf("last_error = %q, want empty", sink.state[StateLastError])
 	}
 
-	// Un nouvel échec identique au précédent message doit de nouveau produire un
-	// événement, puisque la série d'échecs a été interrompue par un succès.
+	// A new failure identical to the previous message must again produce an
+	// event, since the series of failures was interrupted by a success.
 	src.results = append(src.results, result{err: other})
 	if _, err := c.CollectOnce(ctx); err == nil {
-		t.Fatal("une erreur était attendue")
+		t.Fatal("an error was expected")
 	}
 	if len(sink.events) != 4 {
-		t.Fatalf("événements = %d, attendu 4", len(sink.events))
+		t.Fatalf("events = %d, want 4", len(sink.events))
 	}
 }
 
 func TestInsertSampleErrorIsPropagated(t *testing.T) {
 	src := &fakeSource{results: []result{{env: okEnvelope("2026-10-16T09:17:43+02:00", 1)}}}
 	sink := newFakeSink()
-	sink.insertErr = errors.New("disque plein")
+	sink.insertErr = errors.New("disk full")
 	c := newCollector(src, sink)
 
 	_, err := c.CollectOnce(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "disque plein") {
-		t.Fatalf("erreur = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "disk full") {
+		t.Fatalf("error = %v", err)
 	}
-	// Un échec de persistance n'est pas un échec de l'appareil : ni cycle, ni
-	// événement de panne ne doivent être écrits.
+	// A persistence failure is not a device failure: neither a run nor a
+	// failure event must be written.
 	if len(sink.runs) != 0 || len(sink.events) != 0 {
 		t.Fatalf("runs=%d events=%d", len(sink.runs), len(sink.events))
 	}
@@ -270,7 +270,7 @@ func TestSuccessDelayWithinJitterBounds(t *testing.T) {
 	c.Jitter = 0
 	for range 10 {
 		if got := c.successDelay(); got != 5*time.Second {
-			t.Fatalf("sans jitter : délai = %v, attendu 5s", got)
+			t.Fatalf("without jitter: delay = %v, want 5s", got)
 		}
 	}
 
@@ -282,7 +282,7 @@ func TestSuccessDelayWithinJitterBounds(t *testing.T) {
 	for range 2000 {
 		d := c.successDelay()
 		if d < lowBound || d > highBound {
-			t.Fatalf("délai %v hors bornes [%v, %v]", d, lowBound, highBound)
+			t.Fatalf("delay %v out of bounds [%v, %v]", d, lowBound, highBound)
 		}
 		observedMin = min(observedMin, d)
 		observedMax = max(observedMax, d)
@@ -293,14 +293,14 @@ func TestSuccessDelayWithinJitterBounds(t *testing.T) {
 			above = true
 		}
 	}
-	// Le jitter doit réellement varier et être centré : sur 2000 tirages, la
-	// plage observée doit couvrir une large part de l'amplitude, et des valeurs
-	// doivent apparaître des deux côtés de l'intervalle nominal.
+	// The jitter must really vary and be centered: over 2000 draws, the
+	// observed range must cover a large part of the amplitude, and values
+	// must appear on both sides of the nominal interval.
 	if observedMax-observedMin < c.Jitter/2 {
-		t.Fatalf("jitter trop concentré : plage observée %v", observedMax-observedMin)
+		t.Fatalf("jitter too concentrated: observed range %v", observedMax-observedMin)
 	}
 	if !below || !above {
-		t.Fatalf("délais non centrés sur %v : min=%v max=%v", c.Interval, observedMin, observedMax)
+		t.Fatalf("delays not centered on %v: min=%v max=%v", c.Interval, observedMin, observedMax)
 	}
 }
 
@@ -312,14 +312,14 @@ func TestBackoffSchedule(t *testing.T) {
 	}
 	for i, w := range want {
 		if got := c.backoff(i + 1); got != w {
-			t.Fatalf("backoff(%d) = %v, attendu %v", i+1, got, w)
+			t.Fatalf("backoff(%d) = %v, want %v", i+1, got, w)
 		}
 	}
-	// Robustesse : une tentative absurde reste plafonnée (pas de dépassement de
-	// décalage, pas de délai négatif).
+	// Robustness: an absurd attempt stays capped (no shift
+	// overflow, no negative delay).
 	for _, attempt := range []int{0, -5, 31, 64, 1000} {
 		if got := c.backoff(attempt); got <= 0 || got > maxBackoff {
-			t.Fatalf("backoff(%d) = %v, attendu dans ]0, %v]", attempt, got, maxBackoff)
+			t.Fatalf("backoff(%d) = %v, want within ]0, %v]", attempt, got, maxBackoff)
 		}
 	}
 }
@@ -335,20 +335,20 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	defer cancel()
 
 	if err := c.Run(ctx); err != nil {
-		t.Fatalf("Run = %v, attendu nil sur annulation", err)
+		t.Fatalf("Run = %v, want nil on cancellation", err)
 	}
 	if len(sink.samples) == 0 {
-		t.Fatal("aucun échantillon collecté avant l'annulation")
+		t.Fatal("no sample collected before cancellation")
 	}
 	if len(sink.runs) != len(sink.samples) {
 		t.Fatalf("runs=%d samples=%d", len(sink.runs), len(sink.samples))
 	}
 	if !src.sawGet {
-		t.Fatal("la source n'a pas été interrogée")
+		t.Fatal("the source was not polled")
 	}
 }
 
-// loopingSource réussit indéfiniment : indispensable pour tester une boucle.
+// loopingSource succeeds indefinitely: indispensable to test a loop.
 type loopingSource struct {
 	sawGet bool
 }
@@ -372,21 +372,21 @@ func TestRunDoesNotInsertSamplesWhileFailing(t *testing.T) {
 		t.Fatalf("Run = %v", err)
 	}
 	if src.calls == 0 {
-		t.Fatal("la source n'a pas été interrogée")
+		t.Fatal("the source was not polled")
 	}
 	if len(sink.samples) != 0 {
-		t.Fatalf("échantillons insérés en échec = %d", len(sink.samples))
+		t.Fatalf("samples inserted on failure = %d", len(sink.samples))
 	}
 	if len(sink.runs) != src.calls {
-		t.Fatalf("cycles = %d, appels = %d", len(sink.runs), src.calls)
+		t.Fatalf("runs = %d, calls = %d", len(sink.runs), src.calls)
 	}
-	// Le backoff (1 s minimum) limite le nombre de tentatives sur 50 ms.
+	// The backoff (1 s minimum) limits the number of attempts over 50 ms.
 	if src.calls > 3 {
-		t.Fatalf("appels = %d : le backoff ne semble pas appliqué", src.calls)
+		t.Fatalf("calls = %d: the backoff does not seem applied", src.calls)
 	}
-	// Un seul événement malgré plusieurs échecs identiques.
+	// A single event despite several identical failures.
 	if len(sink.events) != 1 {
-		t.Fatalf("événements = %d, attendu 1", len(sink.events))
+		t.Fatalf("events = %d, want 1", len(sink.events))
 	}
 }
 
@@ -424,11 +424,11 @@ func TestNowIsInjectable(t *testing.T) {
 	if sink.state[StateLastSuccess] != "2026-10-16T07:00:00Z" {
 		t.Fatalf("last_success_utc = %q", sink.state[StateLastSuccess])
 	}
-	// Sans horodatage appareil, l'échantillon est horodaté par le collecteur.
+	// Without a device timestamp, the sample is timestamped by the collector.
 	if len(sink.samples) != 1 || !sink.samples[0].TS.Equal(fixed) {
-		t.Fatalf("échantillon = %+v", sink.samples)
+		t.Fatalf("sample = %+v", sink.samples)
 	}
 	if sink.samples[0].TSSource != model.TSSourceCollector || sink.samples[0].Quality != model.QualityEstimated {
-		t.Fatalf("origine = %q qualité = %q", sink.samples[0].TSSource, sink.samples[0].Quality)
+		t.Fatalf("origin = %q quality = %q", sink.samples[0].TSSource, sink.samples[0].Quality)
 	}
 }

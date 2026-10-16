@@ -9,7 +9,7 @@ import (
 	"fronius-supervisor/internal/fronius/froniuserr"
 )
 
-// spyDoer compte les appels transmis.
+// spyDoer counts the calls passed through.
 type spyDoer struct {
 	calls int
 	last  *http.Request
@@ -42,7 +42,7 @@ func TestReadOnlyAllowsGet(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if spy.calls != 1 {
-		t.Fatalf("appels transmis = %d, attendu 1", spy.calls)
+		t.Fatalf("calls passed through = %d, want 1", spy.calls)
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
@@ -58,24 +58,24 @@ func TestReadOnlyRefusesMutatingMethods(t *testing.T) {
 			resp, err := ro.Do(newRequest(t, method))
 			if err == nil {
 				resp.Body.Close()
-				t.Fatalf("%s devait être refusé", method)
+				t.Fatalf("%s should have been refused", method)
 			}
 			if resp != nil {
-				t.Fatalf("%s : une réponse non nulle a été retournée", method)
+				t.Fatalf("%s: a non-nil response was returned", method)
 			}
 			if spy.calls != 0 {
-				t.Fatalf("%s : la requête a atteint le transport (%d appels)", method, spy.calls)
+				t.Fatalf("%s: the request reached the transport (%d calls)", method, spy.calls)
 			}
 			kind, ok := froniuserr.KindOf(err)
 			if !ok || kind != froniuserr.KindReadOnly {
-				t.Fatalf("%s : KindOf = (%q, %v), attendu %q", method, kind, ok, froniuserr.KindReadOnly)
+				t.Fatalf("%s: KindOf = (%q, %v), want %q", method, kind, ok, froniuserr.KindReadOnly)
 			}
 			var typed *froniuserr.Error
 			if !errors.As(err, &typed) {
-				t.Fatal("errors.As n'a pas retrouvé *froniuserr.Error")
+				t.Fatal("errors.As did not find *froniuserr.Error")
 			}
 			if typed.Endpoint == "" {
-				t.Fatal("l'endpoint refusé doit être renseigné")
+				t.Fatal("the refused endpoint must be set")
 			}
 		})
 	}
@@ -85,29 +85,29 @@ func TestReadOnlyNilInner(t *testing.T) {
 	ro := ReadOnly{}
 	_, err := ro.Do(newRequest(t, http.MethodGet))
 	if err == nil {
-		t.Fatal("un transport nul devait échouer proprement")
+		t.Fatal("a nil transport should have failed cleanly")
 	}
 	kind, _ := froniuserr.KindOf(err)
 	if kind != froniuserr.KindTransport {
-		t.Fatalf("KindOf = %q, attendu %q", kind, froniuserr.KindTransport)
+		t.Fatalf("KindOf = %q, want %q", kind, froniuserr.KindTransport)
 	}
 }
 
 func TestReadOnlyNilRequest(t *testing.T) {
 	ro := ReadOnly{Inner: &spyDoer{}}
 	if _, err := ro.Do(nil); err == nil {
-		t.Fatal("une requête nulle devait être refusée")
+		t.Fatal("a nil request should have been refused")
 	}
 }
 
-// TestReadOnlyPropagatesTransportError vérifie qu'aucune erreur n'est avalée.
+// TestReadOnlyPropagatesTransportError checks that no error is swallowed.
 func TestReadOnlyPropagatesTransportError(t *testing.T) {
-	want := errors.New("connexion refusée")
+	want := errors.New("connection refused")
 	ro := ReadOnly{Inner: failingDoer{err: want}}
 
 	_, err := ro.Do(newRequest(t, http.MethodGet))
 	if !errors.Is(err, want) {
-		t.Fatalf("err = %v, attendu %v", err, want)
+		t.Fatalf("err = %v, want %v", err, want)
 	}
 }
 

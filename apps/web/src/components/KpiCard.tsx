@@ -2,20 +2,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import type { Formatted } from '@/lib/format'
 
 export type KpiCardProps = {
-  /** Intitulé de la grandeur. */
+  /** Label of the quantity. */
   label: string
-  /** Valeur déjà mise en forme, avec son unité (W, kW, Wh, kWh, %). */
+  /** Value already formatted, with its unit (W, kW, Wh, kWh, %). */
   value: Formatted
-  /** Précision secondaire : horodatage, qualité, mention d’absence. */
+  /** Secondary detail: timestamp, quality, absence note. */
   hint: string
 }
 
 /**
- * Carte d'indicateur.
+ * Indicator card.
  *
- * L'unité est affichée à côté de la valeur, jamais déduite : une valeur absente
- * arrive sous forme de tiret avec une unité vide, ce qui empêche toute lecture
- * « 0 W ».
+ * The unit is displayed next to the value, never inferred: an absent value
+ * comes as a dash with an empty unit, which prevents any "0 W" reading.
  */
 export function KpiCard({ label, value, hint }: KpiCardProps) {
   return (

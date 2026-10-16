@@ -9,7 +9,7 @@ const queryClient = new QueryClient()
 
 const container = document.getElementById('root')
 if (!container) {
-  throw new Error('élément #root introuvable : le gabarit HTML a été modifié')
+  throw new Error('element #root not found: the HTML template has been modified')
 }
 
 createRoot(container).render(

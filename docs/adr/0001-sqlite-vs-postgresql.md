@@ -1,57 +1,58 @@
 # ADR 0001 — SQLite vs PostgreSQL
 
-## Statut
+## Status
 
-Accepté (phase 1)
+Accepted (phase 1)
 
-## Contexte
+## Context
 
-L'application conserve un échantillon normalisé par cycle de collecte. L'intervalle de référence est de
-5 000 ms, aligné sur la cadence du client officiel (`/status/powerflow`) ; un échantillon toutes les 5 s
-représente ≈17 280 lignes par jour. L'installation est mono-machine : un collecteur Go, une base locale,
-un frontend servi séparément ou par le même binaire. Aucune contrainte de service partagé, de
-haute disponibilité ou d'accès concurrent multi-écrivain n'est identifiée.
+The application retains one normalized sample per collection cycle. The reference interval is
+5,000 ms, aligned with the cadence of the official client (`/status/powerflow`); one sample every 5 s
+represents ≈17,280 rows per day. The installation is single-machine: one Go collector, one local
+database, a frontend served separately or by the same binary. No constraint of shared service, of
+high availability or of concurrent multi-writer access is identified.
 
-Le socle technique impose un binaire statique sans CGO (`CGO_ENABLED=0`), et l'exploitation doit rester
-simple : diagnostiquer avec `sqlite3`, sauvegarder par copie de fichier, restaurer sans outil dédié.
+The technical baseline imposes a static binary without CGO (`CGO_ENABLED=0`), and operation must stay
+simple: diagnose with `sqlite3`, back up by copying the file, restore without a dedicated tool.
 
-## Décision
+## Decision
 
-Utiliser SQLite via le pilote pur Go `modernc.org/sqlite` (seule dépendance externe Go de la phase 1).
-Configuration d'ouverture :
+Use SQLite through the pure Go driver `modernc.org/sqlite` (the only external Go dependency of phase 1).
+Opening configuration:
 
-- une seule connexion en écriture : `db.SetMaxOpenConns(1)` ;
-- mode WAL (`journal_mode(WAL)`) ;
-- `busy_timeout` à 5 000 ms ;
-- `synchronous=NORMAL` ;
-- clés étrangères activées (`foreign_keys(1)`).
+- a single write connection: `db.SetMaxOpenConns(1)`;
+- WAL mode (`journal_mode(WAL)`);
+- `busy_timeout` at 5,000 ms;
+- `synchronous=NORMAL`;
+- foreign keys enabled (`foreign_keys(1)`).
 
-Le schéma et l'API du paquet de persistance sont décrits dans `internal/storage` (étape 7) ; les
-migrations sont appliquées par `internal/storage/migrations/0001_init.sql`.
+The schema and the API of the persistence package are described in `internal/storage` (step 7); the
+migrations are applied by `internal/storage/migrations/0001_init.sql`.
 
-## Conséquences
+## Consequences
 
-- Aucun accès concurrent multi-écrivain : un seul écrivain à la fois, ce qui suffit pour un volume
-  d'un échantillon toutes les 5 s ; à réévaluer si la latence d'écriture devient mesurable.
-- Aucune réplication, aucun basculement automatique, aucune séparation lecture/écriture réseau.
-- Les agrégats sont à matérialiser en phase 3 (index dédiés et tables d'agrégats heure/jour) plutôt que
-  de compter sur un planificateur de requêtes ou des vues matérialisées inexistantes dans SQLite.
-- Sauvegarde et restauration par copie cohérente du fichier (mode WAL) ; procédure documentée dans
+- No concurrent multi-writer access: a single writer at a time, which is enough for a volume of
+  one sample every 5 s; to be re-evaluated if write latency becomes measurable.
+- No replication, no automatic failover, no network read/write separation.
+- Aggregates are to be materialized in phase 3 (dedicated indexes and hour/day aggregate tables) rather
+  than relying on a query planner or on materialized views that do not exist in SQLite.
+- Backup and restore by consistent copy of the file (WAL mode); procedure documented in
   `docs/RUNBOOK.md`.
-- Le fichier de base vit sous `./data/` par défaut (`FRONIUS_DB_PATH`) et est exclu du versionnement.
+- The database file lives under `./data/` by default (`FRONIUS_DB_PATH`) and is excluded from version
+  control.
 
-## Alternatives écartées
+## Rejected alternatives
 
-- **PostgreSQL** : serveur à administrer, sauvegarde et supervision supplémentaire ; disproportionné pour
-  une installation domestique mono-machine.
-- **DuckDB** : écosystème Go moins mûr et modèle d'écriture concurrente non adapté à un collecteur qui
-  insère en continu.
-- **Stockage de fichiers plats ou CSV** : pas de requêtes de plage, pas de transaction, pas d'index ;
-  impose de réimplémenter ce que fournit SQLite.
+- **PostgreSQL**: a server to administer, extra backup and supervision; disproportionate for a
+  single-machine home installation.
+- **DuckDB**: less mature Go ecosystem and a concurrent write model unsuited to a collector that
+  inserts continuously.
+- **Flat-file or CSV storage**: no range queries, no transaction, no index; forces reimplementing what
+  SQLite provides.
 
 ## Sources
 
-- `docs/DEVELOPMENT.md` (outillage et variables d'environnement)
-- `docs/RUNBOOK.md` (sauvegarde, restauration, purge)
+- `docs/DEVELOPMENT.md` (tooling and environment variables)
+- `docs/RUNBOOK.md` (backup, restore, purge)
 - `internal/storage/schema.go`, `internal/storage/migrations/0001_init.sql`
-- `TODO.md` / plan phase 1, étape 7 (schéma SQLite, WAL, upsert idempotent)
+- `TODO.md` / phase 1 plan, step 7 (SQLite schema, WAL, idempotent upsert)

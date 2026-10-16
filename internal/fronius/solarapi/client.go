@@ -15,13 +15,13 @@ import (
 	"fronius-supervisor/internal/fronius/froniuserr"
 )
 
-// PowerFlowPath est le chemin de l'unique endpoint utilisé en phase 1.
+// PowerFlowPath is the path of the single endpoint used in phase 1.
 const PowerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 
-// maxBodyBytes borne la lecture : la réponse réelle fait quelques kilo-octets.
+// maxBodyBytes bounds the read: the real response is a few kilobytes.
 const maxBodyBytes = 1 << 20 // 1 MiB
 
-// Client interroge la Solar API.
+// Client queries the Solar API.
 type Client struct {
 	base    *url.URL
 	doer    fronius.Doer
@@ -29,22 +29,22 @@ type Client struct {
 	log     *slog.Logger
 }
 
-// New construit un client.
+// New builds a client.
 //
-// doer peut être nil : un transport HTTP par défaut est alors utilisé. En
-// pratique l'appelant fournit fronius.ReadOnly pour garantir structurellement
-// l'absence d'écriture. timeout borne chaque requête, y compris la lecture du
-// corps ; une échéance plus courte déjà présente sur le contexte l'emporte.
+// doer may be nil: a default HTTP transport is then used. In practice the caller
+// provides fronius.ReadOnly to structurally guarantee the absence of writes.
+// timeout bounds each request, including the body read; a shorter deadline
+// already present on the context takes precedence.
 func New(baseURL string, doer fronius.Doer, timeout time.Duration, log *slog.Logger) (*Client, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("URL Solar API %q: %w", baseURL, err)
+		return nil, fmt.Errorf("Solar API URL %q: %w", baseURL, err)
 	}
 	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("URL Solar API %q : schéma http(s) attendu", baseURL)
+		return nil, fmt.Errorf("Solar API URL %q: http(s) scheme expected", baseURL)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("URL Solar API %q : hôte manquant", baseURL)
+		return nil, fmt.Errorf("Solar API URL %q: missing host", baseURL)
 	}
 	if doer == nil {
 		doer = &http.Client{}
@@ -55,18 +55,17 @@ func New(baseURL string, doer fronius.Doer, timeout time.Duration, log *slog.Log
 	return &Client{base: u, doer: doer, timeout: timeout, log: log}, nil
 }
 
-// GetPowerFlowRealtimeData interroge l'endpoint unique de la phase 1.
+// GetPowerFlowRealtimeData queries the single endpoint of phase 1.
 func (c *Client) GetPowerFlowRealtimeData(ctx context.Context) (PowerFlowEnvelope, error) {
 	return c.getPowerFlow(ctx, nil)
 }
 
-// GetPowerFlowRealtimeDataAt interroge l'endpoint en demandant la courbe à un
-// instant passé, via le paramètre « at ».
+// GetPowerFlowRealtimeDataAt queries the endpoint asking for the curve at a past
+// instant, via the "at" parameter.
 //
-// Cette variante est une EXTENSION DU SIMULATEUR (cmd/fronius-sim) : le
-// paramètre « at » n'appartient pas à la Solar API et un onduleur réel
-// l'ignorera. Elle ne sert qu'au remplissage d'historique de développement,
-// jamais à l'acquisition courante.
+// This variant is a SIMULATOR EXTENSION (cmd/fronius-sim): the "at" parameter
+// does not belong to the Solar API and a real inverter will ignore it. It only
+// serves development history backfill, never current acquisition.
 func (c *Client) GetPowerFlowRealtimeDataAt(ctx context.Context, at time.Time) (PowerFlowEnvelope, error) {
 	return c.getPowerFlow(ctx, &at)
 }
@@ -118,7 +117,7 @@ func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnve
 		return out, &froniuserr.Error{
 			Kind:     froniuserr.KindDecode,
 			Endpoint: PowerFlowPath,
-			Err:      fmt.Errorf("corps de %d octets : dépasse la limite de %d MiB", len(body), maxBodyBytes>>20),
+			Err:      fmt.Errorf("body of %d bytes: exceeds the limit of %d MiB", len(body), maxBodyBytes>>20),
 		}
 	}
 
@@ -136,7 +135,7 @@ func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnve
 			Kind:       froniuserr.KindDecode,
 			Endpoint:   PowerFlowPath,
 			HTTPStatus: resp.StatusCode,
-			Err:        errors.New("Body.Data absent de la réponse"),
+			Err:        errors.New("Body.Data absent from the response"),
 		}
 	}
 

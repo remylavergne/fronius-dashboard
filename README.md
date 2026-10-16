@@ -1,59 +1,58 @@
-# Fronius GEN24 — dossier de transfert à un agent IA
+# Fronius GEN24 — handover folder for an AI agent
 
-**Objectif :** remplacer l'interface de consultation Angular du fabricant par une application locale **Go + React/TypeScript + shadcn/ui**, avec dashboard, graphiques, historique et, ultérieurement, contrôles explicitement autorisés.
+**Goal:** replace the manufacturer's Angular consultation interface with a local **Go + React/TypeScript + shadcn/ui** application, with dashboard, charts, history and, later, explicitly authorized controls.
 
-## Ordre de lecture
+## Reading order
 
-1. `01-CONTEXTE-ET-ETAT.md` — matériel, faits observés, inconnues.
-2. `02-REVERSE-ENGINEERING.md` — modules Webpack et mécanismes.
-3. `03-API-INVENTAIRE.md` — endpoints repérés dans le bundle (inventaire statique, pas preuve d'accessibilité).
-4. `04-ARCHITECTURE-CIBLE.md` — proposition technique Go/React.
-5. `05-SPEC-PRODUIT-UI.md` — écrans, visualisations, UX.
-6. `06-SECURITE-ET-TESTS.md` — règles impératives.
-7. `TODO.md` — backlog exhaustif et ordonné.
-8. `AGENTS.md` — consignes directement utilisables par un agent de développement.
+1. `01-CONTEXT-AND-STATE.md` — hardware, observed facts, unknowns.
+2. `02-REVERSE-ENGINEERING.md` — Webpack modules and mechanisms.
+3. `03-API-INVENTORY.md` — endpoints found in the bundle (static inventory, not proof of accessibility).
+4. `04-TARGET-ARCHITECTURE.md` — Go/React technical proposal.
+5. `05-PRODUCT-UI-SPEC.md` — screens, visualizations, UX.
+6. `06-SECURITY-AND-TESTS.md` — mandatory rules.
+7. `TODO.md` — exhaustive and ordered backlog.
+8. `AGENTS.md` — instructions directly usable by a development agent.
 
-## Sources locales
+## Local sources
 
-- `Pasted text(20261016-090329).txt` : bundle JavaScript Webpack fourni par l'utilisateur (environ 184 000 lignes) ; **non recopié** dans ce dossier.
-- `fronius-information.pdf` : export système du 16 octobre 2026 ; **non recopié**.
-- Observations HTTP et discussion utilisateur : certaines valeurs sont rapportées et non reproductibles à partir du JS seul.
+- `Pasted text(20261016-090329).txt`: Webpack JavaScript bundle provided by the user (about 184,000 lines); **not copied** into this folder.
+- `fronius-information.pdf`: system export of 16 October 2026; **not copied**.
+- HTTP observations and user discussion: some values are reported and not reproducible from the JS alone.
 
-**Confiance :** distinguer [SOURCE-JS], [SOURCE-PDF], [OBSERVÉ-CONVERSATION], [HYPOTHÈSE], [À-TESTER]. Ne jamais transformer une route trouvée dans le JS en permission serveur confirmée.
+**Confidence:** distinguish [SOURCE-JS], [SOURCE-PDF], [OBSERVED-CONVERSATION], [HYPOTHESIS], [TO-TEST]. Never turn a route found in the JS into a confirmed server permission.
 
-## Logiciel livré (phases 1 à 3)
+## Delivered software (phases 1 to 3)
 
-Le dossier ci-dessus décrit l'analyse et la cible. Le logiciel correspondant est
-dans ce même dépôt :
+The folder above describes the analysis and the target. The corresponding software is
+in this same repository:
 
-| Chemin              | Contenu                                                                  |
+| Path                | Content                                                                  |
 | ------------------- | ------------------------------------------------------------------------ |
-| `cmd/fronius-sim`   | Simulateur déterministe de la Solar API (aucun matériel requis)          |
-| `cmd/froniusd`      | Service : collecte, SQLite, API REST                                     |
-| `cmd/fronius-probe` | Sonde lecture seule pour valider la forme réelle des réponses            |
-| `internal/`         | Config, client Solar API, modèle normalisé, persistance, collecteur, API |
-| `apps/web`          | Interface React 19 + TypeScript strict + shadcn/ui + Recharts            |
-| `docs/`             | Architecture, développement, runbook, sources, inconnues, ADR            |
+| `cmd/fronius-sim`   | Deterministic simulator of the Solar API (no hardware required)          |
+| `cmd/froniusd`      | Service: collection, SQLite, REST API                                    |
+| `cmd/fronius-probe` | Read-only probe to validate the real shape of the responses              |
+| `internal/`         | Config, Solar API client, normalized model, persistence, collector, API  |
+| `apps/web`          | React 19 + strict TypeScript + shadcn/ui + Recharts interface            |
+| `docs/`             | Architecture, development, runbook, sources, unknowns, ADR               |
 
 ```bash
-make dev-sim   # simulateur sur 127.0.0.1:8081
-make dev-api   # service sur 127.0.0.1:8080
-make dev-web   # interface sur 127.0.0.1:5173
+make dev-sim   # simulator on 127.0.0.1:8081
+make dev-api   # service on 127.0.0.1:8080
+make dev-web   # interface on 127.0.0.1:5173
 ```
 
-La phase 1 est **strictement en lecture seule** : aucun chemin de code n'émet de
-`POST`, `PUT`, `PATCH` ou `DELETE` vers l'onduleur (garde structurelle dans
-`internal/fronius/readonly.go`). Pour interroger le matériel réel, lire d'abord
+Phase 1 is **strictly read-only**: no code path emits
+`POST`, `PUT`, `PATCH` or `DELETE` to the inverter (structural guard in
+`internal/fronius/readonly.go`). To query the real hardware, first read
 `docs/PROBE-READONLY.md`.
 
-La phase 2 ajoute la lecture authentifiée des chemins internes (identité de
-l'appareil, présence d'un compteur et d'une batterie, événements actifs) : les
-identifiants vivent dans l'environnement de `froniusd`, l'en-tête `Authorization`
-n'est émis qu'en réponse à un 401, et une ressource non déterminée reste
-« non déterminée » — jamais « absente ». La phase 3 matérialise les agrégats
-horaires et planifie la purge de rétention (`make test-perf` mesure le critère de
-l'ADR 0006 sur un an de données).
+Phase 2 adds authenticated reading of internal paths (device identity, presence of a
+meter and a battery, active events): the credentials live in the environment of
+`froniusd`, the `Authorization` header is only emitted in response to a 401, and an
+undetermined resource stays "undetermined" — never "absent". Phase 3 materializes the
+hourly aggregates and schedules the retention purge (`make test-perf` measures the
+criterion of ADR 0006 over one year of data).
 
-Repères : `docs/ARCHITECTURE.md` (invariants), `docs/RUNBOOK.md` (exploitation),
-`docs/SOURCES.md` (provenance de chaque affirmation), `docs/UNKNOWNS.md`
-(inconnues et décisions provisoires).
+Landmarks: `docs/ARCHITECTURE.md` (invariants), `docs/RUNBOOK.md` (operations),
+`docs/SOURCES.md` (provenance of each claim), `docs/UNKNOWNS.md`
+(unknowns and provisional decisions).

@@ -1,33 +1,33 @@
-// Détection de la présence d'un composant ou d'une ressource.
+// Detection of the presence of a component or a resource.
 //
-// Trois états, et trois seulement : « absent » est une conclusion (l'appareil a
-// répondu et le composant n'y est pas), « non déterminé » est l'absence de
-// conclusion. Les confondre reviendrait à affirmer une absence sans preuve.
+// Three states, and only three: `absent` is a conclusion (the device has
+// answered and the component is not there), `unknown` is the absence of a
+// conclusion. Confusing them would mean asserting an absence without proof.
 package model
 
-// DetectionState est l'état d'une détection.
+// DetectionState is the state of a detection.
 type DetectionState string
 
 const (
-	// StateUnknown : la lecture n'a pas abouti (identifiants absents, 401, 404,
-	// panne réseau, corps illisible). Ce n'est PAS une absence.
+	// StateUnknown: the read did not succeed (missing credentials, 401, 404,
+	// network failure, unreadable body). This is NOT an absence.
 	StateUnknown DetectionState = "unknown"
-	// StateAbsent : l'appareil a répondu et ne signale pas ce composant.
+	// StateAbsent: the device has answered and does not report this component.
 	StateAbsent DetectionState = "absent"
-	// StatePresent : l'appareil signale ce composant.
+	// StatePresent: the device reports this component.
 	StatePresent DetectionState = "present"
 )
 
-// ResourceDetection décrit l'état d'une détection, avec sa provenance.
+// ResourceDetection describes the state of a detection, with its provenance.
 type ResourceDetection struct {
 	State DetectionState
-	// Source : endpoint ou mécanisme ayant produit l'état, vide si inconnu.
+	// Source: endpoint or mechanism that produced the state, empty if unknown.
 	Source string
-	// Reason : cause de l'état lorsque celui-ci n'est pas StatePresent.
+	// Reason: cause of the state when it is not StatePresent.
 	Reason string
 }
 
-// Detection regroupe les quatre détections de la phase 2.
+// Detection groups the four detections of phase 2.
 type Detection struct {
 	Identity     ResourceDetection
 	Meter        ResourceDetection

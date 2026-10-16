@@ -26,14 +26,14 @@ afterEach(() => {
 })
 
 describe('fetchJSON', () => {
-  it('retourne la charge utile validée', async () => {
+  it('returns the validated payload', async () => {
     stubFetch(async () => jsonResponse(validHealthBody))
     const result = await fetchJSON('/api/v1/health', healthEnvelopeSchema)
     expect(result.data.version).toBe('test-version')
     expect(result.meta.generated_at).toBe('2026-10-16T09:17:43.000Z')
   })
 
-  it('envoie un GET avec Accept: application/json', async () => {
+  it('sends a GET with Accept: application/json', async () => {
     const spy = vi.fn<(path: string, init: RequestInit) => Promise<Response>>(async () =>
       jsonResponse(validHealthBody),
     )
@@ -47,32 +47,32 @@ describe('fetchJSON', () => {
     expect(init?.headers).toMatchObject({ Accept: 'application/json' })
   })
 
-  it('classe une réponse inattendue en erreur de schéma', async () => {
-    // `uptime_s` en chaîne : exactement le genre de dérive DTO que zod doit voir.
-    stubFetch(async () => jsonResponse({ ...validHealthBody, data: { ...validHealthBody.data, uptime_s: 'douze' } }))
+  it('classifies an unexpected response as a schema error', async () => {
+    // `uptime_s` as a string: exactly the kind of DTO drift zod must see.
+    stubFetch(async () => jsonResponse({ ...validHealthBody, data: { ...validHealthBody.data, uptime_s: 'twelve' } }))
 
     const error = await fetchJSON('/api/v1/health', healthEnvelopeSchema).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(ApiError)
     expect((error as ApiError).kind).toBe('schema')
   })
 
-  it('classe un 200 illisible en erreur de schéma', async () => {
-    stubFetch(async () => new Response('<html>erreur</html>', { status: 200 }))
+  it('classifies an unreadable 200 as a schema error', async () => {
+    stubFetch(async () => new Response('<html>error</html>', { status: 200 }))
     const error = await fetchJSON('/api/v1/health', healthEnvelopeSchema).catch((e: unknown) => e)
     expect((error as ApiError).kind).toBe('schema')
   })
 
-  it('classe une erreur HTTP en erreur http, avec son code', async () => {
-    stubFetch(async () => jsonResponse({ error: { code: 'invalid_step', message: 'step inconnu' } }, 400))
+  it('classifies an HTTP error as an http error, with its code', async () => {
+    stubFetch(async () => jsonResponse({ error: { code: 'invalid_step', message: 'unknown step' } }, 400))
 
     const error = await fetchJSON('/api/v1/timeseries', healthEnvelopeSchema).catch((e: unknown) => e)
     expect((error as ApiError).kind).toBe('http')
     expect((error as ApiError).status).toBe(400)
     expect((error as ApiError).code).toBe('invalid_step')
-    expect((error as ApiError).message).toBe('step inconnu')
+    expect((error as ApiError).message).toBe('unknown step')
   })
 
-  it('garde le statut HTTP quand le corps d’erreur n’est pas exploitable', async () => {
+  it('keeps the HTTP status when the error body is unusable', async () => {
     stubFetch(async () => new Response('Bad Gateway', { status: 502 }))
 
     const error = await fetchJSON('/api/v1/health', healthEnvelopeSchema).catch((e: unknown) => e)
@@ -81,7 +81,7 @@ describe('fetchJSON', () => {
     expect((error as ApiError).code).toBeUndefined()
   })
 
-  it('classe un rejet de fetch en erreur réseau', async () => {
+  it('classifies a fetch rejection as a network error', async () => {
     stubFetch(async () => {
       throw new TypeError('Failed to fetch')
     })
@@ -91,13 +91,13 @@ describe('fetchJSON', () => {
     expect((error as ApiError).status).toBeUndefined()
   })
 
-  it('accepte `data: null` avec un code no_data sur /live', async () => {
-    // État d'une base encore vide : 200, data null, error.code = no_data.
+  it('accepts `data: null` with a no_data code on /live', async () => {
+    // State of a still-empty database: 200, data null, error.code = no_data.
     stubFetch(async () =>
       jsonResponse({
         data: null,
         meta: { generated_at: '2026-10-16T09:17:43.000Z' },
-        error: { code: 'no_data', message: 'aucun échantillon enregistré' },
+        error: { code: 'no_data', message: 'no sample recorded' },
       }),
     )
 

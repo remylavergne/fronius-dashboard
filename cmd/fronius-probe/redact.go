@@ -7,30 +7,30 @@ import (
 	"strings"
 )
 
-// redactedValue remplace toute information potentiellement identifiante.
+// redactedValue replaces any potentially identifying information.
 const redactedValue = "<redacted>"
 
-// sensitiveKeyParts : un nom de champ contenant l'un de ces fragments voit sa
-// valeur remplacée. Les noms sont comparés en minuscules.
+// sensitiveKeyParts: a field name containing one of these fragments has its
+// value replaced. Names are compared in lowercase.
 var sensitiveKeyParts = []string{
 	"password", "passwd", "secret", "nonce", "token", "authorization",
 	"credential", "serial", "mac", "ssid", "hostname", "ipaddress", "sessionid",
 }
 
-// sensitiveValuePatterns : motifs détectés dans une valeur textuelle, quelle
-// que soit la clé. Volontairement restreints pour ne jamais masquer une mesure :
-// une puissance, une énergie ou un horodatage ne sont pas touchés.
+// sensitiveValuePatterns: patterns detected in a textual value, whatever
+// the key. Deliberately restricted so as never to mask a measurement:
+// a power, an energy or a timestamp is not touched.
 var sensitiveValuePatterns = []*regexp.Regexp{
-	// Adresse IPv4.
+	// IPv4 address.
 	regexp.MustCompile(`\b\d{1,3}(?:\.\d{1,3}){3}\b`),
-	// Adresse MAC (séparateurs « : » ou « - »).
+	// MAC address (":" or "-" separators).
 	regexp.MustCompile(`\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b`),
-	// Nom d'hôte ou nom pleinement qualifié : commence par une lettre, au moins
-	// un point, se termine par une extension alphabétique.
+	// Hostname or fully qualified name: starts with a letter, at least
+	// one dot, ends with an alphabetic extension.
 	regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*\.[A-Za-z]{2,}$`),
 }
 
-// sensitiveHeaderNames : en-têtes dont la valeur est masquée intégralement.
+// sensitiveHeaderNames: headers whose value is masked entirely.
 var sensitiveHeaderNames = map[string]bool{
 	"authorization":       true,
 	"proxy-authorization": true,
@@ -42,22 +42,22 @@ var sensitiveHeaderNames = map[string]bool{
 	"x-auth-token":        true,
 }
 
-// assignmentPattern repère les affectations de secret dans un corps non JSON
-// (page HTML, texte brut) : `password="…"`, `nonce: '…'`.
+// assignmentPattern detects secret assignments in a non-JSON body
+// (HTML page, plain text): `password="…"`, `nonce: '…'`.
 var assignmentPattern = regexp.MustCompile(
 	`(?i)\b(password|passwd|secret|nonce|token|authorization|serial|mac|ssid)\b(\s*[:=]\s*)(["']?)([^"',\s<>&]+)`)
 
-// ipv6Candidate restreint les valeurs examinées par looksLikeIPv6 aux chaînes
-// composées uniquement de chiffres hexadécimaux et de deux-points.
+// ipv6Candidate restricts the values examined by looksLikeIPv6 to strings
+// composed only of hexadecimal digits and colons.
 var ipv6Candidate = regexp.MustCompile(`^[0-9A-Fa-f:]{2,45}$`)
 
-// looksLikeIPv6 reconnaît une adresse IPv6.
+// looksLikeIPv6 recognises an IPv6 address.
 //
-// La détection est volontairement une fonction plutôt qu'une expression
-// régulière permissive : « 12:00:00 » ne doit pas être confondu avec une
-// adresse, sous peine d'expurger les horodatages et de rendre les fixtures
-// inutilisables. Une heure locale compte au plus trois groupes, une adresse
-// IPv6 en compte au moins quatre (ou contient « :: »).
+// Detection is deliberately a function rather than a permissive regular
+// expression: "12:00:00" must not be confused with an
+// address, at the risk of redacting timestamps and rendering the fixtures
+// unusable. A local time has at most three groups, an IPv6 address has
+// at least four (or contains "::").
 func looksLikeIPv6(s string) bool {
 	if !ipv6Candidate.MatchString(s) || !strings.Contains(s, ":") {
 		return false
@@ -77,24 +77,24 @@ func looksLikeIPv6(s string) bool {
 	return true
 }
 
-// redactBody expurge un corps de réponse.
+// redactBody redacts a response body.
 //
-// Si le corps est du JSON, l'expurgation est structurelle : les clés sensibles
-// masquent leur valeur, et les valeurs ressemblant à une adresse ou à un nom
-// d'hôte sont masquées. Le corps est ensuite réécrit avec une indentation
-// stable — ce qui peut réordonner les clés d'objet : c'est le prix d'une
-// expurgation fiable, et le résultat reste un JSON valide exploitable comme
+// If the body is JSON, the redaction is structural: sensitive keys
+// mask their value, and values resembling an address or a host name
+// are masked. The body is then rewritten with a stable indentation
+// — which may reorder object keys: that is the price of a
+// reliable redaction, and the result remains valid JSON usable as a
 // fixture.
 //
-// Sinon (HTML, texte), une expurgation textuelle est appliquée.
+// Otherwise (HTML, text), a textual redaction is applied.
 func redactBody(body []byte) []byte {
 	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.UseNumber() // conserve la forme littérale des nombres
+	dec.UseNumber() // keeps the literal form of numbers
 	var parsed any
 	if err := dec.Decode(&parsed); err == nil {
 		var buf bytes.Buffer
 		enc := json.NewEncoder(&buf)
-		// Sans cela, « <redacted> » serait sérialisé « \u003credacted\u003e ».
+		// Without this, "<redacted>" would be serialized "\u003credacted\u003e".
 		enc.SetEscapeHTML(false)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(redactTree(parsed, "")); err == nil {
@@ -136,8 +136,8 @@ func isSensitiveKey(key string) bool {
 	return false
 }
 
-// redactString masque une valeur textuelle si elle ressemble à une adresse ou
-// à un nom d'hôte.
+// redactString masks a textual value if it resembles an address or
+// a host name.
 func redactString(s string) string {
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
@@ -154,7 +154,7 @@ func redactString(s string) string {
 	return s
 }
 
-// redactText applique l'expurgation à un corps non JSON.
+// redactText applies the redaction to a non-JSON body.
 func redactText(s string) string {
 	out := assignmentPattern.ReplaceAllString(s, "${1}${2}${3}"+redactedValue)
 	for _, token := range strings.FieldsFunc(out, func(r rune) bool {
@@ -170,8 +170,8 @@ func redactText(s string) string {
 	return out
 }
 
-// maskHeaderValue masque la valeur d'un en-tête si son nom est sensible, sinon
-// y applique la détection d'adresses.
+// maskHeaderValue masks the value of a header if its name is sensitive,
+// otherwise applies address detection to it.
 func maskHeaderValue(name, value string) string {
 	if sensitiveHeaderNames[strings.ToLower(strings.TrimSpace(name))] {
 		return redactedValue
