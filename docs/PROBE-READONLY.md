@@ -32,14 +32,15 @@ responsibility.
 ## 2. Exact requests emitted
 
 The probe can only emit the requests of its allowlist, **derived from the source
-catalogue** `internal/sources` (§ 3): its default run reaches the **eleven**
-catalogued sources whose state is `called` or `captured` (ten `called` and one
-`captured`), all `READ` and all `GET`:
+catalogue** `internal/sources` (§ 3): its default run reaches the **thirteen**
+catalogued sources the project reads, or whose body has been promoted as a
+fixture (eleven `called`, plus the two fixture-carrying captures: the accumulation
+collection and the retired `/status/powerflow`), all `READ` and all `GET`:
 
 | Path                                           | Digest    | What it provides                                                        |
 | ---------------------------------------------- | --------- | ----------------------------------------------------------------------- |
 | `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`  | no        | production measurements (site and inverters)                            |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | no | per-inverter electrical detail and device state; **read by the application** every collector cycle (constant `solarapi.CommonQuery`), published on the device detail page; **surveyed** 2026-10-16 (`200`, 1680 bytes, no challenge) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | no | per-inverter electrical detail and device state; **read by the application** every collector cycle (constant `solarapi.CommonQuery`), published on the device detail page; **surveyed** 2026-10-16 (`200`, 1682 bytes, no challenge) |
 | `/status/version`                              | after 401 | device identity (serial number, number of phases, device group)         |
 | `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
@@ -48,7 +49,9 @@ catalogued sources whose state is `called` or `captured` (ten `called` and one
 | `/status/network`                              | after 401 | network interfaces of the device detail (addressing, mode, radio); **surveyed** 2026-10-16 (`200`, 768 bytes) |
 | `/status/devices`                              | after 401 | device inventory of the device detail; **surveyed** 2026-10-16 (`200`, 65 bytes) |
 | `/status/emrs`                                 | after 401 | EMRS pin states of the device detail; **surveyed** 2026-10-16 (`200`, 214 bytes) |
+| `/components/cache/readable`                   | after 401 | the device's own register cache (one node, ten attributes, 81 registers); **read by the application** on the detection cycle; **surveyed** 2026-10-16 (`200`, 4 897 bytes, 99 values) |
 | `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`), on the "Solar API first" route (ADR 0003/0008); **captured** 2026-10-16 (`200`, 883 bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so it is **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13) — it is the documented source of the inverter state (`DeviceStatus`); the application does not call it (the probe does) |
+| `/status/powerflow`                            | after 401 | **retired, kept only because its body is a promoted fixture** (`internalapi/status_powerflow.json`); captured 2026-10-16 (`200`, no challenge), the day and year counters **null there too**, so it fills nothing (`docs/UNKNOWNS.md` #13). It is **extracted but not called** by the application |
 
 **Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
 of the allowlist at that time answered `200` on the **bare** request — no
@@ -63,14 +66,18 @@ Since then, the allowlist briefly held a sixth entry, `/status/powerflow`
 #13), added later and **captured** on hardware (2026-10-16, `200`, no challenge);
 the body is promoted as `internalapi/status_powerflow.json`. The captured body is
 **decisive**: `site.E_Day`/`E_Year` are **null there too**, so the fallback filled
-nothing on this installation, and the entry has since been **removed** —
-`cmd/fronius-sim` no longer serves `/status/powerflow` (the captured fixture does).
+nothing on this installation, and the entry has since been **removed from the
+application's allowlist** — `cmd/fronius-sim` no longer serves `/status/powerflow`
+(the captured fixture does). The probe still lists it, because its body is a
+promoted fixture (the default set is "called **or** captured as a fixture").
 
-The set then grew, on the survey of 2026-10-16, to **eleven** entries: the Solar
-API **common** inverter collection (read by the application every collector cycle)
-and the four internal **diagnostic** families (`/status/common`, `/status/network`,
+The set then grew, on the survey of 2026-10-16, to **thirteen** entries: the Solar
+API **common** inverter collection (read by the application every collector cycle),
+the four internal **diagnostic** families (`/status/common`, `/status/network`,
 `/status/devices`, `/status/emrs`, read by the application on the detection cycle)
-joined the default run. The Solar API **accumulation** collection is the one
+and the internal register **cache** (`/components/cache/readable`, read by the
+detector on the same cycle) joined the default run. The Solar API **accumulation**
+collection is the
 `captured` entry; like every entry carrying a query it holds a **frozen query
 string** — the `endpoint.query` field, a constant of the binary
 (`solarapi.CumulationQuery`) — which `--list` shows, so the guarantee holds
@@ -173,16 +180,18 @@ go run ./cmd/fronius-probe --list
 ## 3. Survey mode — the whole catalogued allowlist in one run
 
 `--survey` turns the probe into a **survey**: it walks the whole catalogued
-allowlist (27 paths today), **one `GET` per path**, sequentially, with `--delay`
-between two paths (default `1s`) — an inverter's web interface is not asked to
-serve 27 requests in a burst. Nothing else changes: the read-only guard, the
-loopback refusal (without `--allow-non-loopback`, § 5) and the credential rules
-(§ 4) apply exactly as in the single-path mode.
+allowlist (28 paths today), **one `GET` per path**, sequentially, with `--delay`
+between two paths (default `4s`, the pacing of §2.6: at most two realtime
+requests in parallel and **four seconds between two consecutive calls** — an
+inverter's web interface is not asked to serve 28 requests in a burst). Nothing
+else changes: the read-only guard, the loopback refusal (without
+`--allow-non-loopback`, § 5) and the credential rules (§ 4) apply exactly as in
+the single-path mode.
 
 | Flag | Meaning |
 | ---- | ------- |
 | `--survey` | walks the whole catalogue, one `GET` per path |
-| `--delay` | pause between two paths (default `1s`; `0` disables it) |
+| `--delay` | pause between two paths (default `4s`; `0` disables it) — the value of §2.6 of the specification; a lower value is a deliberate choice, not the default |
 | `--db` | database that records the survey (default `$FRONIUS_DB_PATH`; empty = report file only) |
 
 `--survey` refuses to be combined with `--endpoint`: "the whole catalogue" and
@@ -194,8 +203,10 @@ below).
 
 The probe's allowlist is no longer a literal of the binary: it is **derived from
 `internal/sources`** (the source catalogue, `docs/SOURCES.md`). The default set
-is the catalogued sources whose state is `called` or `captured` (eleven entries
-today: ten `called` and the one `captured` accumulation collection); `--survey`
+is the catalogued sources the project reads or whose body is a promoted fixture
+(thirteen entries today: eleven `called`, plus the accumulation collection and
+the retired `/status/powerflow`, kept because their captured bodies are
+fixtures); `--survey`
 walks the whole catalogue; `--endpoint` accepts any catalogued **path**, a path
 **with its query**, or a catalogue **identifier** (`solarapi.inverter.common`) —
 the identifier is what selects one of the three realtime-data collections
@@ -224,7 +235,7 @@ Each path is recorded under one class:
 | `empty`         | answered `{}`, `[]` or an empty `Body.Data`: the endpoint exists and the component is not installed           |
 | `not_json`      | answered, but not with JSON                                                                                   |
 | `auth_required` | `401`/`403`: the path exists, behind authentication                                                           |
-| `not_found`     | `404`: this firmware does not serve the path                                                                  |
+| `not_found`     | `404`: this firmware does not serve the path — or the path's suffix is wrong, or the Solar API is disabled (§3 of the specification: the answer then says "Solar API disabled by customer config") |
 | `error`         | `5xx`, timeout or refusal, with the message                                                                   |
 
 A `404` or a `401` **never aborts the survey**: they are results. Collapsing "the
@@ -251,11 +262,21 @@ one row per path in the application's database (table `source_probe`), which is
 where the "Data sources" page reads it; `--db ""` writes the report only
 (`docs/RUNBOOK.md`).
 
-**Result of the first survey of the reference installation** (2026-10-16,
-firmware `1.19.7-1`, no credentials): the 27 catalogued paths answered
-**`11 ok, 4 empty, 2 auth_required, 10 not_found`** — report
-`probe-survey/survey_20261016T191253Z.json`, rows in `data/fronius.db`. Outcome
-and closures in `docs/SOURCES.md` (§ Hardware captures) and `docs/UNKNOWNS.md`.
+**Result of the second survey of the reference installation** (2026-10-16,
+firmware `1.19.7-1`, no credentials, corrected URLs, `--delay 4s`): the 28
+catalogued paths answered **`14 ok, 11 empty, 2 auth_required, 1 not_found`** —
+report `probe-survey/survey_20261016T203255Z.json`, rows in `data/fronius.db`.
+This is the **observed reality**: the identity (`GetInverterInfo.cgi`), the device
+inventory (`GetActiveDeviceInfo.cgi`) and the API version (`GetAPIVersion.cgi`)
+answer `ok`; the seven component/identity candidates answer `empty` (no meter, no
+battery, no sensor card, no Ohmpilot, no StringControl on GEN24, and the
+specification's "available but returns an error" cases); the **only** `not_found`
+is `GetArchiveData.cgi`, which §5.1.1 of the specification says GEN24/Tauro/Verto
+is **NEVER** supported for. The first run the same day, with the wrong `.fcgi`
+suffixes, answered **`11 ok, 4 empty, 2 auth_required, 10 not_found`** — report
+`probe-survey/survey_20261016T191253.json` — and those Solar API `404`s were the
+probe's error, not a firmware fact. Outcome in `docs/SOURCES.md` (§ Hardware
+captures) and `docs/UNKNOWNS.md`.
 
 ## 4. Device credentials
 

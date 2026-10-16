@@ -80,7 +80,7 @@ old.
 | `last_error` contains `HTTP 401`/`403` | the device requires authentication on the Solar API path of this firmware | set the credentials (§ "Device credentials") and restart; do not attempt improvised credentials |
 | `detection.meter.state: "unknown"` and reason "credentials not configured" | `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` absent: the device requires authentication on this path | set both variables in the environment of `froniusd`, then restart the service |
 | `device.identity.available: false` with reason "access denied (401)" | credentials present but refused: user, password or realm different from the expected one | check the user (role "customer" or "technician" in the manufacturer interface); compare the realm announced by `fronius-probe` |
-| `last_error` contains `HTTP 404` | the path differs on this firmware, **or** the request never reached the inverter | compare `solarapi_url` from `/api/v1/system` with the device address, then check both paths by hand: `curl -s -o /dev/null -w '%{http_code}\n' http://<device>/status/version` and the same on `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`. A bare `404` on both means the host is not the inverter; a `401` means authentication is now required |
+| `last_error` contains `HTTP 404` | the path differs on this firmware, **or** the request never reached the inverter, **or** the Solar API is **disabled** in the device's WebUI (Communication → Solar API) | compare `solarapi_url` from `/api/v1/system` with the device address, then check both paths by hand: `curl -s -o /dev/null -w '%{http_code}\n' http://<device>/status/version` and the same on `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`. A bare `404` on both means the host is not the inverter; a `401` means authentication is now required; **all Solar API paths `404` while the internal `/status/*` paths answer** means the Solar API is **disabled** — the answer then carries "Solar API disabled by customer config" (§3 of the specification `42,0410,2012,EN 02115052025`), so re-enable it in the WebUI instead of changing the suffix |
 | detection reason `challenged, then refused` | the device answered `401` with a challenge, then refused the **authenticated** request (often with `404` or `403`) | the path exists — a bare `404` challenges nobody — so the credentials or the role they carry are the problem: check `FRONIUS_DEVICE_USER`/`FRONIUS_DEVICE_PASSWORD`, then run `fronius-probe --endpoint /status/version`, which prints the raw status and whether a challenge was issued |
 | `last_error` contains `decode` | unexpected response shape | capture with `cmd/fronius-probe`, compare with `docs/SOURCES.md` |
 | `last_error` contains `device_status` | the inverter reports an application error | consult the manufacturer interface; no measurement is recorded in that case |
@@ -211,7 +211,7 @@ wrong source, never missing authentication — that would be a `401`.
 
 ## Surveying every catalogued path
 
-`cmd/fronius-probe --survey` walks the **whole catalogued allowlist** (27 paths
+`cmd/fronius-probe --survey` walks the **whole catalogued allowlist** (28 paths
 today), one read-only `GET` per path, and records what each one answers. It is
 the tool that tells, for the firmware actually installed, which paths exist,
 what they return and what sits behind authentication — without a single value
@@ -231,12 +231,15 @@ read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
 go run ./cmd/fronius-probe \
   --base-url http://192.0.2.10 \
   --allow-non-loopback \
-  --survey --delay 2s \
+  --survey --delay 4s \
   --db ./data/fronius.db            # default: $FRONIUS_DB_PATH
 ```
 
 Flags: `--survey` walks the whole catalogue; `--delay` pauses between two paths
-(default `1s`, so an inverter is not asked to serve 27 requests in a burst);
+(default `4s` — §2.6 of the specification `42,0410,2012,EN 02115052025`
+prescribes at most two realtime requests in parallel and 4 s between two
+consecutive calls, so an inverter is not asked to serve 28 requests in a burst; a
+lower value is a deliberate choice);
 `--db` names the database that records the survey (empty writes the report file
 only); `--save <dir>` also writes a `survey_<UTC instant>.json` report. `--survey`
 refuses `--endpoint`, and the allowlist is **derived from the source catalogue**
@@ -258,7 +261,7 @@ Reading a class:
 | `empty`         | answered `{}`, `[]` or an empty `Body.Data`: the endpoint exists, the component is not installed | none — an absent component is a fact, not a failure                       |
 | `not_json`      | answered, but not with JSON (e.g. an HTML error page)                                          | compare with the Solar API capture; the path or the host may be wrong      |
 | `auth_required` | `401`/`403`: the path exists, behind authentication                                            | set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` and survey again     |
-| `not_found`     | `404`: this firmware does not serve the path                                                   | the path is absent here; check the firmware or the path spelling           |
+| `not_found`     | `404`: this firmware does not serve the path — or the path's **suffix** is wrong, or the Solar API is **disabled** (the answer then says "Solar API disabled by customer config", §3 of the specification) | not a firmware verdict by itself: check the spelling (`GetPowerFlowRealtimeData` alone is `.fcgi`; the rest are `.cgi`, §4.1.3), the WebUI switch (Communication → Solar API), then the firmware |
 | `error`         | `5xx`, timeout or refusal, with the message                                                    | network or device problem; the run continues and records the other paths   |
 
 A `404` or a `401` is a **result**, never an aborted run: the survey keeps
@@ -392,7 +395,9 @@ one year of data (ADR 0006).
 ## Day and year energies (derived)
 
 The reference firmware publishes **no** day and no year counter on any local
-endpoint (`docs/UNKNOWNS.md` #13): the measured fields `energy_day_wh` /
+endpoint — and the specification **documents it** (`42,0410,2012,EN 02115052025`,
+§4.1.5: on GEN24/Tauro/Verto `DAY_ENERGY` and `YEAR_ENERGY` "will always report
+null"; `docs/UNKNOWNS.md` #13). The measured fields `energy_day_wh` /
 `energy_year_wh` stay `null`. To fill the two KPIs, `/api/v1/live` carries an
 `energy_derived` object **computed from our own stored total**:
 
@@ -406,6 +411,12 @@ endpoint (`docs/UNKNOWNS.md` #13): the measured fields `energy_day_wh` /
 **These are estimates, never measurements.** The interface shows the measured
 counter whenever the device reports it, and marks the derived one **"estimated
 from the total"**; a card with neither shows a dash, never a `0`.
+
+**The total is refreshed every five minutes at most.** §4.1.5 of the
+specification states that `TOTAL_ENERGY` is "supported since 1.14 (updated every
+5 min)": the device-side total — and therefore the total our samples carry — is
+not fresher than that, so a derived day or year value cannot be either. The
+derivations stay correct but inherit that granularity.
 
 Reading a `*_reason` (empty means the value is present):
 

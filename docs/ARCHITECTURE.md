@@ -83,6 +83,16 @@ family as if it had been read with the measurement. A family has three distinct
 states: recorded and available; recorded and unavailable **with its reason**;
 never read (**absent from the list**).
 
+**The Solar API read budget.** §2.6 of the manufacturer's specification
+(`42,0410,2012,EN 02115052025`) allows at most **two realtime requests in
+parallel** and requires **4 s between two consecutive calls**. The collector
+issues **two reads per cycle** — the flow endpoint
+(`GetPowerFlowRealtimeData.fcgi`) and the common inverter collection
+(`GetInverterRealtimeData.cgi?…DataCollection=CommonInverterData`) — which fits
+the budget; `cmd/fronius-probe --survey` paces itself at the same 4 s between
+paths, and a lower value is a deliberate, documented choice
+(`docs/RUNBOOK.md`, `docs/PROBE-READONLY.md`).
+
 ## Go packages
 
 | Package | Role | Depends on |
@@ -208,10 +218,14 @@ retention and aggregation (0006), packaging (0007).
 
 ## Known fragility points
 
-- **The shape of the Solar API is a hypothesis.** The manufacturer's bundle
-  contains no Solar API path (see `docs/SOURCES.md`): `dto.go` encodes a
-  shape unvalidated on firmware 1.19.7-1. Reconciliation goes through
-  `cmd/fronius-probe` and the procedure in `docs/PROBE-READONLY.md`.
+- **The Solar API URL list and its shape are documented and captured.** The
+  manufacturer's bundle contains no Solar API path (see `docs/SOURCES.md`), so
+  the shape rests on the hardware capture of 2026-10-16 (promoted fixture,
+  `dto.go` validated on firmware 1.19.7-1) and the URL list rests on the
+  specification `42,0410,2012,EN 02115052025` — `GetPowerFlowRealtimeData.fcgi`
+  is the **only** `.fcgi` request, the twelve others are `.cgi` (§4.11.3,
+  §4.1.3). Reconciliation and drift detection go through `cmd/fronius-probe`
+  and the contract tests.
 - **The REST API has no authentication**: it is confined to the loopback
   interface by `config.CheckListenAddress` as long as `FRONIUS_ALLOW_REMOTE=1` is
   not set (ADR 0005).

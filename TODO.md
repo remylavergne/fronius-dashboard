@@ -433,7 +433,8 @@
   `GetLoggerInfo`, `GetMeterRealtimeData`, `GetStorageRealtimeData`,
   `GetActiveDeviceInfo`, `GetDeviceInfo`, `GetStringRealtimeData`,
   `GetSensorRealtimeData`, `GetArchiveData`, `/solar_api/GetAPIVersion` as
-  candidates) and the internal API (the four allowlisted paths called; the five
+  candidates — the phantom `GetDeviceInfo` was **removed** and the suffixes
+  **corrected** at step 24) and the internal API (the four allowlisted paths called; the five
   promoted captures; `/status/powerflow` archived after the clean cutover;
   `/status/common`, `/status/devices`, `/status/network`, `/status/emrs`,
   `/components/cache/readable`, `/components/Ohmpilot/readable`,
@@ -538,7 +539,11 @@
   `CumulationInverterData` are served, so the electrical detail and the inverter
   `DeviceStatus` are available on this device (candidates, not wired);
   `/solar_api/GetAPIVersion` is `404` and stays an **open candidate** with no
-  reason asserted. Documentation: `docs/SOURCES.md` (the run under Hardware
+  reason asserted. **Corrected at step 24:** those Solar API `404`s were the
+  probe's own wrong `.fcgi` suffix, not a firmware fact — the identity **is**
+  available from the Solar API (`GetInverterInfo.cgi`, `ok`, no credentials) and
+  `GetAPIVersion.cgi` answers `ok`; only `GetArchiveData.cgi` remains `404`
+  (§5.1.1, GEN24/Tauro/Verto **NEVER**). Documentation: `docs/SOURCES.md` (the run under Hardware
   captures and the candidate-table statuses), `docs/UNKNOWNS.md` (#3, #13, and
   the survey as per-firmware evidence), `docs/PROBE-READONLY.md` (§ 3 result
   line), `CHANGELOG.md` (the chart cannot come from the device). **No box is
@@ -635,3 +640,44 @@
   row), `CHANGELOG.md`. Boxes ticked at this step: "Read and publish the cache
   family" (phase 4) and "Display the cache family" (phase 5). No deviation from
   the plan; the read is `GET` only.
+
+- 2026-10-16 — Step 24 (phase 1): the Solar API specification, the URL
+  correction and the second survey. The manufacturer's official specification
+  **`42,0410,2012,EN 02115052025`** (`references/42,0410,2012.pdf`, 91 pages,
+  Solar API V1) became the **primary source** of the Solar API URL list and was
+  added to `docs/SOURCES.md` with its own section (what it settles: the URL list,
+  the null day/year counters, the 5-minute total, the pacing, the disable
+  behaviour, the archive NEVER, the `StatusCode` table). It proves that **only
+  `GetPowerFlowRealtimeData` is `.fcgi`** and the twelve other requests are
+  `.cgi`: the eight paths the catalogue had probed with `.fcgi` (their `404`s
+  read as "this firmware does not serve them") are **corrected** in
+  `internal/sources/catalog.go`, and the phantom `GetDeviceInfo` (absent from the
+  specification) is **removed**; every catalogue entry now carries a `[DOC]`
+  proof citing the document number and the section. Two endpoints the
+  specification has and the catalogue lacked were **added**
+  (`/solar_api/v1/GetLoggerLEDInfo.cgi`, `/solar_api/v1/GetOhmPilotRealtimeData.cgi`).
+  The **second survey** of the reference installation (2026-10-16, firmware
+  `1.19.7-1`, `--delay 4s` per §2.6, report
+  `probe-survey/survey_20261016T203255Z.json`) is now the observed reality:
+  **14 `ok`, 11 `empty`, 2 `auth_required`, 1 `not_found`** — the three identity
+  and inventory paths answer `ok`, the seven component candidates answer `empty`,
+  and the **only** `not_found` is `GetArchiveData.cgi` (§5.1.1: GEN24/Tauro/Verto
+  is **NEVER** supported for it). Documentation updated only, no code:
+  `docs/SOURCES.md` (the spec section, the observed inventory, the retired
+  claims), `docs/UNKNOWNS.md` (#3 second source, #13 documented nulls and archive
+  NEVER), `docs/ENDPOINTS.md` (the Solar API URL list, the corrected/added/removed
+  paths), `docs/PROBE-READONLY.md` (`--delay 4s`, the 28 paths, the second-survey
+  result), `docs/RUNBOOK.md` (the disabled-API cause of a `404`, the 5-minute
+  `TOTAL_ENERGY`), `docs/ARCHITECTURE.md` (the Solar API read budget, two reads
+  per cycle), `CHANGELOG.md`. Boxes already ticked: "Identify the metrics actually
+  returned by the Solar API" and "Document `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`"
+  (phase 0/1); "Extract other documented and useful Solar API endpoints" (phase 1)
+  is now complete with the specification as the source.
+
+  **Open opportunities (recorded, NOT implemented):** the identity could come
+  from `/solar_api/v1/GetInverterInfo.cgi` **without credentials** (537 bytes,
+  12 fields) — the Solar API-first route of ADR 0003/0008, a **second source**
+  beside `/status/version` (`docs/UNKNOWNS.md` #3); and
+  `/solar_api/v1/GetActiveDeviceInfo.cgi` (494 bytes, 7 fields, the live device
+  inventory with serials) could source presence detection. Both are `[DOC]`-proven
+  and observed; neither is wired.

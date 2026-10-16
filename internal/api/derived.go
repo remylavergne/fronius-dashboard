@@ -8,6 +8,13 @@
 // difference between the current sample and the one that precedes the local
 // boundary.
 //
+// The documentation now says the same thing the firmware does (Solar API V1,
+// `42,0410,2012,EN 02115052025`, §4.1.5): on GEN24/Tauro/Verto `DAY_ENERGY` and
+// `YEAR_ENERGY` "will always report null", while `TOTAL_ENERGY` is "supported
+// since 1.14 (updated every 5 min)". So the derived value cannot be fresher than
+// five minutes — it is a difference of two readings of a counter the device moves
+// on that cadence, and the interface must not pretend otherwise.
+//
 // Invariants:
 //   - the measured fields keep their meaning: `energy_day_wh` and `energy_year_wh`
 //     stay null when the device does not report them, and the client chooses

@@ -102,14 +102,18 @@ func TestWhitelistIsGetOnly(t *testing.T) {
 	// this project reads, plus the ones already captured): the expectation is
 	// counted from that register rather than written down, so adding a source
 	// cannot leave a stale number here.
+	// The default set is the sources the project reads plus the ones whose body
+	// has been promoted as a fixture. A source the survey merely observed (an
+	// empty answer on an endpoint with no component behind it) is reachable by
+	// name but must not inflate the default run.
 	want := 0
 	for _, src := range sources.Catalog() {
-		if src.State == sources.StateCalled || src.State == sources.StateCaptured {
+		if src.State == sources.StateCalled || src.Fixture != "" {
 			want++
 		}
 	}
 	if len(whitelist) != want {
-		t.Fatalf("allowlist = %d entries, want the %d called/captured sources", len(whitelist), want)
+		t.Fatalf("allowlist = %d entries, want the %d called-or-fixtured sources", len(whitelist), want)
 	}
 	if want == 0 {
 		t.Fatal("the catalogue announces no source to probe: the check above proves nothing")

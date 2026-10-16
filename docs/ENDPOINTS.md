@@ -32,8 +32,8 @@ list, **derived from the source catalogue** (`--list`, `--endpoint`).
 
 | Path | Method | Classification | Envelope | Evidence |
 |---|---|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVED-CONVERSATION]` "responds"; **absent from the bundle**; GET method imposed by `internal/fronius/readonly.go`; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | GET | READ | — (flat `Body.Data`) | **absent from the bundle**; query is a binary constant (`solarapi.CommonQuery`); read **every collector cycle** by `internal/collector`; **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `1680` bytes, `36` fields — the thirteen measurements and `DeviceStatus` sit **flat** under `Body.Data` (the documented wrapper object does **not** appear) |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVED-CONVERSATION]` "responds"; **absent from the bundle**; GET method imposed by `internal/fronius/readonly.go`; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. `[DOC]` `42,0410,2012,EN 02115052025` §4.11.3: this is the **only** Solar API request served as `.fcgi`; §4.11.1: available on GEN24/Tauro/Verto |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | GET | READ | — (flat `Body.Data`) | **absent from the bundle**; query is a binary constant (`solarapi.CommonQuery`); read **every collector cycle** by `internal/collector`; **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `1680` bytes, `36` fields — the thirteen measurements and `DeviceStatus` sit **flat** under `Body.Data` (the documented wrapper object does **not** appear). `[DOC]` `42,0410,2012,EN 02115052025` §4.1.3: the realtime-data family is `.cgi`; §4.1.2: `CommonInverterData` supported on GEN24/Tauro/Verto; §4.1.5: the day and year counters "will always report null" and `TOTAL_ENERGY` is updated every 5 min |
 | `/status/version` | GET | READ | `Default` | `[SOURCE-JS]` l. 183050 (path **without** header, module `yTJA`); **absent from the `aYRN` registry** (see the note below); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
 | `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (registry, interval 10 000 ms) + l. 183060 (variant `?sync=true`, without header); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. Fields read: see the extraction table |
 | `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76035 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
@@ -79,6 +79,28 @@ of the reference installation (2026-10-16, firmware `1.19.7-1`), which is their
 evidence; each addition is a documented decision (see the rows above). On the
 cache the device names 44 of its 81 registers and leaves 37 bare, and **no unit
 is derived from a name**: the device states a name and a type suffix, not a unit.
+
+### The Solar API URL list (specification)
+
+The two allowlist rows above are the only Solar API paths the application reads,
+and both are `[DOC]`-proven. The full URL list comes from the manufacturer's
+specification **`42,0410,2012,EN 02115052025`** (`references/42,0410,2012.pdf`,
+91 pages, Solar API V1), not from `references/fronius-original.js` (which contains
+no Solar API path):
+
+- **only `GetPowerFlowRealtimeData` is `.fcgi`** (`GetPowerFlowRealtimeData.fcgi`, §4.11.3);
+- the **twelve other requests are `.cgi`** (§4.1.3, §4.2.2, §4.3.2, §4.4.2, §4.5.2, §4.6.2, §4.7.2, §4.8.2, §4.9.4, §4.10.2, §5), and `/solar_api/GetAPIVersion.cgi` is the one whose `.cgi` belongs to the path (§2.4.1, no version segment);
+- **two paths were added** to the catalogue when the specification was read: `/solar_api/v1/GetLoggerLEDInfo.cgi` (§4.5.2) and `/solar_api/v1/GetOhmPilotRealtimeData.cgi` (§4.10.2, capital `P` in `GetOhmPilot`);
+- **`GetDeviceInfo` was a phantom and is removed**: that name appears nowhere in the specification.
+
+**Corrected paths.** An earlier candidate list had probed these with a wrong
+`.fcgi` suffix — a **catalogue error, not a firmware fact** (the second survey of
+2026-10-16 answered each one once the suffix matched §4.1.3/§5): `/solar_api/v1/GetInverterInfo.cgi`, `/solar_api/v1/GetActiveDeviceInfo.cgi`,
+`/solar_api/v1/GetMeterRealtimeData.cgi`, `/solar_api/v1/GetStorageRealtimeData.cgi`,
+`/solar_api/v1/GetStringRealtimeData.cgi`, `/solar_api/v1/GetSensorRealtimeData.cgi`,
+`/solar_api/v1/GetLoggerInfo.cgi`, `/solar_api/GetAPIVersion.cgi`. The only Solar
+API path the device answers `404` to is `/solar_api/v1/GetArchiveData.cgi`, and
+§5.1.1 says GEN24/Tauro/Verto is **NEVER** supported for it.
 
 ## Paths explicitly set aside
 

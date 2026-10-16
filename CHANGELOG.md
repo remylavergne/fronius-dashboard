@@ -9,6 +9,19 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Two Solar API endpoints the specification has and the catalogue
+  lacked.** Reading the manufacturer's specification
+  **`42,0410,2012,EN 02115052025`** (`references/42,0410,2012.pdf`, 91 pages,
+  Solar API V1) added `/solar_api/v1/GetLoggerLEDInfo.cgi` (§4.5.2) and
+  `/solar_api/v1/GetOhmPilotRealtimeData.cgi` (§4.10.2, capital `P` in
+  `GetOhmPilot`) to the source catalogue (`internal/sources/catalog.go`, state
+  `captured`, proof `[DOC]` citing the document number and the section) and to
+  the observed inventory of `docs/SOURCES.md`. The second survey of 2026-10-16
+  answered both `empty` (291 and 276 bytes) — consistent with §4.5.1
+  ("available but returns an error") and with no Ohmpilot being installed. Both
+  are reachable through `cmd/fronius-probe --survey` / `--endpoint`; neither is
+  called by the application.
+
 - 2026-10-16 — **Readable cache.** The application reads the internal
   `/components/cache/readable` and publishes what the device puts in its own
   register cache. The internal allowlist grows from **eight to nine** paths: the
@@ -405,7 +418,11 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   (`InverterState`/`StatusCode`/`ErrorCode`) exist on this device — candidates
   for the dashboard's missing state and detail, **wired later the same day** (see
   the Device detail entry above). `/solar_api/GetAPIVersion`
-  is `404` and stays an **open candidate**, no reason asserted. Recorded in
+  is `404` and stays an **open candidate**, no reason asserted. **Corrected the
+  same day (see `### Fixed`):** the `GetInverterInfo.fcgi`,
+  `GetLoggerInfo.fcgi` and `GetAPIVersion` `404`s were a wrong `.fcgi` suffix,
+  not a firmware fact — with the specification's `.cgi` they answer, so the
+  "identity from the Solar API" route is **open**, not closed. Recorded in
   `docs/SOURCES.md` (§ Hardware captures and the candidate table),
   `docs/UNKNOWNS.md`, `docs/PROBE-READONLY.md` and `TODO.md` (step 21).
 
@@ -524,6 +541,31 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   with a capability reason (`docs/UNKNOWNS.md` #13).
 
 ### Fixed
+
+- 2026-10-16 — **Wrong Solar API suffixes in the catalogue — the catalogue's
+  error, not the firmware's.** Eight Solar API paths had been probed with a
+  `.fcgi` suffix and their `404`s were read as "this firmware does not serve
+  them". The manufacturer's specification **`42,0410,2012,EN 02115052025`**
+  (`references/42,0410,2012.pdf`, 91 pages, Solar API V1) proves that **only
+  `GetPowerFlowRealtimeData` is `.fcgi`** and that the twelve other requests are
+  `.cgi`. Corrected in `internal/sources/catalog.go` and in the registers
+  (`docs/SOURCES.md`, `docs/ENDPOINTS.md`): `GetInverterInfo.cgi`,
+  `GetActiveDeviceInfo.cgi`, `GetMeterRealtimeData.cgi`,
+  `GetStorageRealtimeData.cgi`, `GetStringRealtimeData.cgi`,
+  `GetSensorRealtimeData.cgi`, `GetLoggerInfo.cgi` and
+  `/solar_api/GetAPIVersion.cgi` (the `.cgi` belongs to the path, §2.4.1). The
+  phantom `GetDeviceInfo`, which appears **nowhere** in the specification, was
+  **removed**. A **second survey** the same day (firmware `1.19.7-1`, corrected
+  paths, `--delay 4s` as §2.6 prescribes) answered each of the eight — three
+  `ok` (identity, device inventory, API version), five `empty` — so the ten
+  `not_found`s of the first run became **one**, `GetArchiveData.cgi`, which
+  §5.1.1 says GEN24/Tauro/Verto is **NEVER** supported for. The "identity from
+  the Solar API is closed" claim is **retired**: `GetInverterInfo.cgi` provides
+  identity without credentials (`docs/UNKNOWNS.md` #3). **Also:** the probe's
+  `--survey` now defaults to `--delay 4s`, the pacing §2.6 prescribes (at most
+  two realtime requests in parallel, 4 s between two consecutive calls); a lower
+  value is a deliberate choice.
+
 
 - 2026-10-16 — **The realtime-data answer is flat, and the simulator was not.**
   The capture of `GetInverterRealtimeData.cgi?…DataCollection=CumulationInverterData`

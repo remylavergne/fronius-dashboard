@@ -73,8 +73,14 @@ type endpoint struct {
 // The full catalogue is reached with --survey (see survey.go); --endpoint
 // accepts any catalogued path. Every addition to that register is a documented,
 // tested and reviewed decision (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
+// A source is in the default set when the project reads it, or when its body has
+// been promoted as a fixture — the two cases where a single-path probe is the
+// obvious next step. The sources the survey merely OBSERVED (an empty answer on
+// an endpoint with no component behind it) stay out of it: a bare
+// `fronius-probe` must not walk twenty paths because a survey once said "nothing
+// there". They remain reachable by name.
 var whitelist = buildWhitelist(func(s sources.Source) bool {
-	return s.State == sources.StateCalled || s.State == sources.StateCaptured
+	return s.State == sources.StateCalled || s.Fixture != ""
 })
 
 // surveyWhitelist is the whole catalogue: what a survey walks.
@@ -141,7 +147,8 @@ func main() {
 	flag.StringVar(&opt.endpoint, "endpoint", allowAllEndpoints, "path to probe ("+allowAllEndpoints+" or a path from the allowlist)")
 	flag.BoolVar(&opt.passwordStdin, "password-stdin", false, "reads the password on the first line of standard input")
 	flag.BoolVar(&opt.survey, "survey", false, "walks the whole catalogued allowlist, one GET per path, and records what each one answers")
-	flag.DurationVar(&opt.delay, "delay", time.Second, "delay between two paths of a survey")
+	flag.DurationVar(&opt.delay, "delay", 4*time.Second,
+		"delay between two paths of a survey (the Solar API documentation, 42,0410,2012, prescribes 4 s between two consecutive calls; lower it deliberately, not by default)")
 	flag.StringVar(&opt.dbPath, "db", os.Getenv("FRONIUS_DB_PATH"), "database that records the survey (empty = write the report only)")
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) {

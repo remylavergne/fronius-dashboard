@@ -10,6 +10,7 @@ hardware or about a protocol must be traceable to a line of this file.
 |---|---|
 | `[SOURCE-JS]` | Read directly in `references/fronius-original.js`. Proves the presence of client-side code, **not** a permission granted by the firmware. |
 | `[SOURCE-PDF]` | Read in the manufacturer's system export (`fronius-information.pdf`, 16 October 2026). |
+| `[DOC]` | Read in the manufacturer's specification **`42,0410,2012,EN 02115052025`** (`references/42,0410,2012.pdf`, 91 pages, Solar API V1); each `[DOC]` claim cites its section. |
 | `[OBSERVED-CONVERSATION]` | Reported during the analysis, not replayed in this session. |
 | `[HYPOTHESIS]` | Assumed shape or behaviour, encoded as such in the code. |
 | `[TO-TEST]` | Easy to verify, but unverified: requires the hardware or the probe. |
@@ -51,7 +52,10 @@ read back by `GET /api/v1/sources` (the "Data sources" page); it is the
 per-firmware evidence behind the catalogue's states.
 
 Classes (`ok`, `empty`, `not_json`, `auth_required`, `not_found`, `error`) keep
-distinct facts distinct: `not_found` means this firmware does not serve the path,
+distinct facts distinct: `not_found` means this firmware does not serve the path
+— a Solar API `404` may also mean a wrong suffix or, per §3 of the specification,
+an API disabled in the WebUI (the answer then carries "Solar API disabled by
+customer config"), which the internal paths distinguish because they answer;
 `auth_required` means the path exists behind authentication, `empty` means it
 exists and the component is not installed. A `404` or a `401` is a **result**,
 not a failed run.
@@ -69,7 +73,10 @@ Two provenance rules:
 
 The **first survey of the reference installation** was run on **2026-10-16**
 (firmware `1.19.7-1`); its outcome and report path are recorded in § Hardware
-captures.
+captures. A **second survey** the same day, with the corrected URL list of the
+specification and the `--delay 4s` of §2.6, is now the observed reality
+(**14 `ok`, 11 `empty`, 2 `auth_required`, 1 `not_found`**); it is recorded in
+§ Hardware captures and in the observed inventory of § Other Solar API endpoints.
 
 ## Vendor artefact
 
@@ -80,6 +87,14 @@ primary source of analysis, in accordance with `AGENTS.md`.
 This file is a proprietary software artefact (Fronius International GmbH). It is
 **explicitly excluded from the scope of the MIT license** of this repository
 (see `LICENSE` and the License section at the end of the document).
+
+`references/42,0410,2012.pdf` — the manufacturer's official specification,
+**document number `42,0410,2012,EN 02115052025`**, 91 pages, "Fronius Solar API
+V1". It is the **primary source for the Solar API URL list and for what each
+request returns on GEN24/Tauro/Verto**, which `references/fronius-original.js`
+cannot provide (the bundle contains no Solar API path). Served by
+`GET /api/v1/sources` where the catalogue marks each Solar API entry `[DOC]`
+with the section it comes from.
 
 ## Code landmarks in the bundle
 
@@ -313,12 +328,16 @@ captures):
   resolved). A sixth path, `/status/powerflow`, was added later and is
   **captured** (2026-10-16, `200`, no challenge); it has since been **removed**
   from the allowlist, as has its probe entry.
-- Day and year energies → **no local source exposes them**: `/status/powerflow`
-  and the documented accumulation collection
-  (`GetInverterRealtimeData` with `DataCollection=CumulationInverterData`) both
-  return the day and year counters as **null**, while their total stays live
-  (`docs/UNKNOWNS.md` #13, § Hardware captures). The internal fallback built on
-  `/status/powerflow` was therefore **removed**.
+- Day and year energies → **no local source exposes them**, and the
+  specification **documents why**: `/status/powerflow` and the accumulation
+  collection (`GetInverterRealtimeData` with
+  `DataCollection=CumulationInverterData`) both return the day and year counters
+  as **null**, while their total stays live. §4.1.5 states it as a rule: on
+  GEN24/Tauro/Verto `DAY_ENERGY` and `YEAR_ENERGY` "will always report null",
+  and `TOTAL_ENERGY` is "supported since 1.14 (updated every **5 min**)" — so a
+  day or year energy derived from the total cannot be fresher than five minutes
+  (`docs/UNKNOWNS.md` #13). The internal fallback built on `/status/powerflow`
+  was therefore **removed**.
 - Real names of the **model** and the **firmware** in `/status/version` → **captured**:
   `swrevisions.GEN24` = `1.19.7-1` (the key read by the application), `numberOfPhases`
   = `1`, `devicegroup` = `P6RW`; **no model key exists**, so `Model` stays empty and
@@ -330,8 +349,11 @@ captures):
   installed** (`Body.Data` empty on both `/components/*/readable`; `docs/UNKNOWNS.md`
   #4 and #5 resolved).
 
-What remains open: the other Solar API endpoints (§ Other Solar API endpoints) and
-the real signal names of a component that would actually be present.
+What remains open: the real signal names of a component that would actually be
+present. The other Solar API endpoints are no longer open: the specification
+fixed their URLs and the **second survey** (§ Other Solar API endpoints) answered
+each of them on firmware `1.19.7-1` — `ok`, `empty`, or the archive's documented
+`404`.
 
 ## Shape of the Solar API v1 response — captured `[VERIFIED]`
 
@@ -409,38 +431,75 @@ and flagged), KPI wiring in `apps/web/src/routes/Overview.tsx`. The daily
 **chart** (`/api/v1/energy/daily`) is **not** derived: it still reads
 `agg_hour.max_energy_day_wh`, `null` on this firmware, so it stays empty.
 
-## Other Solar API endpoints — unverified candidates
+## The Solar API specification — what it settles
 
-These names come from the **public Fronius Solar API v1 documentation**. None has
-been re-read in `references/fronius-original.js` (which contains no Solar API
-path). The **first survey of the reference installation** (2026-10-16, firmware
-`1.19.7-1`, § Hardware captures) then answered **`404` for nine of these Solar API
-paths** — this firmware does not serve them — while `GetInverterRealtimeData`
-(accumulation query) has a `cmd/fronius-probe` entry and was **captured** on the
-device. `GetArchiveData.cgi` also answered `404` (it is one of the nine). They
-stay listed to frame phase 2, not to be called; a `404` closes the question of
-their presence on **this** firmware, not on the model in general.
+`references/42,0410,2012.pdf` (document number **`42,0410,2012,EN 02115052025`**,
+91 pages) is the **primary source** for the Solar API surface. It settles, with
+the section that says so:
 
-| Candidate endpoint | What it would provide | Status |
+| What | Section | Content |
 |---|---|---|
-| `/solar_api/GetAPIVersion` | API version exposed by the device | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve this path. The documented path may need a suffix (`.cgi`); the answer does not say, so this stays an **open candidate** and no reason is asserted |
-| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | **captured 2026-10-16** — `cmd/fronius-probe` entry, `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (class `READ`, `digest=false`, frozen query `solarapi.CumulationQuery`), the "Solar API first" route (ADR 0003/0008); `cmd/fronius-sim` serves it too, per collection, in the **captured** shape (`Unit`/`Value` pairs, `DeviceStatus`; `3PInverterData` answers an empty `Body.Data` as the single-phase unit does) with values from its own curve. **First attempt 2026-10-16**: the path was probed with the `.fcgi` suffix and answered `404` with the webserver's XHTML error page (`Server: webserver`, `Content-Type: text/html`, `iso-8859-1`) — the realtime-data family of Solar API v1 is `.cgi`, so the suffix was the mistake. **Capture 2026-10-16** (`200`, `883` bytes, no challenge, `17:00:38Z`): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while `TOTAL_ENERGY` is live (`15089627.579722222` Wh), so this endpoint is **not** a source for the day and year counters either (`docs/UNKNOWNS.md` #13); it is the documented source of the inverter state (`DeviceStatus`). The **common** collection (`DataCollection=CommonInverterData`) is now **read by the application** — once per collector cycle, constant `solarapi.CommonQuery` — and its measurements and state are published on the device detail page (`GET /api/v1/detail`); the accumulation collection stays **probe-only** (§ Hardware captures) |
-| `/solar_api/v1/GetInverterInfo.fcgi` | **Identity**: model, serial number, firmware per inverter | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it, so the "identity from the Solar API" route is **closed**: the identity stays on the Digest-protected internal API (`/status/version`), `docs/UNKNOWNS.md` #3 |
-| `/solar_api/v1/GetLoggerInfo.fcgi` | Identity of the datalogger / the interface | `404` on firmware 1.19.7-1 (survey 2026-10-16) — same conclusion as `GetInverterInfo.fcgi`: no Solar API identity source on this firmware |
-| `/solar_api/v1/GetMeterRealtimeData.fcgi` | Measurements of the Fronius Smart Meter, if present | `404` on firmware 1.19.7-1 (survey 2026-10-16) — not served; and `/components/PowerMeter/readable` answered with an **empty** `Body.Data`, proving **no Smart Meter installed**, so there is nothing to read here either (§ Hardware captures) |
-| `/solar_api/v1/GetStorageRealtimeData.fcgi` | State of charge and power of the battery, if present | `404` on firmware 1.19.7-1 (survey 2026-10-16) — not served; `/components/BatteryManagementSystem/readable` answered with an **empty** `Body.Data`, proving **no battery installed** |
-| `/solar_api/v1/GetActiveDeviceInfo.fcgi` | List of the system's active devices | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it |
-| `/solar_api/v1/GetDeviceInfo.fcgi` | Device inventory | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it |
-| `/solar_api/v1/GetStringRealtimeData.fcgi` | Per-string DC measurements (voltage, current, power) — the granularity a Primo exposes for its DC inputs | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it |
-| `/solar_api/v1/GetSensorRealtimeData.fcgi` | External sensor channels (irradiance, temperature) when a sensor card is fitted | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it |
-| `/solar_api/v1/GetArchiveData.cgi` | Historical time series held by the device itself (`agg_hour.max_energy_day_wh` is `null` on this firmware) | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it, so the daily chart **cannot** be filled from device-side history; the aggregate/derived route is the only one (`docs/UNKNOWNS.md` #13, `CHANGELOG.md`) |
+| The URL list | §2.4.1, §4.1.3, §4.2.2, §4.3.2, §4.4.2, §4.5.2, §4.6.2, §4.7.2, §4.8.2, §4.9.4, §4.10.2, §4.11.3, §5 | **Only `GetPowerFlowRealtimeData` is `.fcgi`** (§4.11.3); the twelve other requests are `.cgi`. `GetAPIVersion` is the exception with no version segment: the `.cgi` belongs to the path (`/solar_api/GetAPIVersion.cgi`, §2.4.1). |
+| Availability per request | §4.1.1, §4.2.1, §4.3.1, §4.4.1, §4.5.1, §4.6.1, §4.7.1, §4.8.1, §4.9.1, §4.10.1 | On GEN24/Tauro/Verto the realtime-data requests and the identity and inventory requests are available. Several are "available but returns an error" on this family (`GetLoggerInfo`, `GetSensorRealtimeData`, `GetLoggerLEDInfo`), and `GetStringRealtimeData` answers nothing because "String Control does not exist for GEN24/Tauro/Verto". |
+| The null day and year counters | §4.1.5 | On GEN24/Tauro/Verto, `DAY_ENERGY` and `YEAR_ENERGY` "will always report null"; `TOTAL_ENERGY` is "supported since 1.14 (updated every 5 min)", so a day or year energy derived from the total cannot be fresher than **five minutes**. |
+| The pacing | §2.6 | At most **two realtime requests in parallel**, and **4 s between two consecutive calls** — the reason `cmd/fronius-probe --survey` defaults to `--delay 4s`. |
+| The disable behaviour | §3 | The Solar API can be **disabled** in the device's WebUI (Communication → Solar API); a disabled API answers **404** with "Solar API disabled by customer config". A page of Solar API `404`s therefore has three causes — a wrong suffix, a disabled API, a simulator — and the internal paths distinguish them (they answer). |
+| The inverter state | §4.6.5 | The `StatusCode` table (0 Startup, 7 Running, 8 Standby, 10 Error, 11 Idle, 12 Ready, 13 Sleeping, 255 Unknown) plus `InverterState` as a string; the reference installation's `13 = Sleeping` matches it. |
+| The arguments | §4.7.3, §4.8, §4.9, §4.10 | `GetActiveDeviceInfo` takes a `DeviceClass` (Inverter, Storage, Ohmpilot, SensorCard, StringControl, Meter, System); `GetMeterRealtimeData`, `GetStorageRealtimeData` and `GetOhmPilotRealtimeData` take `Scope`/`DeviceId`. |
+| The archive | §5, §5.1.1 | GEN24/Tauro/Verto is **NEVER** supported for `GetArchiveData`: the device "does not provide access to history data". |
+| Device types and events | §6.2, §6.3 | The inverter device-type list and the event table — available material, **not used yet**. |
+
+The catalogue cites these sections per entry (`internal/sources/catalog.go`), and
+each such entry carries a `[DOC]` proof naming the document number and the
+section.
+
+## Other Solar API endpoints — observed inventory (second survey)
+
+These paths come from the specification (`42,0410,2012,EN 02115052025`), not from
+`references/fronius-original.js`, which contains no Solar API path. The
+specification settles the URL list — **only `GetPowerFlowRealtimeData` is
+`.fcgi`**, the twelve others are `.cgi`. An earlier draft of this table probed
+`.fcgi` on eight of them and read the resulting `404` as "this firmware does not
+serve it": that was a **catalogue error, not a firmware fact** — the suffix was
+missing from the probe. Those paths were corrected, the two the specification has
+and the catalogue lacked were added (`GetLoggerLEDInfo.cgi`,
+`GetOhmPilotRealtimeData.cgi`, capital `P`), and the phantom `GetDeviceInfo` —
+which appears **nowhere** in the specification — was **removed**.
+
+The status below is what the **second survey of the reference installation** (2026-10-16,
+firmware `1.19.7-1`, corrected paths, `--delay 4s` as §2.6 prescribes) actually
+answered; the availability column is what the specification states.
+
+| Endpoint | What it provides | Availability in the specification | Second survey (2026-10-16, firmware 1.19.7-1) |
+|---|---|---|---|
+| `/solar_api/GetAPIVersion.cgi` | API version exposed by the device | §2.4.1: the path is `/solar_api/GetAPIVersion.cgi` (the `.cgi` belongs to the path, no version segment) | **`ok`**, 92 bytes, 3 fields (`APIVersion`, `BaseURL`, `CompatibilityRange`) — the earlier `404` was the probe's missing suffix, not an absent endpoint |
+| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`) | §4.1.3 `.cgi`; §4.1.2 `CommonInverterData` and `CumulationInverterData` supported on GEN24, `3PInverterData` "Only on 3 phase inverters"; §4.1.5 the day and year counters always null, the total updated every 5 min | **`ok`**: `CommonInverterData` 1682 bytes / 36 fields (read by the collector every cycle), `CumulationInverterData` 883 / 18 (probe-only); `3PInverterData` **`empty`** (436 — the Primo is single-phase) |
+| `/solar_api/v1/GetInverterInfo.cgi` | Identity: model, serial number, firmware per inverter | §4.6.2 `.cgi`; §4.6.1 ALWAYS on GEN24/Tauro/Verto; §4.6.5 the `StatusCode` table | **`ok`**, 537 bytes, 12 fields — **identity from the Solar API, with no credentials** (`docs/UNKNOWNS.md` #3) |
+| `/solar_api/v1/GetLoggerInfo.cgi` | Identity of the datalogger / the interface | §4.4.2 `.cgi`; §4.4.1 ALWAYS but "available but returns an error" on GEN24/Tauro/Verto | **`empty`**, 288 bytes — consistent with the specification's own note |
+| `/solar_api/v1/GetMeterRealtimeData.cgi` | Measurements of the Fronius Smart Meter, if present | §4.8.2 `.cgi`; §4.8.1 GEN24/Tauro/Verto "planned in 1.13"; §4.8 takes `Scope`/`DeviceId` | **`empty`**, 276 bytes — and no meter is installed (`Body.Data` empty on `/components/PowerMeter/readable`, § Hardware captures) |
+| `/solar_api/v1/GetStorageRealtimeData.cgi` | State of charge and power of the battery, if present | §4.9.4 `.cgi`; §4.9.1 GEN24/Tauro/Verto since 1.13; §4.9 takes `Scope`/`DeviceId` | **`empty`**, 276 bytes — and no battery is installed (`docs/UNKNOWNS.md` #5) |
+| `/solar_api/v1/GetActiveDeviceInfo.cgi` | Inventory of the active devices of the system (with serials) | §4.7.2 `.cgi`; §4.7.1 ALWAYS; §4.7.3 takes a `DeviceClass` | **`ok`**, 494 bytes, 7 fields |
+| `/solar_api/v1/GetStringRealtimeData.cgi` | Per-string DC measurements (voltage, current, power) | §4.3.2 `.cgi`; §4.3.1 ALWAYS but "String Control does not exist for GEN24/Tauro/Verto" | **`empty`**, 296 bytes |
+| `/solar_api/v1/GetSensorRealtimeData.cgi` | External sensor channels (irradiance, temperature) when a sensor card is fitted | §4.2.2 `.cgi`; §4.2.1 ALWAYS but "available but returns an error" | **`empty`**, 296 bytes — no sensor card |
+| `/solar_api/v1/GetLoggerLEDInfo.cgi` | LED state and colour of the serving device | §4.5.2 `.cgi`; §4.5.1 ALWAYS but "available but returns an error" | **`empty`**, 291 bytes — added to the catalogue when the specification was read (the earlier list lacked it) |
+| `/solar_api/v1/GetOhmPilotRealtimeData.cgi` | Ohmpilot state, energy, temperature and power | §4.10.2 `.cgi`, capital `P` in `GetOhmPilot`; §4.10.1 since 1.13; §4.10 takes `Scope`/`DeviceId` | **`empty`**, 276 bytes — no Ohmpilot is installed |
+| `/solar_api/v1/GetArchiveData.cgi` | Historical time series held by the device itself | §5 `GetArchiveData.cgi?<query>`; §5.1.1 GEN24/Tauro/Verto **NEVER** — "does not provide access to history data" | **`not_found`** (404) — the one path the specification itself says this device never supports; the daily chart cannot be filled from device-side history (`docs/UNKNOWNS.md` #13) |
+
+Outcome of the second survey (2026-10-16, firmware `1.19.7-1`, report
+`probe-survey/survey_20261016T203255Z.json`): **14 `ok`, 11 `empty`,
+2 `auth_required`, 1 `not_found`**. The first run, with the wrong `.fcgi` suffixes,
+gave 11 `ok` / 4 `empty` / 2 `auth_required` / 10 `not_found`. **No catalogue
+entry is left saying "this firmware does not serve it"**: eight of the ten earlier
+`404`s now answer (three `ok`, five `empty`) once the suffix is correct, and the
+archive is `404` by the specification's own rule, not by a firmware shortfall.
 
 Consequence for phase 1: detecting the presence of a Smart Meter or a battery is
 **feasible without any write**, through simple GETs, and it is the internal
-`/components/*/readable` paths (not the Solar API candidates above, `404` here)
-that serve the detection today. The 2026-10-16 capture settled the question for
-the reference installation: neither a meter nor a battery is present (§ Hardware
-captures).
+`/components/*/readable` paths that serve the detection today. The Solar API
+`empty` answers above confirm the same hardware fact (no meter, no battery, no
+Ohmpilot / sensor card / StringControl on GEN24) rather than a firmware
+limitation. The 2026-10-16 capture settled the question for the reference
+installation: neither a meter nor a battery is present (§ Hardware captures).
 
 ## Fixtures
 
@@ -580,7 +639,7 @@ and read back by `GET /api/v1/sources`.
 | `ok` (11) | `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` (1044, 23) · `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (883, 18) · the same with `DataCollection=CommonInverterData` (1680, 36) · `/status/version` (935, 29) · `/status/activeEvents` (443, 13) · `/status/powerflow` (372, 21) · `/status/common` (349, 10) · `/status/devices` (65, 4) · `/status/network` (768, 38) · `/status/emrs` (214, 8) · `/components/cache/readable` (4897, 99) |
 | `empty` (4) | `/solar_api/v1/GetInverterRealtimeData.cgi?…DataCollection=3PInverterData` (436 — the Primo is single-phase, as the catalogue predicted) · `/components/PowerMeter/readable` (370) · `/components/BatteryManagementSystem/readable` (383) · `/components/Ohmpilot/readable` (368) |
 | `auth_required` (2) | `/commands/GetUTCTime`, `/commands/GetServiceState?serviceId=<id>` — `401` without credentials |
-| `not_found` (10) | `/solar_api/v1/GetInverterInfo.fcgi`, `/solar_api/v1/GetLoggerInfo.fcgi`, `/solar_api/v1/GetMeterRealtimeData.fcgi`, `/solar_api/v1/GetStorageRealtimeData.fcgi`, `/solar_api/v1/GetActiveDeviceInfo.fcgi`, `/solar_api/v1/GetDeviceInfo.fcgi`, `/solar_api/v1/GetStringRealtimeData.fcgi`, `/solar_api/v1/GetSensorRealtimeData.fcgi`, `/solar_api/v1/GetArchiveData.cgi`, `/solar_api/GetAPIVersion` — `404`, this firmware does not serve them |
+| `not_found` (10) | `/solar_api/v1/GetInverterInfo.cgi`, `/solar_api/v1/GetLoggerInfo.fcgi`, `/solar_api/v1/GetMeterRealtimeData.fcgi`, `/solar_api/v1/GetStorageRealtimeData.fcgi`, `/solar_api/v1/GetActiveDeviceInfo.fcgi`, `/solar_api/v1/GetDeviceInfo.fcgi`, `/solar_api/v1/GetStringRealtimeData.fcgi`, `/solar_api/v1/GetSensorRealtimeData.fcgi`, `/solar_api/v1/GetArchiveData.cgi`, `/solar_api/GetAPIVersion` — `404`. **Corrected the same day (second survey, below):** eight of these were the probe's own wrong `.fcgi` suffix, not a firmware fact — the specification gives `.cgi` for the twelve requests other than `GetPowerFlowRealtimeData`, and the corrected paths answer. `/solar_api/GetDeviceInfo.fcgi` was a **phantom** (the name `GetDeviceInfo` appears nowhere in the specification) and was **removed** from the catalogue. `/solar_api/GetArchiveData.cgi` is `404` by the specification's own rule: §5.1.1 says GEN24/Tauro/Verto is **NEVER** supported for it |
 
 Field-level facts observed in the report:
 
@@ -623,14 +682,22 @@ Field-level facts observed in the report:
   read live by `internal/detect` on the detection cycle, and its shape is pinned
   by the survey record, not by a versioned file.
 
-What the run settles:
+What the run settles (**corrected the same day — see the second survey below**;
+points 2 and 5 are **retired**):
 
 1. **`GetArchiveData.cgi` is `404`** on firmware 1.19.7-1: the daily chart
    **cannot** be filled from device-side history. The aggregate/derived route is
-   the only one (`docs/UNKNOWNS.md` #13, `CHANGELOG.md`).
-2. **`GetInverterInfo.fcgi` and `GetLoggerInfo.fcgi` are `404`**: the identity
+   the only one (`docs/UNKNOWNS.md` #13, `CHANGELOG.md`). The specification makes
+   this a rule, not an incident: §5.1.1 says GEN24/Tauro/Verto is **NEVER**
+   supported for it.
+2. ~~**`GetInverterInfo.fcgi` and `GetLoggerInfo.fcgi` are `404`**: the identity
    must stay on the Digest-protected internal API; the "identity from the Solar
-   API" idea is closed (`docs/UNKNOWNS.md` #3).
+   API" idea is closed.~~ **Retired.** The first run probed the wrong suffix.
+   With the specification's `.cgi`, `GetInverterInfo.cgi` answers `ok` (537
+   bytes, 12 fields) and `GetLoggerInfo.cgi` answers `empty` (288 bytes): the
+   identity **is** available from the Solar API, without credentials — as a
+   **second source** beside `/status/version`, not a replacement
+   (`docs/UNKNOWNS.md` #3).
 3. **`CommonInverterData` and `CumulationInverterData` are served**: the
    electrical detail and the inverter `DeviceStatus`
    (`InverterState`/`StatusCode`/`ErrorCode`) are available on this device. The
@@ -639,14 +706,51 @@ What the run settles:
    accumulation collection stays **probe-only**.
 4. **`3PInverterData` is empty** and the meter, battery and Ohmpilot readables
    are empty: consistent with the installed hardware (single-phase Primo, no
-   meter, no battery, no Ohmpilot).
-5. **`/solar_api/GetAPIVersion` is `404`**: the documented path may need a suffix
-   (`.cgi`); the answer does not say. Recorded as an **open candidate**, no
-   reason asserted.
+   meter, no battery, no Ohmpilot). The specification agrees: §4.1.2 marks
+   `3PInverterData` "Only on 3 phase inverters".
+5. ~~**`/solar_api/GetAPIVersion` is `404`**: the documented path may need a
+   suffix (`.cgi`); the answer does not say.~~ **Retired.** §2.4.1 gives
+   `/solar_api/GetAPIVersion.cgi` (the `.cgi` belongs to the path); re-probed, it
+   answers `ok` (92 bytes, 3 fields: `APIVersion`, `BaseURL`,
+   `CompatibilityRange`).
 6. **The Solar API needs no credentials** on this firmware: the 11 `ok` and 4
    `empty` paths — Solar API and internal alike — answered to the **bare**
    request (`digest_required: false`), and the only `401`s were the two
    `/commands/*` paths.
+
+### Second survey of the reference installation (2026-10-16)
+
+The second survey corrected the URL list and the pacing, and is now the observed
+reality:
+
+```
+./bin/fronius-probe --survey --base-url http://192.0.2.10 \
+  --allow-non-loopback --delay 4s --db data/fronius.db --save ./probe-survey
+```
+
+28 catalogued paths, **one `GET` each, 4 s apart** (§2.6: at most two realtime
+requests in parallel, four seconds between two consecutive calls). Report:
+`probe-survey/survey_20261016T203255Z.json` (in the working tree, **not
+versioned**); rows in `data/fronius.db` (table `source_probe`), read back by
+`GET /api/v1/sources`. Outcome: **14 `ok`, 11 `empty`, 2 `auth_required`,
+1 `not_found`** (against 11 `ok` / 4 `empty` / 2 `auth_required` / 10 `not_found`
+for the first run).
+
+| Class | Paths (bytes, fields) |
+|---|---|
+| `ok` (14) | `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` (1044, 23) · `/solar_api/v1/GetInverterRealtimeData.cgi?…DataCollection=CumulationInverterData` (883, 18) · the same with `DataCollection=CommonInverterData` (1682, 36) · `/solar_api/v1/GetInverterInfo.cgi` (537, 12) · `/solar_api/v1/GetActiveDeviceInfo.cgi` (494, 7) · `/solar_api/GetAPIVersion.cgi` (92, 3) · `/status/version` · `/status/activeEvents` · `/status/powerflow` · `/status/common` · `/status/devices` · `/status/network` · `/status/emrs` · `/components/cache/readable` |
+| `empty` (11) | `/solar_api/v1/GetLoggerInfo.cgi` (288) · `/solar_api/v1/GetMeterRealtimeData.cgi` (276) · `/solar_api/v1/GetStorageRealtimeData.cgi` (276) · `/solar_api/v1/GetStringRealtimeData.cgi` (296) · `/solar_api/v1/GetSensorRealtimeData.cgi` (296) · `/solar_api/v1/GetLoggerLEDInfo.cgi` (291) · `/solar_api/v1/GetOhmPilotRealtimeData.cgi` (276) · `/solar_api/v1/GetInverterRealtimeData.cgi?…DataCollection=3PInverterData` (436 — the Primo is single-phase) · `/components/PowerMeter/readable` · `/components/BatteryManagementSystem/readable` · `/components/Ohmpilot/readable` |
+| `auth_required` (2) | `/commands/GetUTCTime`, `/commands/GetServiceState?serviceId=<id>` — `401` without credentials |
+| `not_found` (1) | `/solar_api/v1/GetArchiveData.cgi` (404) — the **only** one, and the specification says why: §5.1.1, GEN24/Tauro/Verto is **NEVER** supported for it |
+
+The three Solar API paths that were `not_found` and now answer `ok` — identity
+(`GetInverterInfo.cgi`), live device inventory (`GetActiveDeviceInfo.cgi`) and API
+version (`GetAPIVersion.cgi`) — all answered to the **bare** request: no
+credentials are needed (`docs/UNKNOWNS.md` #3). The five that now answer `empty`
+are each consistent with the specification's availability note and with the
+hardware (no meter, no battery, no sensor card, no Ohmpilot, no StringControl on
+GEN24). The internal paths are unchanged: all answer `ok` except the two component
+readables (`empty`) and the two commands (`auth_required`).
 
 ## Reference hardware
 
