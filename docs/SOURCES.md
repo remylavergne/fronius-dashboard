@@ -186,7 +186,7 @@ exercise the client's reading tolerance, and to be confirmed by a capture
 | `/status/version` | `modelName`, `model` | **no** | candidates: **no model key** is observed in the bundle **nor in the capture**. `devicegroup` is not a model fallback — it is the device group, a sibling field (l. 183035), and the code no longer substitutes it |
 | `/components/PowerMeter/readable` | `channels` (23 `SMARTMETER_*` signals), `attributes.addr`, `attributes["[ENABLE]"]` | yes | l. 129011, 129015, 130976-130983; envelope `Cgi` (l. 75958, 183011); **detection** is always based on a non-empty `Body.Data`. **Captured 2026-10-16**: `Body.Data` empty ⇒ **absent**, `Content-Type: text/javascript` |
 | `/components/BatteryManagementSystem/readable` | `channels` (10 signals) | yes | l. 128986; envelope `Cgi` (l. 75958). **Captured 2026-10-16**: `Body.Data` empty ⇒ **absent**, `Content-Type: text/javascript` |
-| `/status/powerflow` | `site.E_Day`, `site.E_Year`, `site.E_Total`, `site.P_PV`, `site.P_Grid`, `site.P_Load`, `site.P_Akku`, `inverters[<id>].SOC`, `inverters[<id>].BatMode`, `Smartloads.Ohmpilots[<id>].P_AC_Total` | yes | l. 129034, 129043-129063 — read by the official client; **the application uses only `E_Day`/`E_Year`**, as a fallback (`docs/UNKNOWNS.md` #13). **Captured `[VERIFIED]` (hardware) 2026-10-16**: the fixture `internalapi/status_powerflow.json` is promoted (`synthetic: false`, firmware `1.19.7-1`, `captured_at` `2026-10-16T14:47:07Z`); `site.E_Day` and `site.E_Year` are **null here too**, so the fallback restores nothing on this installation (`docs/UNKNOWNS.md` #13) |
+| `/status/powerflow` | `site.E_Day`, `site.E_Year`, `site.E_Total`, `site.P_PV`, `site.P_Grid`, `site.P_Load`, `site.P_Akku`, `inverters[<id>].SOC`, `inverters[<id>].BatMode`, `Smartloads.Ohmpilots[<id>].P_AC_Total` | yes | l. 129034, 129043-129063 — read by the official client; **the application read only `E_Day`/`E_Year`**, briefly as a fallback (`docs/UNKNOWNS.md` #13) that has since been **removed**. **Captured `[VERIFIED]` (hardware) 2026-10-16**: the fixture `internalapi/status_powerflow.json` is promoted (`synthetic: false`, firmware `1.19.7-1`, `captured_at` `2026-10-16T14:47:07Z`); `site.E_Day` and `site.E_Year` are **null here too**, so no local source restores them on this installation (`docs/UNKNOWNS.md` #13) |
 | `/status/activeEvents` | body **root array** (not a `Cgi` envelope) | yes | **captured 2026-10-16**: the response body is a root JSON array, one element per active event |
 | `/status/activeEvents` | `severity` (integer: 1 error, 2 warning, 3 information) | yes | l. 135690 + l. 135728-135733 (`getEventLevel`); **used by the application** (`severityValue`, `internal/detect/detector.go`) — before the fix, the integer severity was not recognized and every hardware event was classified as "information". **Captured 2026-10-16: integer `3`** (`docs/UNKNOWNS.md` #11 confirmed) |
 | `/status/activeEvents` | `uuid`, `prefix`-`eventID` (instance identity) | yes | l. 135693, 164699, 135742 (comparison), 135760 (`ConfirmEvent` receives `{uuid}`); **used by the application** as an anti-duplication key. Captured keys: `uuid` `"56b077da-0d11-45be-8b24-7b09d53ad558"`, `prefix` `"GEN24"`, `eventID` `1260` |
@@ -234,7 +234,8 @@ nor the method, nor the permissions.
 | Path | Method | Auth | Proof status |
 |---|---|---|---|
 | `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16): `200 OK`, no `Authorization`, schema captured (§ Shape of the Solar API v1 response); **absent from the bundle** |
-| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **called** by the application as a **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13). Served by `cmd/fronius-sim`; **captured** `[VERIFIED]` (hardware, 2026-10-16, firmware `1.19.7-1`): `200`, `digest_required: false`, promoted as `internalapi/status_powerflow.json` — `inverters` is an **array** of `{CID, DT, E_Total, ID, P}` (the bundle could not tell, its client reading that member through `Object.keys`/`Object.values`), `site.MLoc` is the internal twin of the Solar API's `Meter_Location` (integer `255`, versus the string `"unknown"`), and `common`/`version` are **not read** by the application. **Decisive:** `site.E_Day` and `site.E_Year` are **null here too**, so the fallback delivers nothing on this installation (`docs/UNKNOWNS.md` #13) |
+| `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16, `200`, `883` bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live ⇒ **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13); it is the documented source of the inverter state (`Body.Data.DeviceStatus`, a **candidate** metric, not implemented); **absent from the bundle**; called by `cmd/fronius-probe`, **not** by the application |
+| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **extracted but no longer called** by the application: it briefly served as the **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13), a fallback **removed** once the captures proved no local source exposes them. The simulator no longer serves it; it was **captured** `[VERIFIED]` (hardware, 2026-10-16, firmware `1.19.7-1`): `200`, `digest_required: false`, promoted as `internalapi/status_powerflow.json` — `inverters` is an **array** of `{CID, DT, E_Total, ID, P}` (the bundle could not tell, its client reading that member through `Object.keys`/`Object.values`), `site.MLoc` is the internal twin of the Solar API's `Meter_Location` (integer `255`, versus the string `"unknown"`), and `common`/`version` are **not read** by the application. **Decisive:** `site.E_Day` and `site.E_Year` are **null here too**, and the accumulation collection nulls the same counters, so **no local source** delivers them on this installation (`docs/UNKNOWNS.md` #13) |
 | `/status/version` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 183050 (`yTJA` route, without a header — **this path is not in the `aYRN` registry**); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`). Provides `serialNumber`, `numberOfPhases`, `devicegroup`, `swrevisions` |
 | `/status/activeEvents` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76030 (10,000 ms interval); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, root array). Fields read listed in `docs/ENDPOINTS.md` |
 | `/components/PowerMeter/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76035 (envelope `Cgi`); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no meter**). Presence deduced from `Body.Data` |
@@ -251,8 +252,15 @@ captures):
 - Authentication on firmware **1.19.7-1** → **none required**: all five paths
   allowlisted at that time answered `200` with no `Authorization` header and no `401`, so the Digest
   "after 401" machinery is never exercised by this device (`docs/UNKNOWNS.md` #2
-  resolved). The sixth path, `/status/powerflow`, was added later and is
-  **captured** (2026-10-16, `200`, no challenge).
+  resolved). A sixth path, `/status/powerflow`, was added later and is
+  **captured** (2026-10-16, `200`, no challenge); it has since been **removed**
+  from the allowlist, as has its probe entry.
+- Day and year energies → **no local source exposes them**: `/status/powerflow`
+  and the documented accumulation collection
+  (`GetInverterRealtimeData` with `DataCollection=CumulationInverterData`) both
+  return the day and year counters as **null**, while their total stays live
+  (`docs/UNKNOWNS.md` #13, § Hardware captures). The internal fallback built on
+  `/status/powerflow` was therefore **removed**.
 - Real names of the **model** and the **firmware** in `/status/version` → **captured**:
   `swrevisions.GEN24` = `1.19.7-1` (the key read by the application), `numberOfPhases`
   = `1`, `devicegroup` = `P6RW`; **no model key exists**, so `Model` stays empty and
@@ -317,15 +325,14 @@ in base units.
 These names come from the **public Fronius Solar API v1 documentation**. None has
 been re-read in `references/fronius-original.js` (which contains no Solar API
 path) nor observed on firmware **1.19.7-1**: they are therefore all `[TO-TEST]`
-on the device — one of them
-(`GetInverterRealtimeData`, accumulation query) now has a `cmd/fronius-probe`
-entry, so its capture is ready to run. They are listed to frame phase 2, not to be
-called.
+on the device — except one, `GetInverterRealtimeData` (accumulation query), which
+has a `cmd/fronius-probe` entry and has since been **captured** on the device
+(§ Hardware captures). They are listed to frame phase 2, not to be called.
 
 | Candidate endpoint | What it would provide | Status |
 |---|---|---|
 | `/solar_api/GetAPIVersion` | API version exposed by the device | `[TO-TEST]` |
-| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | **probe path added 2026-10-16, capture pending** — seventh `cmd/fronius-probe` entry, `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (class `READ`, `digest=false`, frozen query `solarapi.CumulationQuery`), the **last candidate source** for the day and year energies `GetPowerFlowRealtimeData` nulls on `1.19.7-1` (`docs/UNKNOWNS.md` #13) and the "Solar API first" route (ADR 0003/0008); `cmd/fronius-sim` serves it too (documented shape, values from its own curve). **First attempt 2026-10-16**: the path was probed with the `.fcgi` suffix and answered `404` with the webserver's XHTML error page (`Server: webserver`, `Content-Type: text/html`, `iso-8859-1`) — the realtime-data family of Solar API v1 is `.cgi`, so the suffix was the mistake; the corrected path is pending capture |
+| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | **captured 2026-10-16** — `cmd/fronius-probe` entry, `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (class `READ`, `digest=false`, frozen query `solarapi.CumulationQuery`), the "Solar API first" route (ADR 0003/0008); `cmd/fronius-sim` serves it too (documented shape, values from its own curve). **First attempt 2026-10-16**: the path was probed with the `.fcgi` suffix and answered `404` with the webserver's XHTML error page (`Server: webserver`, `Content-Type: text/html`, `iso-8859-1`) — the realtime-data family of Solar API v1 is `.cgi`, so the suffix was the mistake. **Capture 2026-10-16** (`200`, `883` bytes, no challenge, `17:00:38Z`): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while `TOTAL_ENERGY` is live (`15089627.579722222` Wh), so this endpoint is **not** a source for the day and year counters either (`docs/UNKNOWNS.md` #13); it is the documented source of the inverter state (`DeviceStatus`), a **candidate** metric, not implemented (§ Hardware captures) |
 | `/solar_api/v1/GetInverterInfo.fcgi` | **Identity**: model, serial number, firmware per inverter | `[TO-TEST]` — direct candidate for the `device.identity` capability |
 | `/solar_api/v1/GetLoggerInfo.fcgi` | Identity of the datalogger / the interface | `[TO-TEST]` |
 | `/solar_api/v1/GetMeterRealtimeData.fcgi` | Measurements of the Fronius Smart Meter, if present | `[TO-TEST]` — would allow **detecting** a meter and unlocking `grid.import_export`, `load.consumption`, `autoconsumption.ratio` |
@@ -362,7 +369,9 @@ redacted by `fronius-probe --save`):
 | `internalapi/status_activeevents.json` | **no** — the body is a root array, which cannot carry a sibling key, so **its provenance is recorded here** | `/status/activeEvents` |
 | `internalapi/components_powermeter_readable.json` | yes | `/components/PowerMeter/readable` (empty `Body.Data`) |
 | `internalapi/components_batterymanagementsystem_readable.json` | yes | `/components/BatteryManagementSystem/readable` (empty `Body.Data`) |
-| `internalapi/status_powerflow.json` | yes | `/status/powerflow` |
+| `internalapi/status_powerflow.json` | yes | `/status/powerflow` — the recorded capture of a path that is **no longer called** (the fallback was removed) |
+
+No fixture is versioned for the **accumulation capture** (`/solar_api/v1/GetInverterRealtimeData.cgi?…DataCollection=CumulationInverterData`, 2026-10-16, `883` bytes): the application does not call the endpoint, so its facts live in this document (§ Hardware captures).
 
 The internal fixture `internalapi/status_powerflow.json` is **promoted**
 (`synthetic: false`, `confidence: VERIFIED (hardware)`, firmware `1.19.7-1`,
@@ -373,8 +382,10 @@ captured body settles the shape — `inverters` is an **array** of
 `{CID, DT, E_Total, ID, P}`, `site.MLoc` is the internal twin of the Solar API's
 `Meter_Location` (integer `255`, versus the string `"unknown"`), and
 `common`/`version` are not read by the application. **Decisive:** `site.E_Day`
-and `site.E_Year` are **null here too**, so the fallback delivers nothing on this
-installation (`docs/UNKNOWNS.md` #13).
+and `site.E_Year` are **null here too**, and the accumulation collection nulls the
+same counters, so **no local source** delivers them on this installation and the
+path is **no longer called** — the fallback built on it was removed
+(`docs/UNKNOWNS.md` #13).
 
 Unit-level hardware identifiers (`hardwareId`, `commonName`, `hwrevisions`) were
 **masked by hand** before versioning; the shape and the key names are untouched,
@@ -419,12 +430,33 @@ timestamps and live power values.
 | `/status/activeEvents` | `200` | `false` | `application/json` | 232 |
 | `/components/PowerMeter/readable` | `200` | `false` | `text/javascript` | 370 |
 | `/components/BatteryManagementSystem/readable` | `200` | `false` | `text/javascript` | 383 |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | `200` | `false` | — | 883 |
+
+A **third run** the same day —
+`./bin/fronius-probe --base-url http://192.0.2.10 --allow-non-loopback
+--endpoint /solar_api/v1/GetInverterRealtimeData.cgi --save /tmp/probe-real`,
+with the password entered on standard input — captured the **accumulation
+collection** (2026-10-16T17:00:38Z, `200`, `883` bytes, no challenge,
+`Content-Type` not recorded). The redacted body is kept at
+`/tmp/probe-real/probe_solar_api_v1_getinverterrealtimedata_20261016T170038Z.json`;
+**no fixture is versioned for it** — the application does not call the endpoint, so
+the facts live in this document. The body settles it: `Body.Data.DAY_ENERGY` and
+`Body.Data.YEAR_ENERGY` are **null** while `Body.Data.TOTAL_ENERGY` is live
+(`15089627.579722222` Wh) and `PAC` is `0.0`. The same body carries what the flow
+endpoints do not — `Body.Data.DeviceStatus` (`{"ErrorCode":1175,
+"InverterState":"Sleeping","StatusCode":13}`): the endpoint is the **documented
+source of the inverter state**, and it shows the inverter was **Sleeping** at 17:00
+UTC, which explains the `0.0` powers while `TOTAL_ENERGY` stayed live. A "device
+state" metric built on `DeviceStatus` is a **candidate** only — a decision,
+**not implemented**.
 
 Promoted into `test/fixtures` on **2026-10-16** (§ Fixtures). Consequences
 recorded in `docs/UNKNOWNS.md`: #2 resolved (no authentication required), #4 and
 #5 resolved (no Smart Meter, no battery), #11 confirmed (integer `severity`), #13
-new (`E_Day`/`E_Year` null on this firmware — on the Solar API **and** on the
-internal `/status/powerflow`, so the fallback delivers nothing, see #13).
+settled on the counters (`E_Day`/`E_Year` null on the Solar API, on the internal
+`/status/powerflow` **and** on the accumulation collection, so **no local source**
+exposes the day and year energies and the internal fallback was **removed**, see
+#13).
 
 ## Reference hardware
 

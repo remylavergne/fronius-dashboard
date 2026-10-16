@@ -16,7 +16,8 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   year energies that **both** flow endpoints return as `null` on firmware
   `1.19.7-1` (`docs/UNKNOWNS.md` #13), on the "Solar API first" route
   (ADR 0003/0008) — the internal `/status/powerflow` fallback fills nothing on
-  this installation. The probe gains support for a **frozen query string** per
+  this installation (the fallback was **since removed**; see `### Removed`
+  below). The probe gains support for a **frozen query string** per
   entry (`endpoint.query`, a constant of the binary): the probe still cannot
   target an arbitrary URL and the query shows up in `--list`, while `--endpoint`
   still selects by path, without the query. The schema constants
@@ -58,7 +59,9 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   `samples.fallback_source` column (migration `0004_fallback_source.sql`, empty
   string by default) and exposed by `/api/v1/live` as `fallback_source`.
   `cmd/fronius-sim` now also serves `/status/powerflow` (mirroring its own Solar
-  API numbers; it does **not** reproduce the `null` case).
+  API numbers; it does **not** reproduce the `null` case). **Since removed**: the
+  captures of the same day proved no local source exposes the counters; see
+  `### Removed` below.
 
 - 2026-10-16 — **`/status/powerflow` captured and its fixture promoted.** A
   `cmd/fronius-probe --endpoint /status/powerflow` run against the reference
@@ -82,7 +85,9 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   deltas (a **derived** metric, not a measurement). Tests cover both cases:
   `TestFallbackFillsNothingWhenTheDeviceNullsItToo` (the observed reality, driven
   by the promoted capture) and `TestFallbackCompletesTheNulledEnergies` (the fill
-  logic, with a body explicitly labelled hypothetical).
+  logic, with a body explicitly labelled hypothetical). **Since removed**: the
+  accumulation capture the same day confirmed no local source exposes the
+  counters, so the entry was dropped; see `### Removed` below.
 
 - 2026-10-16 — **First hardware capture and fixture promotion.** Two
   `cmd/fronius-probe` runs against a real GEN24 (`http://192.0.2.10`, one
@@ -215,6 +220,41 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   "absent", "undetermined"), and an absent field is displayed as a dash — never
   `0`, never "unknown".
 
+### Removed
+
+- 2026-10-16 — **Internal `/status/powerflow` fallback removed, and the
+  accumulation capture recorded (clean cutover, no shim).** The fallback's premise
+  is refuted by the captures of the same day: `GetPowerFlowRealtimeData.fcgi`
+  (site `E_Day`/`E_Year` null), `/status/powerflow` (`site.E_Day`/`E_Year` null
+  too) and the documented accumulation collection
+  `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
+  (2026-10-16T17:00:38Z, `200`, `883` bytes, no challenge — `DAY_ENERGY` and
+  `YEAR_ENERGY` null while `TOTAL_ENERGY` is live at `15089627.579722222` Wh) all
+  agree: **no local source exposes the day and year counters**. Removed: the
+  allowlist entry `/status/powerflow` (the internal allowlist is back to **four**
+  entries, the Solar API path unchanged), `internalapi.PowerFlow`/`PowerFlowSite`,
+  `Client.PowerFlow`, `powerFlowHasContent`,
+  `collector.PowerFlowSource`/`Collector.Fallback`/`completeFromInternal`,
+  `model.Sample.FallbackSource` and the `samples.fallback_source` column dropped
+  by migration `0006_drop_fallback_source.sql`, the `/api/v1/live` field
+  `fallback_source`, the probe entry for `/status/powerflow` (the probe lists
+  **six** entries again; the accumulation entry stays), the simulator's
+  `/status/powerflow` route, and `internal/collector/fallback_test.go` (the tests
+  pinned to the removed symbols are updated). **Kept on purpose:**
+  `test/fixtures/internalapi/status_powerflow.json` — the recorded capture of that
+  shape; its `_provenance` states the endpoint is **no longer called**. Verified: a
+  fresh database migrates to version 6, and a **v5 database holding the column and
+  4 rows upgraded to v6** (column dropped, rows intact, new samples inserted);
+  `go test ./...` green. The accumulation answer also carries a **bonus** the flow
+  endpoints do not — `Body.Data.DeviceStatus` (`InverterState` `"Sleeping"`,
+  `StatusCode` 13, `ErrorCode` 1175), the documented source of the inverter state
+  and a **candidate** for a future metric, **not implemented**; it shows the
+  inverter was Sleeping at 17:00 UTC, which explains the `0.0` powers while the
+  total stayed live. **Open:** the cause of the null counters (not established),
+  and the product decision — derive the day and year energy from our own stored
+  `E_Total` deltas (option b, a **derived** metric), or leave the two KPIs absent
+  with a capability reason (`docs/UNKNOWNS.md` #13).
+
 ### Fixed
 
 - 2026-10-16 — **Wrong endpoint suffix for the accumulation capture**
@@ -266,7 +306,8 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   inverter, while `E_Total` is a number — the "energy of the day" and "energy of
   the year" KPIs are therefore **absent** on the reference installation, never
   zero (the model keeps `*float64` ⇒ `nil`, never `0`; residual unknown #13, and
-  the `/status/powerflow` option is an open decision). The extra keys the capture
+  the `/status/powerflow` option was an open decision then — it is **since
+  removed**, see `### Removed` above). The extra keys the capture
   reveals (`BackupMode`, `BatteryStandby`, `Smartloads`, `Version`) are tolerated
   and ignored (no `DisallowUnknownFields`).
 - 2026-10-16 — **Severity and identity of the device events**

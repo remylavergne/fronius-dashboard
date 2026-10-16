@@ -65,11 +65,11 @@ type endpoint struct {
 	digest bool
 }
 
-// whitelist is the phase 2 allowlist: the five internal paths (identity,
-// presence of a meter and a battery, events, and the flow measurement that
-// completes the day and year energies) and the Solar API endpoint of phase 1.
-// Every addition to this list is a decision that is documented, tested and
-// reviewed (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
+// whitelist is the phase 2 allowlist: the four internal paths (identity,
+// presence of a meter and a battery, events), the Solar API endpoint of phase 1,
+// and the documented accumulation collection kept as the last candidate source
+// for the day and year counters. Every addition to this list is a decision that
+// is documented, tested and reviewed (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
 var whitelist = []endpoint{
 	{
 		method:         http.MethodGet,
@@ -110,14 +110,7 @@ var whitelist = []endpoint{
 		path:           solarapi.InverterRealtimePath,
 		query:          solarapi.CumulationQuery,
 		classification: "READ",
-		note:           "Documented Solar API accumulation data (E_Day, E_Year, E_Total): the last candidate source for the day and year energies, which both flow endpoints return as null on firmware 1.19.7-1 (docs/UNKNOWNS.md #13)",
-	},
-	{
-		method:         http.MethodGet,
-		path:           internalapi.PowerFlowPath,
-		classification: "READ",
-		digest:         true,
-		note:           "Internal flow measurement: day and year energy (site.E_Day, site.E_Year), which the Solar API nulls on firmware 1.19.7-1. Observed on hardware (200, inverters an array) but never saved: this is the expected capture",
+		note:           "Documented Solar API accumulation data. Captured 2026-10-16: DAY_ENERGY and YEAR_ENERGY come back null while TOTAL_ENERGY is live, and the same answer carries DeviceStatus (InverterState, StatusCode) — so this endpoint is not a source for the day and year energies (docs/UNKNOWNS.md #13), but it is the documented source for the inverter state",
 	},
 }
 

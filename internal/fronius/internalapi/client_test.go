@@ -41,15 +41,14 @@ func (d *countingDoer) Do(r *http.Request) (*http.Response, error) {
 
 func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 	list := Allowlist()
-	if len(list) != 5 {
-		t.Fatalf("allowlist = %d entries, want 5", len(list))
+	if len(list) != 4 {
+		t.Fatalf("allowlist = %d entries, want 4", len(list))
 	}
 	want := map[string]Envelope{
 		VersionPath:      EnvelopeDefault,
 		ActiveEventsPath: EnvelopeDefault,
 		PowerMeterPath:   EnvelopeCgi,
 		BatteryPath:      EnvelopeCgi,
-		PowerFlowPath:    EnvelopeDefault,
 	}
 	for _, ep := range list {
 		if ep.Class != ClassRead {
@@ -345,69 +344,6 @@ func TestComponentPresentRejectsNonCgiPath(t *testing.T) {
 	_, err := c.ComponentPresent(context.Background(), VersionPath)
 	if err == nil {
 		t.Fatal("a path with a Default envelope is not a component")
-	}
-}
-
-func TestPowerFlowDecodesTheInternalShape(t *testing.T) {
-	// Keys as the vendor client reads them (bundle l. 129034, 129043-129063). The
-	// reference device sends `inverters` as an ARRAY (observed 2026-10-16: it
-	// answered 200 with an array, which a map-shaped DTO rejected); the object
-	// form is also accepted, since the vendor client cannot tell the two apart.
-	const siteOnly = `{"site": {"P_PV": 228.35, "P_Grid": null, "P_Load": null,
-	           "P_Akku": null, "E_Day": 4123.4, "E_Year": 4215488.4, "E_Total": 15089488.9}}`
-
-	cases := []struct {
-		name string
-		body string
-	}{
-		{name: "inverters as an array, as the device sends it",
-			body: `{"site": {"E_Day": 4123.4, "E_Year": 4215488.4, "P_Grid": null},
-			        "inverters": [{"DT": 1, "P": 185.58, "SOC": null}],
-			        "Smartloads": {"Ohmpilots": {}}}`},
-		{name: "inverters as an index-keyed object",
-			body: `{"site": {"E_Day": 4123.4, "E_Year": 4215488.4, "P_Grid": null},
-			        "inverters": {"1": {"DT": 1, "P": 185.58}}}`},
-		{name: "site alone, without any inverters member", body: siteOnly},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_, _ = io.WriteString(w, tc.body)
-			}))
-			defer srv.Close()
-
-			pf, err := newClient(t, srv.URL, &http.Client{}).PowerFlow(context.Background())
-			if err != nil {
-				t.Fatalf("PowerFlow: %v", err)
-			}
-			if pf.Site.E_Day == nil || *pf.Site.E_Day != 4123.4 {
-				t.Fatalf("site.E_Day = %v", pf.Site.E_Day)
-			}
-			if pf.Site.E_Year == nil || *pf.Site.E_Year != 4215488.4 {
-				t.Fatalf("site.E_Year = %v", pf.Site.E_Year)
-			}
-			// A null stays nil: no invented zero.
-			if pf.Site.P_Grid != nil || pf.Site.P_Akku != nil {
-				t.Fatalf("null powers must stay nil: %+v", pf.Site)
-			}
-		})
-	}
-}
-
-func TestPowerFlowRejectsAnUnexpectedShape(t *testing.T) {
-	// An empty object is not an empty measurement: it is a body we cannot read.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = io.WriteString(w, `{}`)
-	}))
-	defer srv.Close()
-
-	_, err := newClient(t, srv.URL, &http.Client{}).PowerFlow(context.Background())
-	if err == nil {
-		t.Fatal("an empty body must be a decode error")
-	}
-	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
-		t.Fatalf("KindOf = %q, want %q", kind, froniuserr.KindDecode)
 	}
 }
 

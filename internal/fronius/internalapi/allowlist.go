@@ -54,10 +54,6 @@ const (
 	ActiveEventsPath = "/status/activeEvents"
 	PowerMeterPath   = "/components/PowerMeter/readable"
 	BatteryPath      = "/components/BatteryManagementSystem/readable"
-	// PowerFlowPath is the internal flow measurement of the vendor interface.
-	// It is read as a FALLBACK for the day and year energies, which the Solar API
-	// returns as null on firmware 1.19.7-1 (docs/UNKNOWNS.md #13).
-	PowerFlowPath = "/status/powerflow"
 )
 
 // ErrNotAllowed is returned by Get for any path outside the allowlist. It is a
@@ -98,14 +94,6 @@ var allowlist = []Endpoint{
 		Digest:   true,
 		Purpose:  "presence of a battery",
 		Evidence: "bundle: polled registry l. 76032 with Cgi envelope (module aYRN). Captured 2026-10-16 on firmware 1.19.7-1 (empty Body.Data: no battery). Verified by cmd/fronius-sim.",
-	},
-	{
-		Path:     PowerFlowPath,
-		Class:    ClassRead,
-		Envelope: EnvelopeDefault,
-		Digest:   true,
-		Purpose:  "day and year energy, which the Solar API returns as null on this firmware (fallback only: a measured Solar API value is never overwritten)",
-		Evidence: "bundle: polled registry l. 76036 (module aYRN, interval 5,000 ms, Default envelope); consumed fields l. 129034 and l. 129049-129052 (site.E_Day, site.E_Year, site.P_*). NOT yet captured on hardware: the DTO keys come from the vendor client, so the values are [HYPOTHESIS] until a probe run (docs/PROBE-READONLY.md).",
 	},
 }
 

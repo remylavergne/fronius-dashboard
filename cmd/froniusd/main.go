@@ -121,12 +121,8 @@ func run(backfillDays int, forceBackfill bool) error {
 	}
 
 	col := &collector.Collector{
-		Source: client,
-		Sink:   store,
-		// The internal flow measurement completes the day and year energies that
-		// the Solar API returns as null on firmware 1.19.7-1. It is only used for
-		// that: a measured Solar API value is never overwritten.
-		Fallback: internalClient,
+		Source:   client,
+		Sink:     store,
 		Log:      logger,
 		Interval: cfg.PollInterval,
 		Jitter:   cfg.PollJitter,

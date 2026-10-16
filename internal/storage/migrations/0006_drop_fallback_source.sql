@@ -1,0 +1,11 @@
+-- 0006_drop_fallback_source.sql
+--
+-- `samples.fallback_source` was added by 0004 for the internal flow fallback that
+-- was to complete the day and year energies. The hardware captures of 2026-10-16
+-- settled it: no local source exposes those two counters — `GetPowerFlowRealtimeData`
+-- nulls them, `/status/powerflow` nulls them too, and the documented accumulation
+-- endpoint answers `DAY_ENERGY`/`YEAR_ENERGY` as null while `TOTAL_ENERGY` is live.
+-- The fallback was therefore removed, and a column no writer fills is a false
+-- promise in the schema: this drops it. Historical rows lose a provenance that was
+-- always empty on this installation, and the aggregates never used it.
+ALTER TABLE samples DROP COLUMN fallback_source;

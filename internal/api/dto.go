@@ -78,7 +78,6 @@ type sampleDTO struct {
 	Source                string        `json:"source"`
 	Quality               string        `json:"quality"`
 	Mode                  string        `json:"mode"`
-	FallbackSource        string        `json:"fallback_source"`
 	PowerPVW              *float64      `json:"power_pv_w"`
 	EnergyDayWh           *float64      `json:"energy_day_wh"`
 	EnergyYearWh          *float64      `json:"energy_year_wh"`
@@ -114,7 +113,6 @@ func sampleToDTO(sm model.Sample) sampleDTO {
 		Source:                sm.Source,
 		Quality:               string(sm.Quality),
 		Mode:                  sm.Mode,
-		FallbackSource:        sm.FallbackSource,
 		PowerPVW:              sm.PowerPVW,
 		EnergyDayWh:           sm.EnergyDayWh,
 		EnergyYearWh:          sm.EnergyYearWh,

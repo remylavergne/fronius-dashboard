@@ -2,7 +2,7 @@
 //
 // The only request builder is Get: the verb is the constant http.MethodGet, no
 // method parameter exists in this API. Every path first goes through the
-// allowlist (allowlist.go), which contains exactly five entries; an absent path
+// allowlist (allowlist.go), which contains exactly four entries; an absent path
 // is refused before any URL construction.
 package internalapi
 
@@ -279,84 +279,6 @@ func (c *Client) ActiveEvents(ctx context.Context) ([]json.RawMessage, error) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Internal flow measurement (fallback for the day and year energies)
-// ---------------------------------------------------------------------------
-
-// PowerFlow is the internal flow measurement of /status/powerflow.
-//
-// Shape provenance: the vendor interface reads these keys to draw its flow view
-// (bundle l. 129034, 129043-129063), and the reference device was captured on
-// 2026-10-16 (firmware 1.19.7-1, 200, no challenge; promoted as
-// test/fixtures/internalapi/status_powerflow.json). The captured element keys:
-// `inverters` is an ARRAY of {CID, DT, E_Total, ID, P} — the bundle could not
-// settle that, since the vendor client reads it through Object.keys/Object.values,
-// which accept both an array and an index-keyed object; `site.MLoc` (integer 255)
-// is the internal twin of the Solar API's `Meter_Location` (a string there); and
-// `common` (datestamp/timestamp) and `version` are present but NOT read by this
-// application. Only `site` is modelled here, because only the day and year
-// energies are consumed; `inverters` is kept as raw JSON, so no shape is presumed
-// for a member the application does not read.
-//
-// Decisive: on this installation `site.E_Day` and `site.E_Year` are NULL, exactly
-// as in the Solar API answer, so the fallback restores neither KPI here
-// (docs/UNKNOWNS.md #13).
-//
-// Field names follow the protocol (`P_PV`, `E_Day`) so that a tag divergence
-// stands out on rereading, and every value is a pointer: absent stays nil.
-type PowerFlow struct {
-	Site      PowerFlowSite   `json:"site"`
-	Inverters json.RawMessage `json:"inverters"`
-}
-
-// PowerFlowSite is the site measurement point of the internal flow view.
-type PowerFlowSite struct {
-	P_PV    *float64 `json:"P_PV"`
-	P_Grid  *float64 `json:"P_Grid"`
-	P_Load  *float64 `json:"P_Load"`
-	P_Akku  *float64 `json:"P_Akku"`
-	E_Day   *float64 `json:"E_Day"`
-	E_Year  *float64 `json:"E_Year"`
-	E_Total *float64 `json:"E_Total"`
-}
-
-// powerFlowHasContent reports whether the payload carries any expected key.
-// PowerFlow reads /status/powerflow (Default envelope: the body is the payload).
-//
-// A body that carries none of the expected keys is a decode error, not an empty
-// measurement: a shape we cannot read proves nothing, as for the components.
-func (c *Client) PowerFlow(ctx context.Context) (PowerFlow, error) {
-	ep, ok := Lookup(PowerFlowPath)
-	if !ok {
-		return PowerFlow{}, fmt.Errorf("%w: %q", ErrNotAllowed, PowerFlowPath)
-	}
-	body, err := c.get(ctx, ep)
-	if err != nil {
-		return PowerFlow{}, err
-	}
-
-	var pf PowerFlow
-	if err := json.Unmarshal(body, &pf); err != nil {
-		return PowerFlow{}, jsonDecodeError(ep.Path, err)
-	}
-	if !powerFlowHasContent(pf) {
-		return PowerFlow{}, &froniuserr.Error{
-			Kind:     froniuserr.KindDecode,
-			Endpoint: ep.Path,
-			Err:      fmt.Errorf("no expected key found: neither site.P_* nor inverters"),
-		}
-	}
-	return pf, nil
-}
-
-func powerFlowHasContent(pf PowerFlow) bool {
-	return pf.Site.P_PV != nil || pf.Site.P_Grid != nil || pf.Site.P_Load != nil ||
-		pf.Site.P_Akku != nil || pf.Site.E_Day != nil || pf.Site.E_Year != nil ||
-		pf.Site.E_Total != nil || len(pf.Inverters) > 0
-}
-
-// ---------------------------------------------------------------------------
-// Decoding
 // ---------------------------------------------------------------------------
 
 // decodeObject decodes a body into a JSON object.

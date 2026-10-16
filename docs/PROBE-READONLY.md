@@ -32,7 +32,7 @@ responsibility.
 ## 2. Exact requests emitted
 
 The probe can only emit the requests of its allowlist, frozen in the binary
-(seven entries, all `READ` and all `GET`):
+(six entries, all `READ` and all `GET`):
 
 | Path                                           | Digest    | What it provides                                                        |
 | ---------------------------------------------- | --------- | ----------------------------------------------------------------------- |
@@ -41,8 +41,7 @@ The probe can only emit the requests of its allowlist, frozen in the binary
 | `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
 | `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
-| `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); **captured** 2026-10-16 (`200`, no challenge, `inverters` an array). The captured body has `site.E_Day`/`E_Year` **null too**, so the fallback fills nothing on this installation — its fate is an open decision (#13) |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`): the **last candidate source** for the day and year energies **both** flow endpoints return as `null` on firmware 1.19.7-1 (`docs/UNKNOWNS.md` #13), on the "Solar API first" route (ADR 0003/0008); **capture pending** (the first attempt used the `.fcgi` suffix and got the webserver's XHTML `404` page — the realtime-data family is `.cgi`) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`), on the "Solar API first" route (ADR 0003/0008); **captured** 2026-10-16 (`200`, 883 bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so it is **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13) — it is the documented source of the inverter state (`DeviceStatus`, a **candidate** metric, not implemented) |
 
 **Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
 of the allowlist at that time answered `200` on the **bare** request — no
@@ -52,43 +51,44 @@ five and the "after 401" column was never triggered. The two component paths
 replied with `Content-Type: text/javascript` (not `application/json`). Details
 and residual points: `docs/UNKNOWNS.md`, `docs/SOURCES.md`.
 
-Since then, the allowlist has a sixth entry, `/status/powerflow` (fallback for
-the day and year energies the Solar API returns as `null`, unknown #13), added
-later and **captured** on hardware (2026-10-16, `200`, no challenge); the body is
-promoted as `internalapi/status_powerflow.json`. The captured body is **decisive**:
-`site.E_Day`/`E_Year` are **null there too**, so the fallback fills nothing on this
-installation (see #13). The simulator also serves that
-path — mirroring its own Solar API numbers, it does **not** reproduce the `null`
-case (the captured fixture does).
+Since then, the allowlist briefly held a sixth entry, `/status/powerflow`
+(fallback for the day and year energies the Solar API returns as `null`, unknown
+#13), added later and **captured** on hardware (2026-10-16, `200`, no challenge);
+the body is promoted as `internalapi/status_powerflow.json`. The captured body is
+**decisive**: `site.E_Day`/`E_Year` are **null there too**, so the fallback filled
+nothing on this installation, and the entry has since been **removed** — the probe
+lists **six** entries again, and `cmd/fronius-sim` no longer serves
+`/status/powerflow` (the captured fixture does).
 
-A **seventh** entry has since joined the allowlist:
+The sixth entry that **stays** is the documented Solar API accumulation endpoint:
 `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
 (class `READ`, `digest=false`). It carries a **frozen query string** — the
 `endpoint.query` field, a constant of the binary (`solarapi.CumulationQuery`) — so
 the guarantee below holds unchanged: the probe cannot target an arbitrary URL, and
 the query is shown in `--list`; `--endpoint` still selects by **path** (without
-the query). It is the day and year energies that **both** flow endpoints return
-as `null` on firmware `1.19.7-1` (`docs/UNKNOWNS.md` #13): the **last candidate
-source** for them, on the "Solar API first" route (ADR 0003/0008), because the
-fallback tried so far (the internal `/status/powerflow`) fills nothing on this
-installation. The shape it expects is the **documented** Solar API v1 answer —
-`Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — and it is
-**not captured on the device yet**: the capture is the next step, run by the user
-(§ 5). `cmd/fronius-sim` serves the same endpoint (documented shape, values from
-its own curve), so a probe rehearsal against the simulator answers **seven** paths
-with `200`; the rehearsal was run and passed (`200`, 296 bytes, query echoed in
-`Head.RequestArguments`). The probe's file name for this path is
+the query). It was **captured on the device** on 2026-10-16 (`200`, 883 bytes, no
+challenge): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while `TOTAL_ENERGY`
+is live, so **no local source** exposes the day and year counters
+(`docs/UNKNOWNS.md` #13) — the "Solar API first" route (ADR 0003/0008) is settled
+and the internal fallback was removed. The answer carries the inverter state the
+flow endpoints do not (`Body.Data.DeviceStatus`), a **candidate** for a future
+metric, not implemented. `cmd/fronius-sim` serves the endpoint (documented shape,
+values from its own curve), so a probe rehearsal against the simulator answers
+**six** paths with `200`; the rehearsal was run and passed (`200`, 296 bytes, query
+echoed in `Head.RequestArguments`). The probe's file name for this path is
 `solar_api_v1_getinverterrealtimedata.json` (derived from the path, query
-excluded).
+excluded); the redacted capture is kept at
+`/tmp/probe-real/probe_solar_api_v1_getinverterrealtimedata_20261016T170038Z.json`
+(§ 5).
 
 ### What the capture must confirm, path by path
 
 The bundle extraction (`docs/ENDPOINTS.md`) replaced the unknowns with
 **client-code** facts; what remains is to obtain the **device** facts. Each
 capture of the allowlist closes a precise unknown. The first run took place on
-2026-10-16 (firmware 1.19.7-1) and closed the five unknowns below; a later run
-the same day captured the sixth path, `/status/powerflow`. The table is kept as
-the record of what each capture had to settle:
+2026-10-16 (firmware 1.19.7-1) and closed the five unknowns below; later runs the
+same day captured `/status/powerflow` (since removed) and the accumulation
+endpoint. The table is kept as the record of what each capture had to settle:
 
 | Path                                           | Unknown to close                     | What the extraction already asserts                                                                                                                                                                                             | What the capture settles                                                                                 |
 | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -97,20 +97,19 @@ the record of what each capture had to settle:
 | `/status/activeEvents`                         | #11 (event shape)                    | payload = array; 11 fields read; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728); identity = `uuid`, or `prefix`-`eventID`; text = `label`                                                          | the real names and types, the semantics of `viewer`, and whether `label` carries readable text or a code |
 | `/components/PowerMeter/readable`              | #4 (meter presence)                  | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]`                                                                                             | presence, real signal names and units on `1.19.7-1`                                                      |
 | `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge)     | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`                                                                                                                                              | presence, and whether the state of charge really exists on this firmware                                 |
-| `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **captured** 2026-10-16 (fixture `internalapi/status_powerflow.json`) | the real values and units of the day and year energies — **settled**: `site.E_Day`/`E_Year` are **null here too**, so this internal path does **not** return them where the Solar API nulls them (the fallback fills nothing, #13) |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the **documented** Solar API v1 shape, `Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — documented, **not extracted** (the bundle has no Solar API path, `docs/SOURCES.md`); the probe expects it as-is | whether this firmware exposes the day/year counters **at all**; **not captured yet** — the first attempt used the `.fcgi` suffix and answered `404` with the webserver's XHTML page, which is what a wrong path looks like here |
+| `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **captured** 2026-10-16 (fixture `internalapi/status_powerflow.json`) | the real values and units of the day and year energies — **settled**: `site.E_Day`/`E_Year` are **null here too**, so this internal path does **not** return them where the Solar API nulls them; the fallback built on it was **removed** (#13) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the **documented** Solar API v1 shape, `Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — documented, **not extracted** (the bundle has no Solar API path, `docs/SOURCES.md`); the probe expects it as-is | whether this firmware exposes the day/year counters **at all** — **settled (captured 2026-10-16)**: `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so the counters are not reported by any local source; the same answer carries `DeviceStatus` (`InverterState`, `StatusCode`), a **candidate** metric, not implemented. (The first attempt used the `.fcgi` suffix and answered `404` with the webserver's XHTML page, which is what a wrong path looks like here.) |
 
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
-in § 8), two further paths have joined the allowlist. The sixth,
-`/status/powerflow`, the fallback for the day and year energies the Solar API
-returns as `null` (#13), has its body **captured** too (2026-10-16, `200`, no
-challenge), promoted in § 8: the capture is decisive, the internal path returns
-those energies as **null too**, so the fallback fills nothing on this
-installation and the fate of the entry is an open decision (#13). The seventh,
-the documented Solar API accumulation endpoint (see above), is **added but not
-captured**: its capture is the next step. The rule for adding remains a metric
-that the Solar API does not provide, and a metric is not chosen from an inventory
-(ADR 0008).
+in § 8), the freeze is broader: a later run captured `/status/powerflow` (the
+fallback for the day and year energies the Solar API returns as `null`, #13) and
+it is promoted in § 8 — the capture is decisive, the internal path returns those
+energies as **null too**, so the fallback filled nothing on this installation and
+the entry was **removed**. The same day, the documented Solar API accumulation
+endpoint (see above) was **captured** as well: it nulls the same counters while
+its total is live, so **no local source** exposes the day and year energies. The
+rule for adding remains a metric that the Solar API does not provide, and a metric
+is not chosen from an inventory (ADR 0008).
 
 Shape of a request to an internal path:
 
@@ -217,10 +216,10 @@ Towards the local simulator (no risk, no hardware):
 # terminal 1
 go run ./cmd/fronius-sim --api-user sim --api-password simpass --with-meter
 
-# terminal 2: without credentials, the five internal paths answer 401
+# terminal 2: without credentials, the four internal paths answer 401
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081
 
-# terminal 2: with the simulator account, the seven paths answer 200.
+# terminal 2: with the simulator account, the six paths answer 200.
 # The simulator password is "simpass"; it is entered on standard input
 # so it does not appear in the shell history.
 export FRONIUS_DEVICE_USER=sim
@@ -240,8 +239,9 @@ go run ./cmd/fronius-probe \
   --save /tmp/probe-reel
 ```
 
-To capture the accumulation endpoint — the next step for #13, into a fresh
-directory so the earlier captures are not overwritten:
+The accumulation endpoint **was captured** with the command below (2026-10-16,
+into a fresh directory so the earlier captures are not overwritten); it is kept
+for reference:
 
 ```bash
 ./bin/fronius-probe \
@@ -318,7 +318,10 @@ structural redaction.
 
 **First promotion: 2026-10-16, firmware 1.19.7-1** — the six captures were
 promoted (`powerflow_produce_only.json` and the five internal fixtures); see
-`docs/SOURCES.md`.
+`docs/SOURCES.md`. A later run the same day captured the **accumulation
+endpoint** (`883` bytes) but **no fixture is versioned for it**: the application
+does not call the endpoint, and its facts live in `docs/SOURCES.md` and
+`docs/UNKNOWNS.md` (#13).
 
 1. Check the written file: open `probe_*.json` and confirm that no serial
    number, host name, address or identifier remains.

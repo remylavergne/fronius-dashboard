@@ -96,8 +96,8 @@ func TestMaskHeaderValue(t *testing.T) {
 }
 
 func TestWhitelistIsGetOnly(t *testing.T) {
-	if len(whitelist) != 7 {
-		t.Fatalf("allowlist = %d entries, want 7", len(whitelist))
+	if len(whitelist) != 6 {
+		t.Fatalf("allowlist = %d entries, want 6", len(whitelist))
 	}
 	seen := map[string]bool{}
 	for _, ep := range whitelist {
