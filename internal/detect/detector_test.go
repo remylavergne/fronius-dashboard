@@ -146,6 +146,8 @@ func fullyDetected(events ...string) *fakeReader {
 	f := newFakeReader()
 	f.version = internalapi.Version{
 		SerialNumber:   new("SIMULATED-0001"),
+		DeviceName:     new("Primo GEN24 3.6 Plus (simulated)"),
+		ArticleNumber:  new("4,210,141,002"),
 		Model:          new("Primo GEN24"),
 		Firmware:       new("1.24.3-sim"),
 		NumberOfPhases: new(3),
@@ -199,6 +201,11 @@ func TestDetectOnceSuccess(t *testing.T) {
 	rec := devices[0]
 	if rec.Model != "Primo GEN24" || rec.Firmware != "1.24.3-sim" || rec.SerialNumber != "SIMULATED-0001" {
 		t.Fatalf("record = %+v", rec)
+	}
+	// The name and the article number travel with the identity; the name is not
+	// the model, which stays whatever the payload reported (here a candidate).
+	if rec.DeviceName != "Primo GEN24 3.6 Plus (simulated)" || rec.ArticleNumber != "4,210,141,002" {
+		t.Fatalf("record identity = %+v", rec)
 	}
 	if rec.MeterState != model.StatePresent || rec.BatteryState != model.StateAbsent ||
 		rec.DeviceEventsState != model.StatePresent || rec.IdentityState != model.StatePresent {

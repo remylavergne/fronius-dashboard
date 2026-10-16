@@ -5,6 +5,8 @@ import type { Detection, Device } from '@/lib/schema'
 
 const device: Device = {
   model: 'Fronius Primo GEN24 3.6 Plus',
+  device_name: 'Primo GEN24 3.6 Plus',
+  article_number: '4,210,141,002',
   firmware: '1.24.3',
   serial_number: 'SIMULATED-0001',
   source: '/status/version',
@@ -32,6 +34,8 @@ describe('DevicePanel', () => {
     render(<DevicePanel device={device} detection={detection} />)
 
     expect(screen.getByText('Fronius Primo GEN24 3.6 Plus')).toBeInTheDocument()
+    expect(screen.getByText('Primo GEN24 3.6 Plus')).toBeInTheDocument()
+    expect(screen.getByText('4,210,141,002')).toBeInTheDocument()
     expect(screen.getByText('1.24.3')).toBeInTheDocument()
     expect(screen.getByText('SIMULATED-0001')).toBeInTheDocument()
     // The provenance and the age of the read are visible.
@@ -80,7 +84,7 @@ describe('DevicePanel', () => {
     render(<DevicePanel device={null} detection={null} />)
 
     const identity = screen.getByTestId('device-identity')
-    expect(within(identity).getAllByText('—')).toHaveLength(3)
+    expect(within(identity).getAllByText('—')).toHaveLength(5)
     expect(identity.textContent).not.toMatch(/\d/)
 
     // Without detection, each resource is "unknown".
@@ -93,10 +97,21 @@ describe('DevicePanel', () => {
 
   it('renders a dash for an absent identity field, never an empty string', () => {
     // The schemas forbid '': a read identity can only carry null.
-    render(<DevicePanel device={{ ...device, model: null, firmware: null, serial_number: null }} detection={detection} />)
+    const absent: Device = {
+      ...device,
+      model: null,
+      device_name: null,
+      article_number: null,
+      firmware: null,
+      serial_number: null,
+    }
+    render(<DevicePanel device={absent} detection={detection} />)
 
     const identity = screen.getByTestId('device-identity')
-    expect(within(identity).getAllByText('—')).toHaveLength(3)
+    // Every absent field, including the device name and the article number,
+    // shows the same em-dash placeholder as its neighbours.
+    expect(within(identity).getAllByText('—')).toHaveLength(5)
     expect(identity.textContent).not.toContain('unknown')
+    expect(identity.textContent).not.toContain('null')
   })
 })

@@ -125,7 +125,13 @@ func (c *Client) get(ctx context.Context, ep Endpoint) ([]byte, error) {
 // Each field is a pointer: an absent or empty key stays nil, never "".
 // A nil pointer means "not found in the response", not "absent on the device".
 type Version struct {
-	SerialNumber   *string
+	SerialNumber *string
+	// DeviceName and ArticleNumber are the two identity fields the capture of
+	// 2026-10-16 found in /status/version besides the serial number. DeviceName is
+	// the human name of the unit ("Primo GEN24 3.6 Plus"), NOT its model: no model
+	// key exists in that payload, so Model stays nil rather than carrying a name.
+	DeviceName     *string
+	ArticleNumber  *string
 	Model          *string
 	Firmware       *string
 	DeviceGroup    *string
@@ -148,6 +154,8 @@ type Version struct {
 // is observed: an unknown value is never replaced by the value of another field.
 var (
 	serialNumberKeys = []string{"serialNumber", "serial", "serials"}
+	deviceNameKeys   = []string{"devicename", "deviceName", "name"}
+	articleKeys      = []string{"articleNumber", "article"}
 	modelKeys        = []string{"modelName", "model", "deviceModel", "inverterModel"}
 	firmwareKeys     = []string{"firmwareVersion", "firmwareversion", "firmware", "swVersion", "version"}
 	deviceGroupKeys  = []string{"devicegroup", "deviceGroup"}
@@ -172,6 +180,8 @@ func (c *Client) Version(ctx context.Context) (Version, error) {
 
 	return Version{
 		SerialNumber:   stringField(fields, serialNumberKeys...),
+		DeviceName:     stringField(fields, deviceNameKeys...),
+		ArticleNumber:  stringField(fields, articleKeys...),
 		Model:          stringField(fields, modelKeys...),
 		Firmware:       firmwareOf(fields),
 		DeviceGroup:    stringField(fields, deviceGroupKeys...),

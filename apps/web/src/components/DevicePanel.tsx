@@ -58,8 +58,10 @@ export function DevicePanel({ device, detection }: DevicePanelProps) {
             <>
               <dl className="grid gap-3 sm:grid-cols-3">
                 {identityField(t('system.model'), device.model)}
+                {identityField(t('system.deviceName'), device.device_name)}
                 {identityField(t('system.firmware'), device.firmware)}
                 {identityField(t('system.serialNumber'), device.serial_number)}
+                {identityField(t('system.articleNumber'), device.article_number)}
               </dl>
               <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                 {identityField(t('system.source'), device.source)}
@@ -75,8 +77,10 @@ export function DevicePanel({ device, detection }: DevicePanelProps) {
             <>
               <dl className="grid gap-3 sm:grid-cols-3">
                 {identityField(t('system.model'), null)}
+                {identityField(t('system.deviceName'), null)}
                 {identityField(t('system.firmware'), null)}
                 {identityField(t('system.serialNumber'), null)}
+                {identityField(t('system.articleNumber'), null)}
               </dl>
               <p className="mt-3 text-muted-foreground">{t('system.noIdentity')}</p>
             </>

@@ -91,22 +91,25 @@ l. 128882, 135137), and the value matches the system export;
 exists** in the payload ⇒ `Model` stays empty (the device group
 `devicegroup` = `"P6RW"` is not a model name and is no longer used as a
 fallback). `devicename` = `"Primo GEN24 3.6 Plus"` and
-`articleNumber` = `"4,210,141,002"` are captured and **available but not
-surfaced** by the application.
+`articleNumber` = `"4,210,141,002"` are captured and **surfaced** by the
+application as their own rows (see the decision below).
 
 **Decision.** The identity is read by `internal/detect` and persisted in the
 `device` table. Unproven keys are extracted through an ordered list of candidates,
-and an absent key gives `null`, never `""` nor "unknown". The extracted fields
-without a consumer (`hardwareId`, `devicename`, `articleNumber`) are not
-persisted: exposing `devicename`/`articleNumber` costs 14 files including a
-dedicated SQL migration, measured cost and decision deferred as long as no need names
-them (ADR 0008). Without a successful read, `GET /api/v1/system` returns
+and an absent key gives `null`, never `""` nor "unknown". The two captured fields
+are persisted in `device.device_name` / `device.article_number` (migration
+`0005_device_name.sql`) and exposed by `/api/v1/system`; the panel shows them as
+**Device name** and **Article number**, separate from the model row. `hardwareId`
+stays unused: no consumer names it (ADR 0008). The name is never copied into
+`model`: a name is not a model, and `model` stays `null` because no model key
+exists in that payload. Without a successful read, `GET /api/v1/system` returns
 `device: null` and an `unknown` detection with its reason: the PDF is never
 copied, it describes an instant, not a measurement.
 
-**What remains open.** No capture is needed — the payload is known. The only
-open point is a decision: surface `devicename`/`articleNumber` to the screen, or
-not.
+**What remains open.** Nothing to capture: the payload is known and the two fields
+are in use. Only the model name stays undetermined, and only a future firmware
+that reports a model key — or an explicit decision to display `devicename` *as*
+the model — would change that.
 
 ## 4 and 5. Smart Meter and battery
 

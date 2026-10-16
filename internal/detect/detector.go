@@ -156,6 +156,8 @@ func (d *Detector) DetectOnce(ctx context.Context) (model.Detection, error) {
 		record.Model = deref(version.Model)
 		record.Firmware = deref(version.Firmware)
 		record.SerialNumber = deref(version.SerialNumber)
+		record.DeviceName = deref(version.DeviceName)
+		record.ArticleNumber = deref(version.ArticleNumber)
 	}
 
 	var errs []error

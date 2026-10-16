@@ -414,11 +414,13 @@ func (s *Store) State(ctx context.Context) (map[string]string, error) {
 // An empty string means "not found in the response": the conversion to
 // null is done at the API boundary (internal/api/dto.go), never here.
 type DeviceRecord struct {
-	ReadAtUTC    time.Time
-	Source       string
-	Model        string
-	Firmware     string
-	SerialNumber string
+	ReadAtUTC     time.Time
+	Source        string
+	Model         string
+	DeviceName    string
+	ArticleNumber string
+	Firmware      string
+	SerialNumber  string
 	// Each state carries its cause: "unknown" without a reason is not
 	// usable, and reconstructing the cause at read time would be inventing it.
 	IdentityState      model.DetectionState
@@ -438,16 +440,18 @@ type DeviceRecord struct {
 func (s *Store) SaveDevice(ctx context.Context, d DeviceRecord) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO device (
-			id, read_at_utc, source, model, firmware, serial_number,
+			id, read_at_utc, source, model, device_name, article_number, firmware, serial_number,
 			identity_state, identity_reason,
 			meter_state, meter_source, meter_reason,
 			battery_state, battery_source, battery_reason,
 			device_events_state, device_events_reason)
-		 VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		 ON CONFLICT(id) DO UPDATE SET
 			read_at_utc = excluded.read_at_utc,
 			source = excluded.source,
 			model = excluded.model,
+			device_name = excluded.device_name,
+			article_number = excluded.article_number,
 			firmware = excluded.firmware,
 			serial_number = excluded.serial_number,
 			identity_state = excluded.identity_state,
@@ -460,7 +464,7 @@ func (s *Store) SaveDevice(ctx context.Context, d DeviceRecord) error {
 			battery_reason = excluded.battery_reason,
 			device_events_state = excluded.device_events_state,
 			device_events_reason = excluded.device_events_reason`,
-		formatTS(d.ReadAtUTC), d.Source, d.Model, d.Firmware, d.SerialNumber,
+		formatTS(d.ReadAtUTC), d.Source, d.Model, d.DeviceName, d.ArticleNumber, d.Firmware, d.SerialNumber,
 		string(d.IdentityState), d.IdentityReason,
 		string(d.MeterState), d.MeterSource, d.MeterReason,
 		string(d.BatteryState), d.BatterySource, d.BatteryReason,
@@ -476,7 +480,7 @@ func (s *Store) SaveDevice(ctx context.Context, d DeviceRecord) error {
 // record.
 func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 	row := s.db.QueryRowContext(ctx,
-		`SELECT read_at_utc, source, model, firmware, serial_number,
+		`SELECT read_at_utc, source, model, device_name, article_number, firmware, serial_number,
 		        identity_state, identity_reason,
 		        meter_state, meter_source, meter_reason,
 		        battery_state, battery_source, battery_reason,
@@ -484,12 +488,12 @@ func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 		 FROM device WHERE id = 1`)
 
 	var (
-		readAt, source, modelName, firmware, serial          string
-		identityState, meterState, batteryState, eventsState string
-		identityReason, meterReason, batteryReason           string
-		eventsReason, meterSource, batterySource             string
+		readAt, source, modelName, deviceName, articleNumber, firmware, serial string
+		identityState, meterState, batteryState, eventsState                   string
+		identityReason, meterReason, batteryReason                             string
+		eventsReason, meterSource, batterySource                               string
 	)
-	if err := row.Scan(&readAt, &source, &modelName, &firmware, &serial,
+	if err := row.Scan(&readAt, &source, &modelName, &deviceName, &articleNumber, &firmware, &serial,
 		&identityState, &identityReason,
 		&meterState, &meterSource, &meterReason,
 		&batteryState, &batterySource, &batteryReason,
@@ -507,6 +511,8 @@ func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 		ReadAtUTC:          parsed,
 		Source:             source,
 		Model:              modelName,
+		DeviceName:         deviceName,
+		ArticleNumber:      articleNumber,
 		Firmware:           firmware,
 		SerialNumber:       serial,
 		IdentityState:      model.DetectionState(identityState),

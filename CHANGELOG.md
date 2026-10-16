@@ -9,6 +9,17 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Device name and article number surfaced.** `/status/version`
+  carries `devicename` (`"Primo GEN24 3.6 Plus"`) and `articleNumber`
+  (`"4,210,141,002"`), both captured on hardware; the identity panel now shows
+  them as their own rows beside model, firmware and serial number. Persisted in
+  the `device` table (`device_name`, `article_number`, migration
+  `0005_device_name.sql`) and exposed by `/api/v1/system` as `device_name` and
+  `article_number` — an absent value stays `null`, never an empty string. The
+  model row is untouched: no model key exists in that payload, so `model` stays
+  `null` and the panel keeps showing the placeholder instead of passing a device
+  name off as a model (ADR 0008).
+
 - 2026-10-16 — **Internal `/status/powerflow` fallback for the day and year
   energies.** The Solar API returns `E_Day` and `E_Year` as `null` on firmware
   `1.19.7-1` (`docs/UNKNOWNS.md` #13, cause still unknown); the decided fallback

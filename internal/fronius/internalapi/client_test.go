@@ -146,6 +146,25 @@ func TestVersionExtractsKnownAndCandidateKeys(t *testing.T) {
 			},
 		},
 		{
+			name: "captured identity: name and article number beside the serial",
+			body: `{"serialNumber":"S","devicename":"Primo GEN24 3.6 Plus","articleNumber":"4,210,141,002"}`,
+			want: Version{
+				SerialNumber:  new("S"),
+				DeviceName:    new("Primo GEN24 3.6 Plus"),
+				ArticleNumber: new("4,210,141,002"),
+			},
+		},
+		{
+			name: "no name and no article number: both stay nil",
+			body: `{"serialNumber":"S"}`,
+			want: Version{SerialNumber: new("S")},
+		},
+		{
+			name: "device name is not a model: devicename never fills model",
+			body: `{"serialNumber":"S","devicename":"Primo GEN24 3.6 Plus"}`,
+			want: Version{SerialNumber: new("S"), DeviceName: new("Primo GEN24 3.6 Plus")},
+		},
+		{
 			name: "version read on the proven path swrevisions.GEN24",
 			body: `{"serialNumber":"S","swrevisions":{"GEN24":"1.19.7-1","GEN24PRIMO":"1.19.7-1"},"firmwareVersion":"0.0-unknown"}`,
 			want: Version{SerialNumber: new("S"), Firmware: new("1.19.7-1")},
@@ -232,13 +251,13 @@ func TestVersionExtractsKnownAndCandidateKeys(t *testing.T) {
 func assertVersionEqual(t *testing.T, got, want Version) {
 	t.Helper()
 	gotJSON, _ := json.Marshal(struct {
-		A, B, C, D *string
-		E          *int
-	}{got.SerialNumber, got.Model, got.Firmware, got.DeviceGroup, got.NumberOfPhases})
+		A, B, C, D, E, F *string
+		G                *int
+	}{got.SerialNumber, got.DeviceName, got.ArticleNumber, got.Model, got.Firmware, got.DeviceGroup, got.NumberOfPhases})
 	wantJSON, _ := json.Marshal(struct {
-		A, B, C, D *string
-		E          *int
-	}{want.SerialNumber, want.Model, want.Firmware, want.DeviceGroup, want.NumberOfPhases})
+		A, B, C, D, E, F *string
+		G                *int
+	}{want.SerialNumber, want.DeviceName, want.ArticleNumber, want.Model, want.Firmware, want.DeviceGroup, want.NumberOfPhases})
 	if string(gotJSON) != string(wantJSON) {
 		t.Fatalf("Version = %s, want %s", gotJSON, wantJSON)
 	}

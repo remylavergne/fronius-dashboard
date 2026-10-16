@@ -230,11 +230,13 @@ func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detection
 		return nil, out
 	}
 	return &deviceDTO{
-		Model:        nullableString(record.Model),
-		Firmware:     nullableString(record.Firmware),
-		SerialNumber: nullableString(record.SerialNumber),
-		Source:       record.Source,
-		ReadAtUTC:    formatTime(record.ReadAtUTC),
+		Model:         nullableString(record.Model),
+		DeviceName:    nullableString(record.DeviceName),
+		ArticleNumber: nullableString(record.ArticleNumber),
+		Firmware:      nullableString(record.Firmware),
+		SerialNumber:  nullableString(record.SerialNumber),
+		Source:        record.Source,
+		ReadAtUTC:     formatTime(record.ReadAtUTC),
 	}, out
 }
 

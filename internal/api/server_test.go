@@ -294,6 +294,8 @@ func TestSystemWithDeviceRow(t *testing.T) {
 		ReadAtUTC:          readAt,
 		Source:             internalapi.VersionPath,
 		Model:              "Fronius Primo GEN24 3.6 Plus",
+		DeviceName:         "Primo GEN24 3.6 Plus",
+		ArticleNumber:      "4,210,141,002",
 		Firmware:           "1.24.3",
 		SerialNumber:       "SIMULATED-0001",
 		IdentityState:      model.StatePresent,
@@ -421,11 +423,12 @@ func TestSystemDeviceEmptyStringsBecomeNull(t *testing.T) {
 	if sys.Device == nil {
 		t.Fatal("device must be present")
 	}
-	if sys.Device.Model != nil || sys.Device.Firmware != nil || sys.Device.SerialNumber != nil {
+	if sys.Device.Model != nil || sys.Device.Firmware != nil || sys.Device.SerialNumber != nil ||
+		sys.Device.DeviceName != nil || sys.Device.ArticleNumber != nil {
 		t.Fatalf("empty fields must be null: %+v", sys.Device)
 	}
 	raw := string(body)
-	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, "unknown"} {
+	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, `"device_name":""`, `"article_number":""`, "unknown"} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("the response contains %s: %s", forbidden, raw)
 		}

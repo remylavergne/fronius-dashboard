@@ -94,8 +94,8 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := first.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("counting the migrations: %v", err)
 	}
-	if version != 4 || rows != 4 {
-		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (4, 4)", version, rows)
+	if version != 5 || rows != 5 {
+		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (5, 5)", version, rows)
 	}
 	// The WAL mode must be active (proof that the DSN was actually applied).
 	var journalMode string
@@ -119,7 +119,7 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("counting after second Open: %v", err)
 	}
-	if rows != 4 {
+	if rows != 5 {
 		t.Fatalf("migrations replayed: %d rows", rows)
 	}
 	// The tables remain usable.
@@ -728,6 +728,8 @@ func deviceRecord(ts time.Time, modelName string) DeviceRecord {
 		ReadAtUTC:         ts,
 		Source:            "/status/version",
 		Model:             modelName,
+		DeviceName:        "Primo GEN24 3.6 Plus (simulated)",
+		ArticleNumber:     "4,210,141,002",
 		Firmware:          "1.24.3-sim",
 		SerialNumber:      "SIMULATED-0001",
 		IdentityState:     model.StatePresent,
@@ -771,7 +773,8 @@ func TestDeviceIsASingleReplacedRow(t *testing.T) {
 	if !ok {
 		t.Fatal("a row is expected after two writes")
 	}
-	if !got.ReadAtUTC.Equal(second) || got.Model != "Primo GEN24 3.6" {
+	if !got.ReadAtUTC.Equal(second) || got.Model != "Primo GEN24 3.6" ||
+		got.DeviceName != "Primo GEN24 3.6 Plus (simulated)" || got.ArticleNumber != "4,210,141,002" {
 		t.Fatalf("record = %+v", got)
 	}
 	if got.MeterState != model.StatePresent || got.BatteryState != model.StatePresent {

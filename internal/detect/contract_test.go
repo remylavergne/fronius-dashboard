@@ -121,6 +121,11 @@ func TestCapturedDeviceContract(t *testing.T) {
 	if rec.SerialNumber != "<redacted>" {
 		t.Fatalf("serial = %q, want the redaction marker of the fixture", rec.SerialNumber)
 	}
+	// The captured name and article number are surfaced as themselves — the name
+	// is NOT copied into model, which stays empty because no model key exists.
+	if rec.DeviceName != "Primo GEN24 3.6 Plus" || rec.ArticleNumber != "4,210,141,002" {
+		t.Fatalf("identity = name %q, article %q", rec.DeviceName, rec.ArticleNumber)
+	}
 
 	// The captured event: integer severity 3 -> info, uuid identity, state-code
 	// label as text.

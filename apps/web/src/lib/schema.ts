@@ -81,12 +81,16 @@ export type Health = z.infer<typeof healthSchema>
 /**
  * Device identity.
  *
- * The three identity fields are nullable: a response that does not name the
- * model yields `null`, never `""` nor "unknown". `read_at_utc` is the timestamp
- * of the read from which these values come.
+ * The identity fields are nullable: a response that does not name the model
+ * yields `null`, never `""` nor "unknown". `device_name` is the human name of
+ * the unit (not its model, which stays `null` when the API exposes none) and
+ * `article_number` is the product article number of that model. `read_at_utc`
+ * is the timestamp of the read from which these values come.
  */
 export const deviceSchema = z.object({
   model: z.string().nullable(),
+  device_name: z.string().nullable(),
+  article_number: z.string().nullable(),
   firmware: z.string().nullable(),
   serial_number: z.string().nullable(),
   source: z.string(),

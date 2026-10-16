@@ -263,11 +263,13 @@ type systemDTO struct {
 // The three identity fields are nullable: an empty string in the database means
 // "not found in the response" and becomes `null`, never "" nor "unknown".
 type deviceDTO struct {
-	Model        *string `json:"model"`
-	Firmware     *string `json:"firmware"`
-	SerialNumber *string `json:"serial_number"`
-	Source       string  `json:"source"`
-	ReadAtUTC    string  `json:"read_at_utc"`
+	Model         *string `json:"model"`
+	DeviceName    *string `json:"device_name"`
+	ArticleNumber *string `json:"article_number"`
+	Firmware      *string `json:"firmware"`
+	SerialNumber  *string `json:"serial_number"`
+	Source        string  `json:"source"`
+	ReadAtUTC     string  `json:"read_at_utc"`
 }
 
 // detectionDTO exposes the state of the four internal detections.
