@@ -5,8 +5,8 @@
 ## 0 — Cadrage et preuves
 
 - [x] Créer dépôt Git monorepo et README de développement
-- [ ] Importer les MD du dossier et référencer les sources originales sans publier de secrets
-- [ ] Vérifier l’inventaire matériel/firmware contre l’export PDF
+- [x] Importer les MD du dossier et référencer les sources originales sans publier de secrets
+- [x] Vérifier l’inventaire matériel/firmware contre l’export PDF
 - [ ] Identifier métriques effectivement renvoyées par la Solar API (échantillons anonymisés)
 - [ ] Confirmer absence de Smart Meter et batterie ; détecter dynamiquement leur présence future
 - [x] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
@@ -30,18 +30,18 @@
 
 ## 2 — Architecture et outillage
 
-- [ ] ADR SQLite vs PostgreSQL
-- [ ] ADR SSE vs polling
-- [ ] ADR Solar API vs Modbus vs API interne
-- [ ] ADR authentification et accès distant
-- [ ] ADR stockage/rétention et agrégations
-- [ ] ADR packaging Go statique/Docker Compose/NAS
-- [ ] Initialiser module Go et structure internal/
+- [x] ADR SQLite vs PostgreSQL
+- [x] ADR SSE vs polling
+- [x] ADR Solar API vs Modbus vs API interne
+- [x] ADR authentification et accès distant
+- [x] ADR stockage/rétention et agrégations
+- [x] ADR packaging Go statique/Docker Compose/NAS
+- [x] Initialiser module Go et structure internal/
 - [ ] Initialiser Vite React TypeScript strict et shadcn/ui
 - [ ] Installer Tailwind, TanStack Query, React Router, Recharts, Zod si nécessaire
 - [ ] Mettre en place lint/format/tests Go + frontend
 - [ ] Ajouter CI GitHub Actions ou équivalent
-- [ ] Ajouter exemples `.env.example` sans secrets
+- [x] Ajouter exemples `.env.example` sans secrets
 
 ## 3 — Backend acquisition
 
@@ -202,3 +202,9 @@
   8 s, +1 point toutes les ~5 s, `stale` bascule après 30 s, arrêt du simulateur → 5 cycles en
   échec sans aucune mesure inventée, `last_error` renseigné, `status: degraded`, redémarrage du
   simulateur → reprise automatique avec événement `collector_recovered` sans redémarrer `froniusd`.
+- 2026-10-16 — Étape 10 : fixtures et tests de contrat. Les quatre fixtures sont produites par
+  le simulateur (seed 42, instant `2026-06-21T12:00:00+02:00`) et portent `synthetic: true`,
+  `confidence: "HYPOTHÈSE"` : elles ne remplacent pas une capture réelle. L'item « tests de
+  contrat à partir de réponses **réelles** expurgées » reste donc ouvert jusqu'à l'exécution de
+  `fronius-probe` par l'utilisateur (étape 11) et la promotion des fixtures. Le test de
+  contrat couvre déjà toute la chaîne fixture → client → `model.FromPowerFlow` → `Sample`.

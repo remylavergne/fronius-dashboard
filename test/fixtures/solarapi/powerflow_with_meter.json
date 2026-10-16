@@ -1,0 +1,45 @@
+{
+  "Body": {
+    "Data": {
+      "Site": {
+        "Mode": "produce-only",
+        "P_PV": 3251,
+        "P_Grid": 2485.1,
+        "P_Load": 765.9,
+        "P_Akku": null,
+        "E_Day": 9064.1,
+        "E_Year": 4215488.4,
+        "E_Total": 14236126.1,
+        "rel_Autonomy": 100,
+        "rel_SelfConsumption": 23.6,
+        "Meter_Location_Current": 0
+      },
+      "Inverters": {
+        "1": {
+          "DT": 1,
+          "P": 3251,
+          "E_Day": 9064.1,
+          "E_Year": 4215488.4,
+          "E_Total": 14236126.1
+        }
+      }
+    }
+  },
+  "Head": {
+    "RequestArguments": {},
+    "Status": {
+      "Code": 0,
+      "Reason": "",
+      "UserMessage": ""
+    },
+    "Timestamp": "2026-06-21T12:00:00+02:00"
+  },
+  "_provenance": {
+    "synthetic": true,
+    "source": "fronius-sim",
+    "seed": 42,
+    "instant": "2026-06-21T12:00:00+02:00",
+    "confidence": "HYPOTHÈSE",
+    "note": "forme du JSON non validée sur firmware 1.19.7-1"
+  }
+}

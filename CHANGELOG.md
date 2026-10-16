@@ -76,3 +76,10 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   `--force-backfill`), collecteur en goroutine, API REST, arrêt propre sur
   SIGINT/SIGTERM. Variante de client `GetPowerFlowRealtimeDataAt` (extension
   simulateur `?at=`) réservée au remplissage d'historique.
+- 2026-10-16 — Fixtures et tests de contrat (`test/fixtures/solarapi`,
+  `internal/fronius/solarapi/contract_test.go`) : quatre fixtures générées par
+  le simulateur (seed 42, instant figé) avec champ racine `_provenance`,
+  comparaison table-driven du modèle normalisé attendu, vérification que le
+  champ `_provenance` n'est pas consommé, que `Head.Status.Code = 7` remonte en
+  `device_status`, que la fixture tronquée produit `KindDecode`, et qu'aucune
+  fixture ne contient de donnée sensible.
