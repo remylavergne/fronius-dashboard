@@ -269,6 +269,7 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m := s.baseMeta()
+	m.StepS = new(step.Seconds())
 	s.freshnessMeta(ctx, m)
 	s.writeData(w, http.StatusOK, bucketsToDTO(buckets), m)
 }

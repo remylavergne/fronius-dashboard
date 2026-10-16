@@ -29,6 +29,7 @@ type respMeta struct {
 	SampledAt   *string  `json:"sampled_at"`
 	Stale       *bool    `json:"stale"`
 	StaleAfterS *float64 `json:"stale_after_s"`
+	StepS       *float64 `json:"step_s"`
 }
 
 func testConfig() config.Config {
@@ -433,6 +434,41 @@ func TestTimeSeriesReturnsBucketsAndEmptyRange(t *testing.T) {
 	}
 	if !strings.Contains(string(body), `"data":[]`) {
 		t.Fatalf("une plage vide doit produire un tableau vide : %s", body)
+	}
+}
+
+// TestTimeSeriesExposesResolvedStep : le client ne peut pas déduire le pas de
+// façon fiable (un bucket manquant fausse l'écart entre deux points), le
+// serveur doit donc le lui donner.
+func TestTimeSeriesExposesResolvedStep(t *testing.T) {
+	_, httpSrv, store := newTestServer(t, nil)
+	base := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	insertSample(t, store, base, 100, 1)
+
+	cases := []struct {
+		step string
+		want float64
+	}{
+		{"1h", 3600},
+		{"5m", 300},
+		{"auto", 60}, // 1 minute sur une fenêtre d'une heure
+	}
+	for _, tc := range cases {
+		t.Run(tc.step, func(t *testing.T) {
+			code, _, body := doRequest(t, httpSrv, http.MethodGet,
+				"/api/v1/timeseries?from="+base.Format(time.RFC3339)+"&to="+base.Add(time.Hour).Format(time.RFC3339)+"&step="+tc.step)
+			if code != http.StatusOK {
+				t.Fatalf("status = %d (%s)", code, body)
+			}
+			env := decodeEnvelope(t, body)
+			m := decodeMeta(t, env)
+			if m.StepS == nil {
+				t.Fatal("meta.step_s manquant")
+			}
+			if *m.StepS != tc.want {
+				t.Fatalf("step_s = %v, attendu %v", *m.StepS, tc.want)
+			}
+		})
 	}
 }
 

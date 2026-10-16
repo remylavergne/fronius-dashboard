@@ -44,6 +44,12 @@ type meta struct {
 	SampledAt   *string  `json:"sampled_at,omitempty"`
 	Stale       *bool    `json:"stale,omitempty"`
 	StaleAfterS *float64 `json:"stale_after_s,omitempty"`
+	// StepS est le pas effectivement appliqué par /api/v1/timeseries, en
+	// secondes. Il est indispensable au client : sans lui, déduire le pas de
+	// l'écart entre deux buckets renvoyés donne un résultat faux dès qu'un
+	// bucket manque, et l'interface tracerait alors la courbe en travers du
+	// trou — exactement l'interpolation qu'elle doit éviter.
+	StepS *float64 `json:"step_s,omitempty"`
 }
 
 type apiError struct {
