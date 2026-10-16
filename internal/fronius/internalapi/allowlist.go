@@ -31,6 +31,9 @@ const (
 	// EnvelopeCgi: the payload is Body.Data, an object indexed by component id
 	// (possibly empty).
 	EnvelopeCgi Envelope = "cgi"
+	// EnvelopeCommandResult: the payload is resultData (JWhm's
+	// p.a.CommandResult; l. 75960 unwraps it the same way).
+	EnvelopeCommandResult Envelope = "command_result"
 )
 
 // Endpoint describes an allowed path.
@@ -67,6 +70,15 @@ const (
 	NetworkPath = "/status/network"
 	DevicesPath = "/status/devices"
 	EmrsPath    = "/status/emrs"
+	// The two /commands/* read paths. They are CommandResult envelopes: the
+	// payload is resultData, not a bare body. Neither has ever been probed on
+	// hardware: their behaviour on the device is unverified.
+	UTCTimePath      = "/commands/GetUTCTime"
+	ServiceStatePath = "/commands/GetServiceState"
+	// ServiceGridlimitsAutotest is T_SystemServiceId.GridlimitsAutotest
+	// (l. 116025): the serviceId the application reads the state of. The
+	// application never triggers the self-test, it only reads its state.
+	ServiceGridlimitsAutotest = 21
 )
 
 // ErrNotAllowed is returned by Get for any path outside the allowlist. It is a
@@ -147,6 +159,22 @@ var allowlist = []Endpoint{
 		Digest:   true,
 		Purpose:  "EMRS pin states",
 		Evidence: "bundle: polled registry l. 76029 (module aYRN, Default envelope). Surveyed 2026-10-16 on firmware 1.19.7-1: 200 without Authorization, 214 bytes, 8 fields — four pins (pin1…pin4), each with state and its reason.",
+	},
+	{
+		Path:     UTCTimePath,
+		Class:    ClassRead,
+		Envelope: EnvelopeCommandResult,
+		Digest:   true,
+		Purpose:  "the device's own clock (epoch, in seconds): the local day boundary of the daily energy is computed from it, and a skewed clock silently shifts what \"today\" means",
+		Evidence: "bundle: polled registry l. 76037 (module aYRN, interval 15,000 ms) — the only registry entry declaring user: \"customer\" (l. 76037-76040); direct call site l. 90579; consumer reading epoch l. 128622/128767. CommandResult envelope l. 75960. Verified by cmd/fronius-sim; unverified on hardware (never probed).",
+	},
+	{
+		Path:     ServiceStatePath,
+		Class:    ClassRead,
+		Envelope: EnvelopeCommandResult,
+		Digest:   true,
+		Purpose:  "the state of the grid-limits self-test (grid-limits autotest, serviceId 21): the Solar API does not report it, and only the state is read — the application never triggers the test",
+		Evidence: "bundle: polled registry l. 76043 (module aYRN, interval 5,000 ms, argument serviceId); direct call sites l. 90935/90939; consumer reading state l. 136831; serviceId GridlimitsAutotest = 21 l. 116025. CommandResult envelope l. 75960. Verified by cmd/fronius-sim; unverified on hardware (never probed).",
 	},
 }
 

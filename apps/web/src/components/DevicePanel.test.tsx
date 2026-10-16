@@ -19,6 +19,14 @@ const detection: Detection = {
   battery: { state: 'absent', source: '/components/BatteryManagementSystem/readable', reason: 'no component indexed' },
   internal_api: { state: 'present', source: '/status/version', reason: '' },
   device_events: { state: 'present', source: '/status/activeEvents', reason: '' },
+  clock: {
+    state: 'present',
+    source: '/commands/GetUTCTime',
+    reason: '',
+    device_utc: '2026-10-16T07:00:00.000Z',
+    drift_s: 0,
+  },
+  service: { state: 'present', source: '/commands/GetServiceState', reason: '', value: 'initialized' },
   last_error: '',
 }
 
@@ -88,7 +96,7 @@ describe('DevicePanel', () => {
     expect(identity.textContent).not.toMatch(/\d/)
 
     // Without detection, each resource is "unknown".
-    for (const label of ['Meter', 'Battery', 'Internal API', 'Events']) {
+    for (const label of ['Meter', 'Battery', 'Internal API', 'Events', 'Clock', 'Service state']) {
       const row = resourceRow(label)
       expect(row).toHaveAttribute('data-state', 'unknown')
       expect(within(row).getByText('unknown')).toBeInTheDocument()
@@ -113,5 +121,131 @@ describe('DevicePanel', () => {
     expect(within(identity).getAllByText('—')).toHaveLength(5)
     expect(identity.textContent).not.toContain('unknown')
     expect(identity.textContent).not.toContain('null')
+  })
+
+  it('shows the clock reading and its signed drift when the clock was read', () => {
+    const read: Detection = {
+      ...detection,
+      clock: {
+        state: 'present',
+        source: '/commands/GetUTCTime',
+        reason: '',
+        device_utc: '2026-10-16T09:00:00.000Z',
+        drift_s: 2.5,
+      },
+    }
+    render(<DevicePanel device={null} detection={read} />)
+
+    const clock = resourceRow('Clock')
+    expect(clock).toHaveAttribute('data-state', 'present')
+    // The drift keeps its sign and the device's own time is shown.
+    expect(within(clock).getByText(/\+2\.5 s/)).toBeInTheDocument()
+    expect(within(clock).getByText(/2026/)).toBeInTheDocument()
+    // A small drift is not a warning.
+    expect(within(clock).queryByText(/warning/i)).not.toBeInTheDocument()
+    expect(within(clock).queryByText(/beyond/)).not.toBeInTheDocument()
+  })
+
+  it('treats a drift of exactly 60 s as still tolerable', () => {
+    const read: Detection = {
+      ...detection,
+      clock: {
+        state: 'present',
+        source: '/commands/GetUTCTime',
+        reason: '',
+        device_utc: '2026-10-16T09:00:00.000Z',
+        drift_s: 60,
+      },
+    }
+    render(<DevicePanel device={null} detection={read} />)
+
+    const clock = resourceRow('Clock')
+    expect(within(clock).getByText(/\+60 s/)).toBeInTheDocument()
+    expect(within(clock).queryByText(/warning/i)).not.toBeInTheDocument()
+    expect(within(clock).queryByText(/beyond/)).not.toBeInTheDocument()
+  })
+
+  it('warns once the drift passes 60 s, the words carrying the meaning', () => {
+    const read: Detection = {
+      ...detection,
+      clock: {
+        state: 'present',
+        source: '/commands/GetUTCTime',
+        reason: '',
+        device_utc: '2026-10-16T09:00:00.000Z',
+        drift_s: 61,
+      },
+    }
+    render(<DevicePanel device={null} detection={read} />)
+
+    const clock = resourceRow('Clock')
+    expect(within(clock).getByText(/\+61 s/)).toBeInTheDocument()
+    // The badge and the wording say it: colour alone would say nothing.
+    expect(within(clock).getByText(/Clock drift warning/)).toBeInTheDocument()
+    expect(within(clock).getByText(/beyond the 60 s tolerance/)).toBeInTheDocument()
+  })
+
+  it('warns on a large negative drift too, the threshold being absolute', () => {
+    const read: Detection = {
+      ...detection,
+      clock: {
+        state: 'present',
+        source: '/commands/GetUTCTime',
+        reason: '',
+        device_utc: '2026-10-16T09:00:00.000Z',
+        drift_s: -61,
+      },
+    }
+    render(<DevicePanel device={null} detection={read} />)
+
+    const clock = resourceRow('Clock')
+    expect(within(clock).getByText(/-61 s/)).toBeInTheDocument()
+    expect(within(clock).getByText(/Clock drift warning/)).toBeInTheDocument()
+  })
+
+  it('shows no drift at all when the clock was never read', () => {
+    const unread: Detection = {
+      ...detection,
+      clock: { state: 'unknown', source: '/commands/GetUTCTime', reason: 'access denied (401)' },
+    }
+    render(<DevicePanel device={null} detection={unread} />)
+
+    const clock = resourceRow('Clock')
+    expect(clock).toHaveAttribute('data-state', 'unknown')
+    expect(within(clock).getByText('unknown')).toBeInTheDocument()
+    expect(within(clock).getByText('access denied (401)')).toBeInTheDocument()
+    // An unread clock must not render as a zero drift nor as a 1970 timestamp.
+    expect(within(clock).queryByText(/drift/)).not.toBeInTheDocument()
+    expect(within(clock).queryByText(/1970/)).not.toBeInTheDocument()
+  })
+
+  it('shows the state the device reported for the service', () => {
+    const read: Detection = {
+      ...detection,
+      service: {
+        state: 'present',
+        source: '/commands/GetServiceState',
+        reason: '',
+        value: 'GridlimitsAutotest initialized',
+      },
+    }
+    render(<DevicePanel device={null} detection={read} />)
+
+    const service = resourceRow('Service state')
+    expect(service).toHaveAttribute('data-state', 'present')
+    expect(within(service).getByText(/GridlimitsAutotest initialized/)).toBeInTheDocument()
+  })
+
+  it('shows only the reason for a service that was never read', () => {
+    const unread: Detection = {
+      ...detection,
+      service: { state: 'unknown', source: '/commands/GetServiceState', reason: 'timeout' },
+    }
+    render(<DevicePanel device={null} detection={unread} />)
+
+    const service = resourceRow('Service state')
+    expect(within(service).getByText('unknown')).toBeInTheDocument()
+    expect(within(service).getByText('timeout')).toBeInTheDocument()
+    expect(within(service).queryByText(/value/)).not.toBeInTheDocument()
   })
 })

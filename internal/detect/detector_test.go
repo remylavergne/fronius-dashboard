@@ -114,9 +114,11 @@ type fakeSink struct {
 	events    []model.Event
 	seen      map[string]bool
 	state     map[string]string
+	health    []storage.DeviceHealth
 	saveErr   error
 	stateErr  error
 	insertErr error
+	healthErr error
 }
 
 func newFakeSink() *fakeSink {
@@ -171,6 +173,34 @@ func (s *fakeSink) SetState(_ context.Context, k, v string) error {
 	}
 	s.state[k] = v
 	return nil
+}
+
+func (s *fakeSink) SaveDeviceHealth(_ context.Context, h storage.DeviceHealth) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.healthErr != nil {
+		return s.healthErr
+	}
+	s.health = append(s.health, h)
+	return nil
+}
+
+// savedHealth returns the last health reading recorded, and whether there is
+// one.
+func (s *fakeSink) savedHealth() (storage.DeviceHealth, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.health) == 0 {
+		return storage.DeviceHealth{}, false
+	}
+	return s.health[len(s.health)-1], true
+}
+
+// healthWrites returns how many health readings were recorded.
+func (s *fakeSink) healthWrites() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.health)
 }
 
 // savedDetails returns the detail families recorded so far.

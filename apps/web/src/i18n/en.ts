@@ -222,6 +222,13 @@ export const en = {
   'system.resource.battery': 'Battery',
   'system.resource.internalApi': 'Internal API',
   'system.resource.deviceEvents': 'Events',
+  'system.resource.clock': 'Clock',
+  'system.resource.service': 'Service state',
+  'system.clockDeviceTime': 'device time',
+  'system.clockDrift': 'drift',
+  'system.clockDriftOver': 'beyond the 60 s tolerance',
+  'system.clockDriftWarning': 'Clock drift warning',
+  'system.serviceValue': 'value',
   'system.lastError': 'Last detection error',
   'system.noIdentity':
     'Identity not determined: no successful read. See the detection reason below.',
@@ -353,6 +360,8 @@ export const en = {
   'events.kind.collectorStarted': 'Collector started',
   'events.kind.retentionPurge': 'Retention purge',
   'events.kind.deviceEvent': 'Device event',
+  'events.kind.clockDrift': 'Clock drift',
+  'events.kind.clockDriftRecovered': 'Clock drift recovered',
 
   'energy.title': 'Energy',
   'energy.intro':

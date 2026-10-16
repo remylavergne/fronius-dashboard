@@ -49,6 +49,9 @@ type options struct {
 	deviceEvents          int
 	emitStandardChallenge bool
 	challengeRealm        string
+	// clockOffset shifts the clock served by /commands/GetUTCTime: it lets a
+	// test or a manual run observe drift between the device and the host.
+	clockOffset time.Duration
 }
 
 type simulator struct {
@@ -75,6 +78,7 @@ func main() {
 	flag.IntVar(&opt.deviceEvents, "device-events", 1, "number of active events simulated in /status/activeEvents")
 	flag.BoolVar(&opt.emitStandardChallenge, "emit-standard-challenge", false, "also emits the Digest challenge in the standard www-authenticate header (for curl --digest)")
 	flag.StringVar(&opt.challengeRealm, "challenge-realm", "Webinterface area", "realm of the Digest challenge")
+	flag.DurationVar(&opt.clockOffset, "clock-offset", 0, "shift of the clock served by /commands/GetUTCTime (e.g. 90s)")
 	flag.Parse()
 	opt.fault = *fault
 

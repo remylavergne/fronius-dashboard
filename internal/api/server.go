@@ -212,13 +212,23 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 // last recorded read.
 //
 // Without a row in the database, `device` stays null ("unknown" is not an empty
-// object) and the four detections are unknown with their reason. No state
+// object) and the detections are unknown with their reason. No state
 // is deduced from an absent field: the states are those that were read.
 func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detectionDTO) {
 	record, hasRecord, err := s.store.Device(ctx)
 	if err != nil {
 		s.log.Error("reading device state failed", "error", err)
-		return nil, detectionFrom(storage.DeviceRecord{}, false, "")
+		return nil, detectionFrom(storage.DeviceRecord{}, false, storage.DeviceHealth{}, false, "")
+	}
+
+	// The clock and the service state live on their own single-row reading:
+	// /commands/* is read on the same cycle, but it is not part of the device
+	// identity, and an absent reading must not be confused with an identity
+	// that was never read.
+	health, hasHealth, err := s.store.DeviceHealth(ctx)
+	if err != nil {
+		s.log.Error("reading device health failed", "error", err)
+		health, hasHealth = storage.DeviceHealth{}, false
 	}
 
 	state, err := s.store.State(ctx)
@@ -227,7 +237,7 @@ func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detection
 		state = map[string]string{}
 	}
 
-	out := detectionFrom(record, hasRecord, state[detect.StateLastError])
+	out := detectionFrom(record, hasRecord, health, hasHealth, state[detect.StateLastError])
 	if !hasRecord {
 		return nil, out
 	}
@@ -242,9 +252,15 @@ func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detection
 	}, out
 }
 
-// detectionFrom translates a record into a detection DTO.
-func detectionFrom(record storage.DeviceRecord, hasRecord bool, lastError string) *detectionDTO {
-	out := &detectionDTO{LastError: lastError}
+// detectionFrom translates the persisted rows into a detection DTO.
+func detectionFrom(record storage.DeviceRecord, hasRecord bool,
+	health storage.DeviceHealth, hasHealth bool, lastError string) *detectionDTO {
+
+	out := &detectionDTO{
+		LastError: lastError,
+		Clock:     clockFrom(health, hasHealth),
+		Service:   serviceFrom(health, hasHealth),
+	}
 	if !hasRecord {
 		unknown := detectionResourceDTO{State: string(model.StateUnknown), Reason: detect.ReasonNoReadYet}
 		out.Meter = unknown
@@ -277,6 +293,63 @@ func detectionFrom(record storage.DeviceRecord, hasRecord bool, lastError string
 		Reason: record.DeviceEventsReason,
 	}
 	return out
+}
+
+// clockFrom translates the recorded clock reading into its DTO.
+//
+// The source is the path itself: the reading is the answer of
+// /commands/GetUTCTime, and no other endpoint can produce it. When no read has
+// ever been recorded, the state is unknown, with the reason that says so, and
+// neither the device time nor the drift is emitted.
+func clockFrom(health storage.DeviceHealth, hasHealth bool) clockResourceDTO {
+	if !hasHealth {
+		return clockResourceDTO{detectionResourceDTO: detectionResourceDTO{
+			State:  string(model.StateUnknown),
+			Source: internalapi.UTCTimePath,
+			Reason: detect.ReasonNoHealthRead,
+		}}
+	}
+
+	out := clockResourceDTO{detectionResourceDTO: detectionResourceDTO{
+		State:  string(health.ClockState),
+		Source: internalapi.UTCTimePath,
+		Reason: health.ClockReason,
+	}}
+	// The device time is the flag of a successful read: the storage layer keeps
+	// it NULL when there was none, so a zero here means "not read", never
+	// "read a long time ago" — and the drift is left out with it.
+	if health.ClockDeviceUTC.IsZero() {
+		return out
+	}
+
+	deviceUTC := formatTime(health.ClockDeviceUTC)
+	driftS := (time.Duration(health.ClockDriftMS) * time.Millisecond).Seconds()
+	out.DeviceUTC = &deviceUTC
+	out.DriftS = &driftS
+	return out
+}
+
+// serviceFrom translates the recorded service state into its DTO.
+//
+// `value` is omitted, never "", when nothing was read: the state string is the
+// device's answer, and an empty answer is not an answer.
+func serviceFrom(health storage.DeviceHealth, hasHealth bool) serviceResourceDTO {
+	if !hasHealth {
+		return serviceResourceDTO{detectionResourceDTO: detectionResourceDTO{
+			State:  string(model.StateUnknown),
+			Source: internalapi.ServiceStatePath,
+			Reason: detect.ReasonNoHealthRead,
+		}}
+	}
+
+	return serviceResourceDTO{
+		detectionResourceDTO: detectionResourceDTO{
+			State:  string(health.ServiceState),
+			Source: internalapi.ServiceStatePath,
+			Reason: health.ServiceReason,
+		},
+		Value: nullableString(health.ServiceValue),
+	}
 }
 
 // detectionForCapabilities restores the detection as it was persisted:

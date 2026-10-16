@@ -27,6 +27,12 @@ const (
 	// Its deduplication relies on device_events_seen (internal/storage): the
 	// stream is republished in full on every poll.
 	EventDevice = "device_event"
+	// EventClockDrift: the device's own clock drifted beyond the tolerance of
+	// the daily derivation (/commands/GetUTCTime). Its severity is a warning:
+	// the local day boundary of the daily energy is computed from that clock.
+	EventClockDrift = "clock_drift"
+	// EventClockDriftRecovered: the drift came back within tolerance.
+	EventClockDriftRecovered = "clock_drift_recovered"
 )
 
 // Event is a local event, kept in the database and exposed by

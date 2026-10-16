@@ -43,6 +43,16 @@ func seededStore(t *testing.T, loc *time.Location, base time.Time) *Store {
 	if err := s.SaveDevice(ctx, dev); err != nil {
 		t.Fatalf("SaveDevice: %v", err)
 	}
+	if err := s.SaveDeviceHealth(ctx, DeviceHealth{
+		ReadAtUTC:      base.Add(time.Hour),
+		ClockState:     model.StatePresent,
+		ClockDeviceUTC: base.Add(time.Hour),
+		ClockDriftMS:   -120_000,
+		ServiceState:   model.StatePresent,
+		ServiceValue:   "passed",
+	}); err != nil {
+		t.Fatalf("SaveDeviceHealth: %v", err)
+	}
 	if _, err := s.MarkDeviceEventSeen(ctx, "evt-1", base); err != nil {
 		t.Fatalf("MarkDeviceEventSeen: %v", err)
 	}
@@ -118,6 +128,13 @@ func TestBackupCanBeReadBackAndHoldsEverything(t *testing.T) {
 	}
 	if dev.SerialNumber != "SIMULATED-0001" || dev.IdentityReason != "captured on hardware" {
 		t.Errorf("device in the copy = %+v", dev)
+	}
+	health, found, err := copyStore.DeviceHealth(ctx)
+	if err != nil || !found {
+		t.Fatalf("DeviceHealth (copy): found=%v err=%v", found, err)
+	}
+	if !health.ClockDeviceUTC.Equal(base.Add(time.Hour)) || health.ClockDriftMS != -120_000 {
+		t.Errorf("device health in the copy = %+v", health)
 	}
 	state, err := copyStore.State(ctx)
 	if err != nil {
@@ -272,6 +289,9 @@ func TestRestoreReplacesTheWholeState(t *testing.T) {
 	dev, found, err := target.Device(ctx)
 	if err != nil || !found || dev.SerialNumber != "SIMULATED-0001" {
 		t.Errorf("device after the restore = %+v (found=%v, err=%v)", dev, found, err)
+	}
+	if health, found, err := target.DeviceHealth(ctx); err != nil || !found || health.ServiceValue != "passed" {
+		t.Errorf("device health after the restore = %+v (found=%v, err=%v)", health, found, err)
 	}
 
 	// The watermark travelled: the next rollup picks up where the backup

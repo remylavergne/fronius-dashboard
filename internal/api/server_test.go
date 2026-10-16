@@ -428,9 +428,31 @@ func TestSystemDeviceEmptyStringsBecomeNull(t *testing.T) {
 		t.Fatalf("empty fields must be null: %+v", sys.Device)
 	}
 	raw := string(body)
-	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, `"device_name":""`, `"article_number":""`, "unknown"} {
+	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, `"device_name":""`, `"article_number":""`} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("the response contains %s: %s", forbidden, raw)
+		}
+	}
+
+	// `unknown` is a legitimate state of this response since the clock and the
+	// service blocks exist: an unread clock is `unknown` with its cause, never a
+	// fabricated time. The scan is therefore scoped to what this test is about —
+	// the identity and the four presence detections — where an `unknown` would
+	// still mean a state that was never read.
+	var scan struct {
+		Device    json.RawMessage            `json:"device"`
+		Detection map[string]json.RawMessage `json:"detection"`
+	}
+	if err := json.Unmarshal(env.Data, &scan); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	scanned := map[string]json.RawMessage{"device": scan.Device}
+	for _, name := range []string{"meter", "battery", "internal_api", "device_events"} {
+		scanned[name] = scan.Detection[name]
+	}
+	for name, blob := range scanned {
+		if strings.Contains(string(blob), "unknown") {
+			t.Fatalf("%s contains unknown: %s", name, blob)
 		}
 	}
 }

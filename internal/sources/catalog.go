@@ -563,9 +563,9 @@ var solarAPISources = []Source{
 	},
 }
 
-// internalAPISources is the manufacturer's web interface API: four allowlisted
-// paths the application reads, the five captures that were promoted, the path
-// that was retired, and the read-only candidates the bundle extraction found.
+// internalAPISources is the manufacturer's web interface API: the allowlisted
+// paths the application reads, the captures that were promoted, the path that
+// was retired, and the read-only candidates the bundle extraction found.
 var internalAPISources = []Source{
 	{
 		ID:         "internalapi.version",
@@ -796,27 +796,42 @@ var internalAPISources = []Source{
 	{
 		ID:        "internalapi.utc_time",
 		Transport: InternalAPI,
-		Path:      "/commands/GetUTCTime",
+		Path:      internalapi.UTCTimePath,
 		Method:    "GET",
-		Provides:  "The device clock in UTC",
-		State:     StateCandidate,
-		Proofs: []Proof{
-			{Tag: bundleTag, Detail: "polled registry entry (l. 76037), interval 15 s, envelope CommandResult, the single entry declaring user: \"customer\""},
+		Provides:  "The device's own clock (epoch, seconds). The System screen shows the drift between it and the host clock: the inverter's own day counter resets on ITS midnight, so a skewed clock silently shifts what \"today\" means",
+		State:     StateCalled,
+		Called:    true,
+		Fields: []Field{
+			{Path: "resultData.epoch", Type: "int", Status: FieldDisplayed,
+				Why: "the device's time in seconds; a drift beyond ±60 s is a warning — the daily derivation tolerates a baseline reading only within ten minutes of the local midnight"},
+			{Path: "success", Type: "bool", Status: FieldValidated,
+				Why: "the envelope's own flag: a success other than true is a failed read, reported as unknown with its reason, never as a time"},
 		},
-		Docs: []string{"docs/ENDPOINTS.md § Declared roles (client only)"},
-		Note: "would let the collector compare its clock with the device's — a diagnostic, not a measurement.",
+		Proofs: []Proof{
+			{Tag: bundleTag, Detail: "polled registry entry (l. 76037-76040), interval 15 s, envelope CommandResult, the single entry declaring user: \"customer\"; direct site l. 90579; consumers reading epoch l. 128622/128767; envelope unwrapped at l. 75960"},
+			{Tag: bundleTag, Detail: "served by cmd/fronius-sim (the -clock-offset flag shifts it on purpose); UNVERIFIED on hardware — no capture exists for this path"},
+		},
+		Docs: []string{"docs/ENDPOINTS.md § Executable allowlist", "docs/SOURCES.md"},
 	},
 	{
 		ID:        "internalapi.service_state",
 		Transport: InternalAPI,
-		Path:      "/commands/GetServiceState",
+		Path:      internalapi.ServiceStatePath,
 		Query:     "serviceId=<id>",
 		Method:    "GET",
-		Provides:  "State of one system service (the grid-code autotest is the declared use)",
-		State:     StateCandidate,
-		Proofs: []Proof{
-			{Tag: bundleTag, Detail: "registry entry (l. 76043) with the only argument of the registry: serviceId from T_SystemServiceId"},
+		Provides:  "The state of the grid-limits self-test (grid-limits autotest, serviceId 21), shown on the System screen. Only the state is read: the application never triggers the test",
+		State:     StateCalled,
+		Called:    true,
+		Fields: []Field{
+			{Path: "resultData.state", Type: "string", Status: FieldDisplayed,
+				Why: "the self-test state as the device names it; when the envelope's success is false the manufacturer's own client renders BLOCKED — the vocabulary is the device's and is unverified"},
+			{Path: "success", Type: "bool", Status: FieldValidated,
+				Why: "the envelope's own flag: false marks a failed read (unknown state with its reason) while the reported value is still shown"},
 		},
-		Docs: []string{"docs/ENDPOINTS.md § Method, arguments and DTO per path"},
+		Proofs: []Proof{
+			{Tag: bundleTag, Detail: "polled registry entry (l. 76043), interval 5 s, envelope CommandResult, the only argument of the registry: serviceId from T_SystemServiceId; direct sites l. 90935/90939; consumer reading state l. 136831; GridlimitsAutotest = 21 (l. 116025)"},
+			{Tag: bundleTag, Detail: "served by cmd/fronius-sim (an unknown serviceId answers success: false, the shape that drives the BLOCKED fallback); UNVERIFIED on hardware — no capture exists for this path"},
+		},
+		Docs: []string{"docs/ENDPOINTS.md § Executable allowlist", "docs/SOURCES.md"},
 	},
 }

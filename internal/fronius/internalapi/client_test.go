@@ -42,10 +42,10 @@ func (d *countingDoer) Do(r *http.Request) (*http.Response, error) {
 
 func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 	list := Allowlist()
-	// Four paths the application needs, four diagnostics the survey of
-	// 2026-10-16 justified: every addition is a documented decision.
-	if len(list) != 9 {
-		t.Fatalf("allowlist = %d entries, want 9", len(list))
+	// Nine paths the application needs and the survey of 2026-10-16 justified,
+	// plus the two /commands/* reads: every addition is a documented decision.
+	if len(list) != 11 {
+		t.Fatalf("allowlist = %d entries, want 11", len(list))
 	}
 	want := map[string]Envelope{
 		VersionPath:      EnvelopeDefault,
@@ -59,6 +59,9 @@ func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 		NetworkPath: EnvelopeDefault,
 		DevicesPath: EnvelopeDefault,
 		EmrsPath:    EnvelopeDefault,
+		// The two /commands/* reads: CommandResult envelopes, resultData payload.
+		UTCTimePath:      EnvelopeCommandResult,
+		ServiceStatePath: EnvelopeCommandResult,
 	}
 	for _, ep := range list {
 		if ep.Class != ClassRead {
@@ -100,10 +103,10 @@ func TestAllowlistRejectsEverythingElse(t *testing.T) {
 	for _, path := range []string{
 		"/config/modbus",
 		"/status/events",
-		// The diagnostic paths the survey of 2026-10-16 justified are now
-		// allowed; these four remain outside the list.
+		// The diagnostic paths the survey of 2026-10-16 justified, and the two
+		// /commands/* reads, are now allowed; these remain outside the list.
 		"/status/powerflow",
-		"/commands/GetUTCTime",
+		"/commands/StandbyState",
 		"/components/DataManager/readable",
 		"/status/version/../events",
 		"",
@@ -539,5 +542,229 @@ func TestNewValidatesBaseURL(t *testing.T) {
 		if _, err := New(url, &http.Client{}, time.Second, nil); err == nil {
 			t.Fatalf("URL %q should have been refused", url)
 		}
+	}
+}
+
+// TestAllowlistQueryNeverWidens: the registered key is the path without its
+// query. A query-bearing path is refused before any request, so it can never
+// reach a path outside the table.
+func TestAllowlistQueryNeverWidens(t *testing.T) {
+	if _, ok := Lookup(ServiceStatePath); !ok {
+		t.Fatalf("%s must be listed", ServiceStatePath)
+	}
+	for _, path := range []string{
+		ServiceStatePath + "?serviceId=21",
+		ServiceStatePath + "?serviceId=999",
+		UTCTimePath + "?x=1",
+	} {
+		if _, ok := Lookup(path); ok {
+			t.Fatalf("%q must not match the allowlist: it carries a query", path)
+		}
+	}
+
+	var doer countingDoer
+	doer.inner = &http.Client{}
+	c := newClient(t, "http://127.0.0.1:1", &doer)
+	if _, err := c.Get(context.Background(), ServiceStatePath+"?serviceId=21"); !errors.Is(err, ErrNotAllowed) {
+		t.Fatalf("Get with a query: %v, want ErrNotAllowed", err)
+	}
+	if got := doer.count.Load(); got != 0 {
+		t.Fatalf("requests emitted = %d, want 0", got)
+	}
+}
+
+// TestUTCTimeDecodesEpochSeconds: `epoch` is in seconds, and the instant is
+// exact and in UTC.
+func TestUTCTimeDecodesEpochSeconds(t *testing.T) {
+	instant := time.Date(2026, 10, 16, 12, 34, 56, 0, time.UTC)
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"numeric epoch", fmt.Sprintf(`{"resultData":{"epoch":%d},"success":true}`, instant.Unix())},
+		// Tolerant: an integral epoch serialized as a string decodes the same.
+		{"epoch as an integral string", fmt.Sprintf(`{"resultData":{"epoch":"%d"},"success":true}`, instant.Unix())},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var uri string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				uri = r.URL.RequestURI()
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			got, err := newClient(t, srv.URL, &http.Client{}).UTCTime(context.Background())
+			if err != nil {
+				t.Fatalf("UTCTime: %v", err)
+			}
+			if !got.Equal(instant) {
+				t.Fatalf("UTCTime = %v, want %v", got, instant)
+			}
+			if got.Location() != time.UTC {
+				t.Fatalf("location = %v, want UTC", got.Location())
+			}
+			if uri != UTCTimePath {
+				t.Fatalf("request URI = %q, want %q", uri, UTCTimePath)
+			}
+		})
+	}
+}
+
+// TestUTCTimeDecodeErrors: a fractional, absent or non-numeric `epoch`, and a
+// missing resultData, are decode errors — never a silent zero time.
+func TestUTCTimeDecodeErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"fractional epoch", `{"resultData":{"epoch":1755.5},"success":true}`},
+		{"absent epoch", `{"resultData":{},"success":true}`},
+		{"non-numeric epoch", `{"resultData":{"epoch":"soon"},"success":true}`},
+		{"missing resultData", `{"success":true}`},
+		{"null resultData", `{"resultData":null,"success":true}`},
+		{"truncated body", `{"resultData":{"epoch":`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer srv.Close()
+
+			got, err := newClient(t, srv.URL, &http.Client{}).UTCTime(context.Background())
+			if err == nil {
+				t.Fatalf("a decode error was expected, got %v", got)
+			}
+			if !got.IsZero() {
+				t.Fatalf("a failed read must not return an instant: %v", got)
+			}
+			if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
+				t.Fatalf("nature = %q, want %q: %v", kind, froniuserr.KindDecode, err)
+			}
+		})
+	}
+}
+
+// TestUTCTimeUnauthorized: an HTTP 401 is KindUnauthorized, whether the server
+// answers it directly or the Digest transport reports an already-classified
+// refusal. The kind must survive the client's plumbing (the taxonomy fix).
+func TestUTCTimeUnauthorized(t *testing.T) {
+	t.Run("plain 401", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer srv.Close()
+
+		_, err := newClient(t, srv.URL, &http.Client{}).UTCTime(context.Background())
+		if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindUnauthorized {
+			t.Fatalf("nature = %q, want %q: %v", kind, froniuserr.KindUnauthorized, err)
+		}
+	})
+
+	t.Run("classified refusal from the Digest transport", func(t *testing.T) {
+		refusal := &froniuserr.Error{
+			Kind:       froniuserr.KindUnauthorized,
+			Endpoint:   UTCTimePath,
+			HTTPStatus: http.StatusUnauthorized,
+			Err: fmt.Errorf("%w: HTTP %d after the challenge",
+				froniuserr.ErrRefusedAfterChallenge, http.StatusUnauthorized),
+		}
+		_, err := newClient(t, "http://127.0.0.1:1", refusalAfterChallengeDoer{refusal}).UTCTime(context.Background())
+		if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindUnauthorized {
+			t.Fatalf("nature = %q, want %q: %v", kind, froniuserr.KindUnauthorized, err)
+		}
+		if !errors.Is(err, froniuserr.ErrRefusedAfterChallenge) {
+			t.Fatalf("the challenge-then-refusal sequence was lost: %v", err)
+		}
+	})
+}
+
+// TestServiceStateVerbatim: the state string comes back untouched, and the
+// request actually carried serviceId=21 on the exact path.
+func TestServiceStateVerbatim(t *testing.T) {
+	var uri, serviceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uri = r.URL.RequestURI()
+		serviceID = r.URL.Query().Get("serviceId")
+		_, _ = io.WriteString(w, `{"resultData":{"state":"Idle"},"success":true}`)
+	}))
+	defer srv.Close()
+
+	got, err := newClient(t, srv.URL, &http.Client{}).ServiceState(context.Background(), ServiceGridlimitsAutotest)
+	if err != nil {
+		t.Fatalf("ServiceState: %v", err)
+	}
+	if got != "Idle" {
+		t.Fatalf("state = %q, want %q", got, "Idle")
+	}
+	if want := ServiceStatePath + "?serviceId=21"; uri != want {
+		t.Fatalf("request URI = %q, want %q", uri, want)
+	}
+	if serviceID != "21" {
+		t.Fatalf("serviceId = %q, want 21", serviceID)
+	}
+}
+
+// TestServiceStateBlockedFallback: when the envelope's success is not true, the
+// value is BLOCKED, as the manufacturer's own client renders it.
+func TestServiceStateBlockedFallback(t *testing.T) {
+	for _, body := range []string{
+		`{"success":false}`,
+		`{"resultData":{"state":"Idle"},"success":false}`,
+		`{"resultData":{},"success":false}`,
+		`{"resultData":{}}`, // no success: not true
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, body)
+		}))
+		got, err := newClient(t, srv.URL, &http.Client{}).ServiceState(context.Background(), ServiceGridlimitsAutotest)
+		srv.Close()
+
+		if err != nil {
+			t.Fatalf("body %s: ServiceState: %v", body, err)
+		}
+		if got != ServiceStateBlocked {
+			t.Fatalf("body %s: state = %q, want %q", body, got, ServiceStateBlocked)
+		}
+	}
+}
+
+// TestServiceStateDecodeErrors: on success, a missing resultData or a missing
+// `state` is a decode error, never an invented string.
+func TestServiceStateDecodeErrors(t *testing.T) {
+	for _, body := range []string{
+		`{"success":true}`,
+		`{"resultData":{},"success":true}`,
+		`{"resultData":null,"success":true}`,
+		`{"resultData":{"state":`,
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, body)
+		}))
+		_, err := newClient(t, srv.URL, &http.Client{}).ServiceState(context.Background(), ServiceGridlimitsAutotest)
+		srv.Close()
+
+		if err == nil {
+			t.Fatalf("body %s: a decode error was expected", body)
+		}
+		if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
+			t.Fatalf("body %s: nature = %q, want %q", body, kind, froniuserr.KindDecode)
+		}
+	}
+}
+
+// TestServiceStateNotFound: a 404 keeps its kind.
+func TestServiceStateNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	got, err := newClient(t, srv.URL, &http.Client{}).ServiceState(context.Background(), ServiceGridlimitsAutotest)
+	if got != "" {
+		t.Fatalf("a failed read must not return a state: %q", got)
+	}
+	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindNotFound {
+		t.Fatalf("nature = %q, want %q: %v", kind, froniuserr.KindNotFound, err)
 	}
 }

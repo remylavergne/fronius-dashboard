@@ -324,13 +324,15 @@ type deviceDTO struct {
 	ReadAtUTC     string  `json:"read_at_utc"`
 }
 
-// detectionDTO exposes the state of the four internal detections.
+// detectionDTO exposes the state of the internal detections.
 type detectionDTO struct {
 	ReadAtUTC    *string              `json:"read_at_utc"`
 	Meter        detectionResourceDTO `json:"meter"`
 	Battery      detectionResourceDTO `json:"battery"`
 	InternalAPI  detectionResourceDTO `json:"internal_api"`
 	DeviceEvents detectionResourceDTO `json:"device_events"`
+	Clock        clockResourceDTO     `json:"clock"`
+	Service      serviceResourceDTO   `json:"service"`
 	LastError    string               `json:"last_error"`
 }
 
@@ -339,6 +341,27 @@ type detectionResourceDTO struct {
 	State  string `json:"state"`
 	Source string `json:"source"`
 	Reason string `json:"reason"`
+}
+
+// clockResourceDTO is the reading of the device's own clock
+// (/commands/GetUTCTime); `drift_s` is the device's clock minus the host's.
+//
+// `device_utc` and `drift_s` are OMITTED — never `0`, never a 1970 timestamp —
+// when the clock was not read: an unread clock has no drift (decision 4 of ADR
+// 0008, "unmeasured data is not computed"). A drift of 0 s that was measured is
+// emitted, so "measured, and on time" stays distinguishable from "not read".
+type clockResourceDTO struct {
+	detectionResourceDTO
+	DeviceUTC *string  `json:"device_utc,omitempty"`
+	DriftS    *float64 `json:"drift_s,omitempty"`
+}
+
+// serviceResourceDTO is the reading of one system service's state
+// (/commands/GetServiceState); `value` is the state string the device reported,
+// omitted when nothing was read.
+type serviceResourceDTO struct {
+	detectionResourceDTO
+	Value *string `json:"value,omitempty"`
 }
 
 func formatTime(t time.Time) string {

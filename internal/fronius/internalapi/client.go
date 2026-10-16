@@ -2,8 +2,9 @@
 //
 // The only request builder is Get: the verb is the constant http.MethodGet, no
 // method parameter exists in this API. Every path first goes through the
-// allowlist (allowlist.go), which contains exactly four entries; an absent path
-// is refused before any URL construction.
+// allowlist (allowlist.go); an absent path is refused before any URL
+// construction. The allowlist is an exact-path lookup: a registered key is the
+// path without its query, and a query can never widen what the table allows.
 package internalapi
 
 import (
@@ -62,7 +63,8 @@ func New(baseURL string, doer fronius.Doer, timeout time.Duration, log *slog.Log
 // Get reads a path from the allowlist and returns the raw body.
 //
 // No decoding is done here: the envelope depends on the endpoint
-// (EnvelopeDefault or EnvelopeCgi) and is handled by the typed methods.
+// (EnvelopeDefault, EnvelopeCgi or EnvelopeCommandResult) and is handled by the
+// typed methods.
 func (c *Client) Get(ctx context.Context, path string) ([]byte, error) {
 	ep, ok := Lookup(path)
 	if !ok {
@@ -72,6 +74,13 @@ func (c *Client) Get(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (c *Client) get(ctx context.Context, ep Endpoint) ([]byte, error) {
+	return c.getQuery(ctx, ep, nil)
+}
+
+// getQuery is get with an optional query string. The allowlist is consulted by
+// the caller on the bare path: a query is a request argument, never a way to
+// reach a path outside the table.
+func (c *Client) getQuery(ctx context.Context, ep Endpoint, query url.Values) ([]byte, error) {
 	if c.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -79,6 +88,9 @@ func (c *Client) get(ctx context.Context, ep Endpoint) ([]byte, error) {
 	}
 
 	endpointURL := c.base.JoinPath(ep.Path)
+	if len(query) > 0 {
+		endpointURL.RawQuery = query.Encode()
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpointURL.String(), nil)
 	if err != nil {
 		return nil, &froniuserr.Error{Kind: froniuserr.KindTransport, Endpoint: ep.Path, Err: err}
@@ -277,6 +289,123 @@ func (c *Client) ActiveEvents(ctx context.Context) ([]json.RawMessage, error) {
 		Endpoint: ep.Path,
 		Err:      fmt.Errorf("unexpected shape: neither indexed Body.Data nor root array"),
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Device clock and service state
+// ---------------------------------------------------------------------------
+
+// ServiceStateBlocked is the value ServiceState returns when the device does
+// not report success: the manufacturer's own client renders that answer as
+// "BLOCKED" (bundle l. 136831), so an unknown service state is never silently
+// an empty string.
+const ServiceStateBlocked = "BLOCKED"
+
+// UTCTime reads /commands/GetUTCTime: the device's own clock.
+//
+// The CommandResult payload is resultData; `epoch` is in **seconds**. A missing
+// resultData, a missing `epoch` or a non-integral one is a decode error: a zero
+// time would be a fabricated instant, and the drift computed from it must never
+// be invented (docs/adr/0008-exposed-data-scope.md).
+func (c *Client) UTCTime(ctx context.Context) (time.Time, error) {
+	var zero time.Time
+	ep, ok := Lookup(UTCTimePath)
+	if !ok {
+		return zero, fmt.Errorf("%w: %q", ErrNotAllowed, UTCTimePath)
+	}
+	body, err := c.get(ctx, ep)
+	if err != nil {
+		return zero, err
+	}
+
+	fields, err := decodeObject(ep.Path, body)
+	if err != nil {
+		return zero, err
+	}
+	result, err := resultDataOf(ep.Path, fields)
+	if err != nil {
+		return zero, err
+	}
+
+	raw, ok := lookupFold(result, "epoch")
+	if !ok {
+		return zero, &froniuserr.Error{
+			Kind:     froniuserr.KindDecode,
+			Endpoint: ep.Path,
+			Err:      fmt.Errorf("resultData.epoch absent from the response"),
+		}
+	}
+	// json.Number accepts an integral literal and an integral one serialized as
+	// a string; a fractional or non-numeric value fails the Int64 conversion
+	// below. There is no silent truncation.
+	var epoch json.Number
+	if err := json.Unmarshal(raw, &epoch); err != nil {
+		return zero, jsonDecodeError(ep.Path, fmt.Errorf("epoch: %w", err))
+	}
+	seconds, err := epoch.Int64()
+	if err != nil {
+		return zero, jsonDecodeError(ep.Path, fmt.Errorf("epoch %q is not integral seconds: %w", epoch, err))
+	}
+	return time.Unix(seconds, 0).UTC(), nil
+}
+
+// ServiceState reads /commands/GetServiceState for one serviceId: the state of
+// a system service. The application uses ServiceGridlimitsAutotest (21), the
+// state of the grid-limits self-test.
+//
+// When the device answers with a `success` different from true, the value is
+// ServiceStateBlocked ("BLOCKED"), as the manufacturer's own client renders it.
+// Otherwise resultData.state is returned verbatim; a missing resultData or a
+// missing `state` is a decode error.
+func (c *Client) ServiceState(ctx context.Context, serviceID int) (string, error) {
+	ep, ok := Lookup(ServiceStatePath)
+	if !ok {
+		return "", fmt.Errorf("%w: %q", ErrNotAllowed, ServiceStatePath)
+	}
+	// The allowlist was consulted on the bare path: the query is a request
+	// argument, not a way to widen the table.
+	query := url.Values{"serviceId": {strconv.Itoa(serviceID)}}
+	body, err := c.getQuery(ctx, ep, query)
+	if err != nil {
+		return "", err
+	}
+
+	fields, err := decodeObject(ep.Path, body)
+	if err != nil {
+		return "", err
+	}
+	if success := boolField(fields, "success"); success == nil || !*success {
+		return ServiceStateBlocked, nil
+	}
+	result, err := resultDataOf(ep.Path, fields)
+	if err != nil {
+		return "", err
+	}
+	state := stringField(result, "state")
+	if state == nil {
+		return "", &froniuserr.Error{
+			Kind:     froniuserr.KindDecode,
+			Endpoint: ep.Path,
+			Err:      fmt.Errorf("resultData.state absent from the response"),
+		}
+	}
+	return *state, nil
+}
+
+// resultDataOf returns resultData of a `CommandResult` envelope.
+//
+// A response without an object resultData is unreadable (KindDecode), never an
+// empty success.
+func resultDataOf(endpoint string, fields map[string]json.RawMessage) (map[string]json.RawMessage, error) {
+	result, ok := nestedObject(fields, "resultData")
+	if !ok || result == nil {
+		return nil, &froniuserr.Error{
+			Kind:     froniuserr.KindDecode,
+			Endpoint: endpoint,
+			Err:      fmt.Errorf("resultData absent from the response"),
+		}
+	}
+	return result, nil
 }
 
 // ---------------------------------------------------------------------------

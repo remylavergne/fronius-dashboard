@@ -112,12 +112,36 @@ export const detectionResourceSchema = z.object({
 })
 export type DetectionResource = z.infer<typeof detectionResourceSchema>
 
+/**
+ * Reading of the device's own clock (`/commands/GetUTCTime`). `drift_s` is the
+ * device's clock minus the host's, in seconds.
+ *
+ * `device_utc` and `drift_s` are absent — never `0` nor a 1970 timestamp —
+ * when the clock could not be read: an unread clock has no drift.
+ */
+export const clockResourceSchema = detectionResourceSchema.extend({
+  device_utc: timestamp.optional(),
+  drift_s: z.number().optional(),
+})
+export type ClockResource = z.infer<typeof clockResourceSchema>
+
+/**
+ * Reading of one system service (`/commands/GetServiceState`); `value` is the
+ * state string the device reported, absent when nothing was read.
+ */
+export const serviceResourceSchema = detectionResourceSchema.extend({
+  value: z.string().optional(),
+})
+export type ServiceResource = z.infer<typeof serviceResourceSchema>
+
 export const detectionSchema = z.object({
   read_at_utc: timestamp.nullable(),
   meter: detectionResourceSchema,
   battery: detectionResourceSchema,
   internal_api: detectionResourceSchema,
   device_events: detectionResourceSchema,
+  clock: clockResourceSchema,
+  service: serviceResourceSchema,
   last_error: z.string(),
 })
 export type Detection = z.infer<typeof detectionSchema>

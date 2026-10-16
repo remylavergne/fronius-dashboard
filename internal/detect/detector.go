@@ -1,6 +1,7 @@
 // Package detect periodically polls the device's internal paths
-// to establish its identity, the presence of a meter and of a battery, and
-// its active events.
+// to establish its identity, the presence of a meter and of a battery, its
+// active events, and the state of its own clock and of its grid-limits
+// self-test.
 //
 // Invariants:
 //   - three states, never two: `absent` is a conclusion, `unknown`
@@ -53,6 +54,11 @@ const (
 	ReasonRefusedAfterChallenge = "challenged, then refused: check the credentials and the role they carry"
 	// ReasonNoReadYet: no identity read has succeeded yet.
 	ReasonNoReadYet = "no identity read has succeeded yet"
+	// ReasonNoHealthRead: no device clock or service state read has succeeded
+	// yet — the detector never ran a cycle with a Health reader, or it never
+	// recorded one. It is the reason the API shows on an absent reading; the
+	// per-path cause of an attempted read lives in the reading itself.
+	ReasonNoHealthRead = "no clock or service read has succeeded yet"
 	// deviceEventMessage is the fallback message of an event with no text.
 	deviceEventMessage = "Device event"
 	// maxReasonLength bounds the cause taken from an error in a state.
@@ -83,6 +89,22 @@ type Sink interface {
 	MarkDeviceEventSeen(ctx context.Context, key string, seenAt time.Time) (bool, error)
 	InsertEvent(ctx context.Context, e model.Event) error
 	SetState(ctx context.Context, k, v string) error
+	// SaveDeviceHealth records the single-row reading of the device's own clock
+	// and of its grid-limits self-test, overwriting the previous one.
+	SaveDeviceHealth(ctx context.Context, h storage.DeviceHealth) error
+}
+
+// HealthReader reads the device's own clock and the state of one of its system
+// services: the two /commands/* paths. *internalapi.Client satisfies it.
+//
+// It is deliberately separate from Reader: the /commands/* paths are a
+// capability of their own, and a detector built without it must keep polling
+// the other paths.
+type HealthReader interface {
+	// UTCTime reads /commands/GetUTCTime: the device's own clock.
+	UTCTime(ctx context.Context) (time.Time, error)
+	// ServiceState reads /commands/GetServiceState for one serviceId.
+	ServiceState(ctx context.Context, serviceID int) (string, error)
 }
 
 // Detector polls the internal paths and persists the result.
@@ -98,6 +120,12 @@ type Detector struct {
 	// built without it reads the internal paths only, which is what the tests of
 	// the internal detection do.
 	Solar SolarReader
+	// Health reads the device's own clock and the state of its grid-limits
+	// self-test (the two /commands/* paths). It is optional in the same way as
+	// Solar: a detector built without it reads the other paths only, and
+	// records no health reading at all — an `unknown` row would claim a read
+	// attempt that never happened.
+	Health HealthReader
 	// CredentialsConfigured indicates that credentials are available. It
 	// is only used to distinguish "the device requires authentication"
 	// from "no credential has been provided".
@@ -110,6 +138,10 @@ type Detector struct {
 	// no credential is configured: they are no longer polled until
 	// restart, and their state remains `unknown`.
 	abandoned map[string]bool
+	// drifting remembers the drift verdict of the last clock read that
+	// answered: the drift events are emitted on the transition, never on every
+	// cycle (the collector's error/recovered discipline).
+	drifting bool
 }
 
 // Run detects until the context is cancelled, then returns nil.
@@ -156,6 +188,14 @@ func (d *Detector) DetectOnce(ctx context.Context) (model.Detection, error) {
 	eventsDetection, eventsErr := d.readEvents(ctx, now)
 	detection.DeviceEvents = eventsDetection
 
+	// The device's own clock and the state of its grid-limits self-test: two
+	// reads of this same slow cycle. They are neither a presence nor a
+	// measurement of the installation, so they are recorded on their own row
+	// (internal/storage: device_health) and, for the drift, published as
+	// events.
+	health, healthErr := d.readHealth(ctx, now)
+	driftErr := d.clockDriftEvents(ctx, now, health.Clock)
+
 	// The diagnostic families share this cycle: identity, presence and the
 	// device's own description of itself all change rarely. They are read after
 	// the state above so that a slow or failing detail path never delays the
@@ -194,6 +234,12 @@ func (d *Detector) DetectOnce(ctx context.Context) (model.Detection, error) {
 	var errs []error
 	if eventsErr != nil {
 		errs = append(errs, eventsErr)
+	}
+	if healthErr != nil {
+		errs = append(errs, healthErr)
+	}
+	if driftErr != nil {
+		errs = append(errs, driftErr)
 	}
 	if err := d.Sink.SaveDetails(ctx, details); err != nil {
 		d.log().Warn("device detail not recorded", "error", err)
@@ -361,6 +407,168 @@ func firstCause(d model.Detection) string {
 		}
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------------------
+// Device clock and service state
+// ---------------------------------------------------------------------------
+
+// ClockDriftThreshold is the absolute drift beyond which the device's clock is
+// reported. 60 s is an order of magnitude below the 10-minute tolerance of the
+// daily derivation (internal/storage/daily_derived.go), which computes every
+// local day boundary from that same clock: a drift that approaches the
+// tolerance silently shifts what "today" means, and it must be visible long
+// before it does.
+//
+// The comparison is strict: a drift of exactly 60 s is within tolerance, and it
+// is the second that follows that is reported.
+const ClockDriftThreshold = 60 * time.Second
+
+// readHealth reads the device's own clock and the state of its grid-limits
+// self-test, and records the single-row reading.
+//
+// The row is overwritten on every cycle, a failed read included: a failed read
+// records `unknown` with its cause and no device time. Keeping the last good
+// reading instead would present a value of an earlier cycle as the current
+// state, and only the row's read_at_utc would give it away — an unread clock
+// has no drift, so it must not come back with one (decision 4 of ADR 0008,
+// "unmeasured data is not computed").
+func (d *Detector) readHealth(ctx context.Context, now time.Time) (model.DeviceHealth, error) {
+	if d.Health == nil {
+		// No reader: nothing was read, so nothing is recorded.
+		return model.DeviceHealth{}, nil
+	}
+
+	health := model.DeviceHealth{
+		Clock:   d.readClock(ctx),
+		Service: d.readService(ctx),
+	}
+
+	err := d.Sink.SaveDeviceHealth(ctx, storage.DeviceHealth{
+		ReadAtUTC:      now,
+		ClockState:     health.Clock.State,
+		ClockReason:    health.Clock.Reason,
+		ClockDeviceUTC: health.Clock.DeviceUTC,
+		ClockDriftMS:   health.Clock.Drift.Milliseconds(),
+		ServiceState:   health.Service.State,
+		ServiceReason:  health.Service.Reason,
+		ServiceValue:   health.Service.Value,
+	})
+	return health, err
+}
+
+// readClock reads /commands/GetUTCTime and measures the drift against the host.
+func (d *Detector) readClock(ctx context.Context) model.ClockReading {
+	const path = internalapi.UTCTimePath
+
+	if reason, skip := d.abandonedReason(path); skip {
+		return model.ClockReading{ResourceDetection: model.ResourceDetection{
+			State: model.StateUnknown, Source: path, Reason: reason,
+		}}
+	}
+
+	// The host instant is taken immediately before the request: the device
+	// stamps `epoch` when it serves it, so the measured drift carries the
+	// round-trip latency as its bias. That bias is seconds at worst — an order
+	// of magnitude below the threshold and the tolerance — and a single instant
+	// keeps the two clocks comparable.
+	hostUTC := d.now().UTC()
+
+	deviceUTC, err := d.Health.UTCTime(ctx)
+	if err != nil {
+		// The classified cause of the failure, and no device time: a drift
+		// computed from a clock that did not answer would be invented.
+		return model.ClockReading{ResourceDetection: d.failedDetection(ctx, path, err)}
+	}
+
+	return model.ClockReading{
+		ResourceDetection: model.ResourceDetection{State: model.StatePresent, Source: path},
+		DeviceUTC:         deviceUTC.UTC(),
+		Drift:             deviceUTC.Sub(hostUTC),
+	}
+}
+
+// readService reads /commands/GetServiceState for the grid-limits self-test.
+//
+// Only the state is read: the application never triggers the self-test
+// (internal/fronius/readonly.go makes a POST structurally impossible).
+func (d *Detector) readService(ctx context.Context) model.ServiceReading {
+	const path = internalapi.ServiceStatePath
+
+	if reason, skip := d.abandonedReason(path); skip {
+		return model.ServiceReading{ResourceDetection: model.ResourceDetection{
+			State: model.StateUnknown, Source: path, Reason: reason,
+		}}
+	}
+
+	// ServiceGridlimitsAutotest is the only service this application reads, and
+	// it is a constant of the extraction, not a setting: a configurable id
+	// would let the caller ask about a service no consumer names.
+	value, err := d.Health.ServiceState(ctx, internalapi.ServiceGridlimitsAutotest)
+	if err != nil {
+		return model.ServiceReading{ResourceDetection: d.failedDetection(ctx, path, err)}
+	}
+
+	return model.ServiceReading{
+		ResourceDetection: model.ResourceDetection{State: model.StatePresent, Source: path},
+		Value:             value,
+	}
+}
+
+// clockDriftEvents publishes the drift transition, if there is one.
+//
+// One event per transition, never one per cycle (the collector's
+// error/recovered discipline): the verdict of the last clock read that answered
+// is remembered. A read that failed is not a verdict — it leaves the memory
+// untouched, so a clock that comes back still drifting is not notified twice,
+// and a clock that comes back within tolerance recovers exactly once.
+func (d *Detector) clockDriftEvents(ctx context.Context, now time.Time, clock model.ClockReading) error {
+	if clock.State != model.StatePresent {
+		return nil
+	}
+
+	drifting := absDuration(clock.Drift) > ClockDriftThreshold
+
+	d.mu.Lock()
+	was := d.drifting
+	d.drifting = drifting
+	d.mu.Unlock()
+
+	if drifting == was {
+		return nil
+	}
+
+	event := model.Event{
+		TS:       now.UTC(),
+		Kind:     model.EventClockDriftRecovered,
+		Severity: model.SeverityInfo,
+		Message:  "device clock drift back within tolerance",
+		Detail:   driftDetail(clock),
+	}
+	if drifting {
+		event.Kind = model.EventClockDrift
+		event.Severity = model.SeverityWarning
+		event.Message = "device clock drift beyond tolerance"
+	}
+	if err := d.Sink.InsertEvent(ctx, event); err != nil {
+		return err
+	}
+	d.log().Info("clock drift transition", "kind", event.Kind, "drift", clock.Drift)
+	return nil
+}
+
+// driftDetail renders the measurement kept alongside a drift event.
+func driftDetail(clock model.ClockReading) string {
+	return fmt.Sprintf("device clock %s, drift %s, tolerance %s",
+		clock.DeviceUTC.UTC().Format(time.RFC3339), clock.Drift, ClockDriftThreshold)
+}
+
+// absDuration returns the absolute value of d.
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 // ---------------------------------------------------------------------------

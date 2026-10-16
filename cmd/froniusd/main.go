@@ -142,6 +142,10 @@ func run(backfillDays int, forceBackfill bool) error {
 	// proves that some internal paths respond without it (module yTJA).
 	det := &detect.Detector{
 		Source: internalClient,
+		// The same Digest-protected internal client: the device's own clock and
+		// the state of its grid-limits self-test are read on the same cycle.
+		// Both paths are read, never commanded — the self-test is not triggered.
+		Health: internalClient,
 		// The same Solar API client the collector uses: the three requests of
 		// the Solar API-first route need no credential and fill what the
 		// Digest-protected internal API cannot establish without one.

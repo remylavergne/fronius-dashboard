@@ -62,6 +62,8 @@ const KIND_LABELS: Record<string, TranslationKey> = {
   collector_started: 'events.kind.collectorStarted',
   retention_purge: 'events.kind.retentionPurge',
   device_event: 'events.kind.deviceEvent',
+  clock_drift: 'events.kind.clockDrift',
+  clock_drift_recovered: 'events.kind.clockDriftRecovered',
 }
 
 /** The kind of one event: its label when it has one, its raw word otherwise. */

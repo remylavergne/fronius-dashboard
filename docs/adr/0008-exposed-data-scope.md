@@ -43,7 +43,14 @@ slightest device change would become a breaking interface change.
    (`GetActiveDeviceInfo.cgi`) and the API version (`GetAPIVersion.cgi`) are read
    without any credential and **fill** what the authenticated internal API left
    undetermined — identity and presence work with no credentials, while the
-   device events and the two `/commands/*` read paths still need one.
+   device events and the two `/commands/*` read paths need one. **Both
+   `/commands/*` reads are implemented** (2026-10-16), each with the consumer
+   this decision demands: the device's **own clock** — its drift against the
+   host clock is published and warned beyond ±60 s, because every local day
+   boundary of the daily energy is computed from the installation's clock while
+   the inverter's `E_Day` resets on *its* midnight — and the **state of its
+   grid-limits self-test**, shown on the System screen, the application never
+   triggering the test.
 3. **An addition without a consumer is not an addition.** Any new entry must
    name its use — a model field, an endpoint, a screen. What is
    extracted but unused stays documented in `docs/ENDPOINTS.md`, not in the
@@ -66,6 +73,14 @@ slightest device change would become a breaking interface change.
   exposing a new identity field all the way to the screen costs **14** (of which one
   SQL migration), since `device` is frozen by `0002_device.sql` — decision
   deferred, cost recorded in `docs/UNKNOWNS.md` #3.
+- The two `/commands/*` readings, each exposed to the screen, cost **35 touched
+  files** (measured on the 2026-10-17 delivery): the allowlist and the client,
+  the simulator and its `-clock-offset` flag, one SQL migration and its store
+  methods, the detector's reader, the model types, the API's detection block, the
+  source catalogue, the System panel, and their tests — plus five registers and
+  this ADR. The cost of a *reading* is therefore of the same order as that of an
+  identity field, which is why it stays reserved for a metric the Solar API does
+  not provide.
 - A screen does not break when the device changes: only the extraction layer
   moves, and it is covered by unit tests.
 - The 10 paths whose payload is never read by the official client

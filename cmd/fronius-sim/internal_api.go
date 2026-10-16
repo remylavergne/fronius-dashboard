@@ -40,7 +40,20 @@ const (
 	// cachePath is the readable cache: the internal register set, whose Body.Data
 	// is keyed by node id (Cgi envelope).
 	cachePath = "/components/cache/readable"
+	// The two /commands/* read paths. They are CommandResult envelopes: the
+	// payload is resultData, not a bare body.
+	utcTimePath      = "/commands/GetUTCTime"
+	serviceStatePath = "/commands/GetServiceState"
 )
+
+// Service ids served. simServiceIDAutotest is T_SystemServiceId.GridlimitsAutotest
+// (bundle l. 116025): the state of the grid-limits self-test.
+const simServiceIDAutotest = 21
+
+// simServiceState is the state the simulator reports for the grid-limits
+// self-test. It is a constant of the simulator, obviously simulated: the
+// device's real vocabulary of service states is unknown and stays unverified.
+const simServiceState = "SIMULATED-READY"
 
 // internalPaths is the frozen list of internal paths the simulator serves. It
 // matches the application allowlist (internal/fronius/internalapi): the same
@@ -49,6 +62,7 @@ const (
 var internalPaths = []string{
 	versionPath, activeEventsPath, powerMeterPath, batteryPath,
 	commonPath, networkPath, devicesPath, emrsPath, cachePath,
+	utcTimePath, serviceStatePath,
 }
 
 // Challenge headers.
@@ -126,6 +140,10 @@ func (s *simulator) internalHandler(path string) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, s.emrsBody())
 		case cachePath:
 			writeJSON(w, http.StatusOK, cgiBody(s.cacheData()))
+		case utcTimePath:
+			writeJSON(w, http.StatusOK, s.utcTimeBody())
+		case serviceStatePath:
+			writeJSON(w, http.StatusOK, s.serviceStateBody(r.URL.Query().Get("serviceId")))
 		default:
 			http.NotFound(w, r)
 		}
@@ -273,6 +291,39 @@ func cgiBody(data map[string]any) cgiJSON {
 	var out cgiJSON
 	out.Body.Data = data
 	return out
+}
+
+// commandResultJSON is the `CommandResult` envelope: the payload is resultData,
+// with a success flag beside it. The client unwraps resultData, and falls back
+// on the flag when it is not true.
+type commandResultJSON struct {
+	ResultData map[string]any `json:"resultData,omitempty"`
+	Success    bool           `json:"success"`
+}
+
+// utcTimeBody is the shape of /commands/GetUTCTime: the device's own clock, in
+// seconds, shifted by --clock-offset. The flag makes a skew observable.
+func (s *simulator) utcTimeBody() commandResultJSON {
+	return commandResultJSON{
+		ResultData: map[string]any{
+			"epoch": time.Now().Add(s.opt.clockOffset).Unix(),
+		},
+		Success: true,
+	}
+}
+
+// serviceStateBody is the shape of /commands/GetServiceState: the state of one
+// service for a known serviceId, and a bare success:false for an unknown one —
+// the shape that drives the client's BLOCKED fallback. The state string is a
+// constant of the simulator; the device's real vocabulary is unknown.
+func (s *simulator) serviceStateBody(serviceID string) commandResultJSON {
+	if serviceID != strconv.Itoa(simServiceIDAutotest) {
+		return commandResultJSON{Success: false}
+	}
+	return commandResultJSON{
+		ResultData: map[string]any{"state": simServiceState},
+		Success:    true,
+	}
 }
 
 // componentData returns the content of Body.Data for a component.

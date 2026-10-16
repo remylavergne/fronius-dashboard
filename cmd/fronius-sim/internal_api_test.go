@@ -8,9 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // authOpts builds options with Digest authentication.
@@ -498,7 +500,7 @@ func TestInternalPathMethodAndUnknownPath(t *testing.T) {
 	// that remain outside it.
 	for _, path := range []string{
 		"/status/events", "/status/powerflow", "/components/Ohmpilot/readable",
-		"/components/DataManager/readable",
+		"/components/DataManager/readable", "/commands/StandbyState",
 	} {
 		if code, _, _ := get(t, srv, path, nil); code != http.StatusNotFound {
 			t.Fatalf("%s: status = %d, want 404", path, code)
@@ -587,4 +589,133 @@ func containsString(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestUTCTimeBodyAndClockOffset: the served epoch is the host clock shifted by
+// --clock-offset, so a skew is observable.
+func TestUTCTimeBodyAndClockOffset(t *testing.T) {
+	for _, offset := range []time.Duration{0, 90 * time.Second, -5 * time.Minute} {
+		t.Run(offset.String(), func(t *testing.T) {
+			opt := baseOpts()
+			opt.clockOffset = offset
+			sim := testSim(t, opt)
+			srv := httptest.NewServer(sim.Handler())
+
+			before := time.Now()
+			code, _, body := get(t, srv, utcTimePath, nil)
+			after := time.Now()
+			srv.Close()
+
+			if code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (%s)", code, body)
+			}
+			var env struct {
+				ResultData struct {
+					Epoch int64 `json:"epoch"`
+				} `json:"resultData"`
+				Success bool `json:"success"`
+			}
+			if err := json.Unmarshal(body, &env); err != nil {
+				t.Fatalf("Unmarshal: %v", err)
+			}
+			if !env.Success {
+				t.Fatalf("success must be true: %s", body)
+			}
+			served := time.Unix(env.ResultData.Epoch, 0)
+			// The host clock moves between before and after: the served instant
+			// must sit in [before+offset, after+offset], with a second of slack.
+			low, high := before.Add(offset), after.Add(offset)
+			if served.Before(low.Add(-time.Second)) || served.After(high.Add(time.Second)) {
+				t.Fatalf("served clock %v outside [%v, %v] for offset %v", served, low, high, offset)
+			}
+		})
+	}
+}
+
+// TestServiceStateBody: a known serviceId answers success:true with the
+// simulator state; an unknown one answers success:false, driving the client's
+// BLOCKED fallback.
+func TestServiceStateBody(t *testing.T) {
+	sim := testSim(t, baseOpts())
+	srv := httptest.NewServer(sim.Handler())
+	defer srv.Close()
+
+	code, _, body := get(t, srv, serviceStatePath+"?serviceId="+strconv.Itoa(simServiceIDAutotest), nil)
+	if code != http.StatusOK {
+		t.Fatalf("known id: status = %d, want 200 (%s)", code, body)
+	}
+	var known struct {
+		ResultData map[string]any `json:"resultData"`
+		Success    bool           `json:"success"`
+	}
+	if err := json.Unmarshal(body, &known); err != nil {
+		t.Fatalf("known id: Unmarshal: %v", err)
+	}
+	if !known.Success {
+		t.Fatalf("known id: success must be true: %s", body)
+	}
+	if known.ResultData["state"] != simServiceState {
+		t.Fatalf("known id: state = %v, want %q (%s)", known.ResultData["state"], simServiceState, body)
+	}
+
+	code, _, body = get(t, srv, serviceStatePath+"?serviceId=999", nil)
+	if code != http.StatusOK {
+		t.Fatalf("unknown id: status = %d, want 200 (%s)", code, body)
+	}
+	var unknown struct {
+		ResultData map[string]any `json:"resultData"`
+		Success    bool           `json:"success"`
+	}
+	if err := json.Unmarshal(body, &unknown); err != nil {
+		t.Fatalf("unknown id: Unmarshal: %v", err)
+	}
+	if unknown.Success {
+		t.Fatalf("unknown id: success must be false: %s", body)
+	}
+}
+
+// TestCommandPathsRequireDigest: the two /commands/* reads obey the same Digest
+// rule as the other internal paths when --api-user is set.
+func TestCommandPathsRequireDigest(t *testing.T) {
+	sim := testSim(t, authOpts())
+	srv := httptest.NewServer(sim.Handler())
+	defer srv.Close()
+
+	for _, path := range []string{utcTimePath, serviceStatePath + "?serviceId=" + strconv.Itoa(simServiceIDAutotest)} {
+		code, hdr, _ := get(t, srv, path, nil)
+		if code != http.StatusUnauthorized {
+			t.Fatalf("%s: status = %d, want 401", path, code)
+		}
+		if hdr.Get(nonStandardChallengeHeader) == "" {
+			t.Fatalf("%s: challenge absent", path)
+		}
+	}
+}
+
+// TestServiceStateQueryIsSigned: under Digest, the query is part of the signed
+// URI, so a request carrying serviceId still authenticates and answers 200.
+func TestServiceStateQueryIsSigned(t *testing.T) {
+	sim := testSim(t, authOpts())
+	srv := httptest.NewServer(sim.Handler())
+	defer srv.Close()
+
+	uri := serviceStatePath + "?serviceId=" + strconv.Itoa(simServiceIDAutotest)
+	_, hdr, _ := get(t, srv, uri, nil)
+	nonce := paramOf(hdr.Get(nonStandardChallengeHeader), "nonce")
+
+	auth := authHeader("sim", "simpass", "Webinterface area", nonce, http.MethodGet, uri, 1, "abcdef0123456789")
+	code, _, body := get(t, srv, uri, map[string]string{"Authorization": auth})
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", code, body)
+	}
+	var env struct {
+		ResultData map[string]any `json:"resultData"`
+		Success    bool           `json:"success"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !env.Success || env.ResultData["state"] != simServiceState {
+		t.Fatalf("body = %s", body)
+	}
 }

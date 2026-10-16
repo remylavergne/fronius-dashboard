@@ -79,6 +79,7 @@
 - [x] Read and publish the cache family (`/components/cache/readable`) served by `GET /api/v1/detail` as the sixth family — read by `internal/detect` on the detection cycle (a `4 897`-byte register dump per `5 s` cycle would be waste), stored in `device_detail` and rendered by the Device detail page's **Cache block**; the allowlist grows from eight to nine internal paths (`Cgi` envelope, `Digest: true` per the registry while the device answers `200` without a header), the device's own 44 named registers and 37 bare `<id>` are kept verbatim, and **no unit is derived from a name** (`docs/UNKNOWNS.md` #14 keeps the bare ids open)
 - [x] Read the inverter identity from the Solar API, with no credential — `internal/detect` reads `/solar_api/v1/GetInverterInfo.cgi` on the detection cycle and **fills** `SerialNumber`/`DeviceName` only when `/status/version` established no serial number (never overwriting an authenticated identity, never inventing the model or the firmware, which stay empty); published as the `inverter_info` family and the second source of `docs/UNKNOWNS.md` #3
 - [x] Source the meter/battery presence from the Solar API inventory — `internal/detect` reads `/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System` on the detection cycle and settles a state the internal readable path left `unknown` (a class with at least one device is `present`, a class empty or not mentioned is `absent`); published as the `active_devices` family and corroborating `docs/UNKNOWNS.md` #4/#5
+- [x] Read the device's own clock and the state of its grid-limits self-test (`/commands/GetUTCTime`, `/commands/GetServiceState?serviceId=21`) — the two remaining read-only internal paths: `CommandResult` envelopes (`resultData`), read by `internal/detect` on the detection cycle, published in `GET /api/v1/system` and shown on the System screen. The clock's **drift against the host clock** is warned beyond ±60 s (an order of magnitude below the ten-minute tolerance of the daily derivation, whose local day boundaries depend on the installation's clock); the self-test state is read, **never triggered**. The allowlist grows from nine to eleven internal paths; `device_health` (migration `0009`) keeps the last reading, with the drift `NULL` — never `0` — when the clock was not read. Both paths are **`unverified` on hardware** (never probed; `docs/UNKNOWNS.md` #16) and `cmd/fronius-sim` serves them, `-clock-offset` shifting the served clock on purpose
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
@@ -779,3 +780,63 @@
   client-side events filters), `CHANGELOG.md`. Boxes ticked: "Build
   daily/weekly/monthly/yearly aggregates" and "Add events and filters by
   date/severity" (phase 5).
+
+- 2026-10-16 — Step 27 (phase 6): **an adversarial pass over the running
+  solution, and the taxonomy defect it found.** Coverage alone said the
+  load-bearing packages were covered, so the pass attacked the *system*.
+  **Fault matrix**, 17 injected faults with a fresh database each: `500`, `503`,
+  `429`, `401`, `403`, `404`, `timeout`, `invalid_json`, `empty` and `status7`
+  each give `health=degraded`, zero samples, exactly one `collector_error` and no
+  crash; the six Digest variants are clean; `status7` degrades the Solar API while
+  `/status/activeEvents` still reads; the simulator's two published events are
+  recorded **exactly twice** however many polls they survive (dedup proven live).
+  **Crash, corruption, permissions:** `SIGKILL` while polling leaves
+  `integrity_check` ok and a restart grows the history (7 → 14 samples); a
+  truncated image (the "copied while running" case) and a garbage header are both
+  refused with exit 1 and a clear message, as is an unwritable database location;
+  the non-loopback backfill guard refuses **before** any request and
+  `--force-backfill` overrides it while failing gracefully. **Race soak:** a
+  `-race` binary served **18 612** requests across all nine endpoints, every one
+  `200`, with **0** `DATA RACE` and no panic. **The defect:** `ClassifyTransport`
+  re-wrapped an error the Digest transport had already classified, and
+  `froniuserr.KindOf` reads the *outermost* error — so a device answering HTTP 401
+  was reported as a network failure, which made the detector's `KindUnauthorized`
+  branch unreachable and hid the "credentials not configured
+  (`FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD`)" reason behind
+  `fronius: transport | …`. An already-decided nature is now returned untouched;
+  removing the guard fails 6 of the new cases. **Tests:** 37 Go test functions
+  (`ClassifyStatus`/`ClassifyTransport`, the Solar API `at` extension,
+  `FromInverterRealtime`, the derivation's DST/tolerance/backwards-counter/purge/
+  year-boundary edges, all nine collector fault classes with
+  `readInverterDetail` 61.5 % → 100 %, the Overview/Sources error-versus-empty
+  distinctions) + 4 web tests; web suite **200**; `go test -race`, `vet`, `gofmt`
+  green.
+
+- 2026-10-16 — Step 28 (phase 3/4/5): **the commands path — the device's own
+  clock and the state of its grid-limits self-test, read end to end.** The two
+  remaining read-only internal paths (`/commands/GetUTCTime`,
+  `/commands/GetServiceState?serviceId=21`) are implemented: `CommandResult`
+  envelopes (`resultData`), `epoch` in seconds and the `state` string with the
+  manufacturer's own `BLOCKED` fallback, the allowlist growing nine → eleven
+  internal paths with `Purpose` and `Evidence` on both entries. The **drift**
+  between the device clock and the host clock is published in
+  `GET /api/v1/system` and shown on the System screen's resource panel, warned
+  beyond **±60 s** — an order of magnitude below the ten-minute tolerance of the
+  daily derivation, whose local day boundaries depend on the installation's clock
+  while the inverter's `E_Day` resets on *its* midnight. `device_health`
+  (migration `0009`) keeps the last reading, the drift stored `NULL` — never `0` —
+  when the clock was not read, and the request remains structurally `GET`-only:
+  the self-test is **read, never triggered**. Both paths are **`unverified` on
+  hardware** (never probed; `docs/UNKNOWNS.md` #16) and `cmd/fronius-sim` serves
+  them with a `-clock-offset` flag that shifts the served clock on purpose.
+  **Also in this step:** the extraction plan was verified as already discharged
+  (TODO box, the section, the sources rows, the counts) and the consumer sweep
+  corrected two line attributions in the extraction table — `/status/devices`
+  claims `model`/`name`/`additionalLabel` it never proved (the capture carries
+  only `type`/`status`/`statusMessage`), and `/status/network` cited the `yTJA`
+  route's readers instead of the polled entry's own (`updateCache`, l. 127241).
+  Registers updated: `docs/ENDPOINTS.md` (two allowlist rows, the count 14 → 16,
+  the two corrections), `docs/SOURCES.md` (two inventory rows; the `/commands/*`
+  group row no longer says "never called"), `docs/UNKNOWNS.md` #16,
+  `docs/adr/0008` (the two reads, with their named consumers),
+  `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `CHANGELOG.md`.

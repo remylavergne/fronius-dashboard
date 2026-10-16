@@ -83,6 +83,8 @@ old.
 | `last_error` contains `HTTP 404` | the path differs on this firmware, **or** the request never reached the inverter, **or** the Solar API is **disabled** in the device's WebUI (Communication → Solar API) | compare `solarapi_url` from `/api/v1/system` with the device address, then check both paths by hand: `curl -s -o /dev/null -w '%{http_code}\n' http://<device>/status/version` and the same on `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`. A bare `404` on both means the host is not the inverter; a `401` means authentication is now required; **all Solar API paths `404` while the internal `/status/*` paths answer** means the Solar API is **disabled** — the answer then carries "Solar API disabled by customer config" (§3 of the specification `42,0410,2012,EN 02115052025`), so re-enable it in the WebUI instead of changing the suffix |
 | detection reason `challenged, then refused` | the device answered `401` with a challenge, then refused the **authenticated** request (often with `404` or `403`) | the path exists — a bare `404` challenges nobody — so the credentials or the role they carry are the problem: check `FRONIUS_DEVICE_USER`/`FRONIUS_DEVICE_PASSWORD`, then run `fronius-probe --endpoint /status/version`, which prints the raw status and whether a challenge was issued |
 | `last_error` contains `decode` | unexpected response shape | capture with `cmd/fronius-probe`, compare with `docs/SOURCES.md` |
+| `detection.clock.state: "unknown"` | the device clock could not be read: credentials absent or refused, or the path differs on this firmware (`/commands/GetUTCTime` is `unverified` on hardware) | read the reason beside the state: `credentials not configured` → § "Device credentials"; `access denied (401)` → check the account; anything else → probe the path with `cmd/fronius-probe` |
+| `detection.clock` alive with a drift beyond **±60 s** | the inverter's clock disagrees with the host's — and the inverter's `E_Day` resets on **its** midnight, so the local day boundaries of the daily energy are shifted by that drift | sync the device clock (or the host's); the derived day values keep their own ten-minute tolerance, so a drift approaching it is already a defect in what "today" means (§ "Day, year and daily energies (derived)") |
 | `last_error` contains `device_status` | the inverter reports an application error | consult the manufacturer interface; no measurement is recorded in that case |
 | `meta.stale: true` while the device responds | cadence or threshold misconfigured | compare `FRONIUS_POLL_INTERVAL` and `FRONIUS_STALE_AFTER` |
 | interface: "API unreachable" | `froniusd` stopped or in error | start/restart the service |
@@ -234,6 +236,45 @@ simulator.
 These paths answered `200` **without** a header on the reference
 installation (§ Surveying every catalogued path): a `404` on all of them is a
 wrong source, never missing authentication — that would be a `401`.
+
+## The device's own readings (System screen)
+
+The System screen's resource panel carries two readings `internal/detect` takes
+from the manufacturer's internal paths on its detection cycle. Both are
+**read-only**: the application never triggers a self-test, and no command leaves
+the process except `GET`.
+
+- **Device clock** (`/commands/GetUTCTime`, `CommandResult` envelope, `epoch` in
+  seconds): the panel shows the device time and the **drift** against the host
+  clock, warned beyond **±60 s**. The drift matters because the inverter's own
+  `E_Day` resets on *its* midnight while the daily energy's day boundaries are
+  computed from the installation's clock — so a drift approaching the ten-minute
+  tolerance of the derived day values already distorts what "today" means
+  (§ "Day, year and daily energies (derived)").
+- **Grid-limits self-test state** (`/commands/GetServiceState?serviceId=21`,
+  `serviceId` being the registry's only argument): the state the device reports,
+  or `BLOCKED` when the envelope's `success` is not true, exactly as the
+  manufacturer's own client renders it.
+
+A reading that could not be taken shows its reason **instead of** a value: no
+`0 s` drift and no 1970 timestamp is ever displayed for an unread clock.
+
+Both paths are `unverified` on hardware (never probed — `docs/UNKNOWNS.md` #16)
+and both are served by the simulator. `-clock-offset` shifts the served clock on
+purpose, which is how the warning is exercised without a device:
+
+```bash
+# terminal 1 — the simulator, with its internal paths behind Digest
+./bin/fronius-sim -addr 127.0.0.1:8081 -api-user web -api-password pw -clock-offset 90s
+
+# terminal 2 — the service, with the same credentials
+FRONIUS_SOLARAPI_URL=http://127.0.0.1:8081 \
+FRONIUS_DEVICE_USER=web FRONIUS_DEVICE_PASSWORD=pw ./bin/froniusd
+
+# then http://127.0.0.1:8080/system shows the clock row and its warning;
+# the payload is the same thing for a script:
+curl -s localhost:8080/api/v1/system | jq '.data.detection.clock, .data.detection.service'
+```
 
 ## Surveying every catalogued path
 

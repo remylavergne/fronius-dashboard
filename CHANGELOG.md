@@ -9,6 +9,28 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **The device's own clock and the state of its grid-limits
+  self-test, read end to end.** The two remaining read-only internal paths
+  (`/commands/GetUTCTime`, `/commands/GetServiceState?serviceId=21`) are read by
+  `internal/detect` on its detection cycle and published in `GET /api/v1/system`,
+  and the System screen's resource panel shows both: the **drift** between the
+  device clock and the host clock — warned beyond **±60 s**, an order of magnitude
+  below the ten-minute tolerance of the daily derivation, whose local day
+  boundaries depend on the installation's clock — and the state of the
+  grid-limits self-test, **read but never triggered**. `device_health` (migration
+  `0009`) keeps the last reading, the drift stored `NULL` — never `0` — when the
+  clock was not read; the internal allowlist grows from nine to eleven paths with
+  the metric each one serves; `cmd/fronius-sim` serves both, `-clock-offset`
+  shifting the served clock on purpose. Both paths are `[SOURCE-JS]`-extracted and
+  **`unverified` on hardware** — never probed (`docs/UNKNOWNS.md` #16).
+- 2026-10-16 — **A refusal is no longer dressed as a transport failure.** The
+  client wrapped an error the Digest transport had already classified, and
+  `froniuserr.KindOf` reads the outermost error: an HTTP 401 from the device was
+  therefore reported as a network failure, which made the detector's
+  `KindUnauthorized` branch unreachable and hid the *"credentials not
+  configured"* reason behind `fronius: transport | …`. An error that already
+  carries a decided nature now keeps it.
+
 - 2026-10-16 — **The Events page, the Energy page and the derived daily
   energy.** Two read surfaces that were served but consumed by nothing — the
   audit that lists the hooks found `/api/v1/events` with **no hook at all** and
