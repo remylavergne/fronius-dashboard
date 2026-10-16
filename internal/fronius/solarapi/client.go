@@ -23,7 +23,12 @@ const PowerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 // it, with CumulationQuery, to settle whether this firmware exposes the day and
 // year counters that both flow endpoints return as null (docs/UNKNOWNS.md #13).
 // It becomes a client call only if a capture proves it carries them.
-const InverterRealtimePath = "/solar_api/v1/GetInverterRealtimeData.fcgi"
+//
+// The suffix is `.cgi`, not `.fcgi`: the realtime-data family of Solar API v1 is
+// served as CGI, while `.fcgi` carries the flow and inventory endpoints. A probe
+// run with `.fcgi` on 2026-10-16 answered `404` with the webserver's XHTML error
+// page, which is how a wrong path looks on this device.
+const InverterRealtimePath = "/solar_api/v1/GetInverterRealtimeData.cgi"
 
 // CumulationQuery selects the accumulation collection: the day, year and total
 // energy counters of the single device of the installation.

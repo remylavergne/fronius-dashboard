@@ -42,7 +42,7 @@ The probe can only emit the requests of its allowlist, frozen in the binary
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
 | `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
 | `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); **captured** 2026-10-16 (`200`, no challenge, `inverters` an array). The captured body has `site.E_Day`/`E_Year` **null too**, so the fallback fills nothing on this installation — its fate is an open decision (#13) |
-| `/solar_api/v1/GetInverterRealtimeData.fcgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`): the **last candidate source** for the day and year energies **both** flow endpoints return as `null` on firmware 1.19.7-1 (`docs/UNKNOWNS.md` #13), on the "Solar API first" route (ADR 0003/0008); **capture pending** |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`): the **last candidate source** for the day and year energies **both** flow endpoints return as `null` on firmware 1.19.7-1 (`docs/UNKNOWNS.md` #13), on the "Solar API first" route (ADR 0003/0008); **capture pending** (the first attempt used the `.fcgi` suffix and got the webserver's XHTML `404` page — the realtime-data family is `.cgi`) |
 
 **Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
 of the allowlist at that time answered `200` on the **bare** request — no
@@ -62,7 +62,7 @@ path — mirroring its own Solar API numbers, it does **not** reproduce the `nul
 case (the captured fixture does).
 
 A **seventh** entry has since joined the allowlist:
-`GET /solar_api/v1/GetInverterRealtimeData.fcgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
+`GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
 (class `READ`, `digest=false`). It carries a **frozen query string** — the
 `endpoint.query` field, a constant of the binary (`solarapi.CumulationQuery`) — so
 the guarantee below holds unchanged: the probe cannot target an arbitrary URL, and
@@ -98,7 +98,7 @@ the record of what each capture had to settle:
 | `/components/PowerMeter/readable`              | #4 (meter presence)                  | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]`                                                                                             | presence, real signal names and units on `1.19.7-1`                                                      |
 | `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge)     | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`                                                                                                                                              | presence, and whether the state of charge really exists on this firmware                                 |
 | `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **captured** 2026-10-16 (fixture `internalapi/status_powerflow.json`) | the real values and units of the day and year energies — **settled**: `site.E_Day`/`E_Year` are **null here too**, so this internal path does **not** return them where the Solar API nulls them (the fallback fills nothing, #13) |
-| `/solar_api/v1/GetInverterRealtimeData.fcgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the **documented** Solar API v1 shape, `Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — documented, **not extracted** (the bundle has no Solar API path, `docs/SOURCES.md`); the probe expects it as-is | whether this firmware exposes the day/year counters **at all**; **not captured yet** |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the **documented** Solar API v1 shape, `Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — documented, **not extracted** (the bundle has no Solar API path, `docs/SOURCES.md`); the probe expects it as-is | whether this firmware exposes the day/year counters **at all**; **not captured yet** — the first attempt used the `.fcgi` suffix and answered `404` with the webserver's XHTML page, which is what a wrong path looks like here |
 
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
 in § 8), two further paths have joined the allowlist. The sixth,
@@ -247,7 +247,7 @@ directory so the earlier captures are not overwritten:
 ./bin/fronius-probe \
   --base-url http://192.0.2.10 \
   --allow-non-loopback \
-  --endpoint /solar_api/v1/GetInverterRealtimeData.fcgi \
+  --endpoint /solar_api/v1/GetInverterRealtimeData.cgi \
   --save /tmp/probe-real
 ```
 

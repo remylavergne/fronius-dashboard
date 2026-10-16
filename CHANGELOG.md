@@ -11,7 +11,7 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 - 2026-10-16 — **Seventh probe endpoint: the documented Solar API accumulation
   data.** `cmd/fronius-probe` carries a new allowlist entry,
-  `GET /solar_api/v1/GetInverterRealtimeData.fcgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
+  `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
   (class `READ`, `digest=false`), the **last candidate source** for the day and
   year energies that **both** flow endpoints return as `null` on firmware
   `1.19.7-1` (`docs/UNKNOWNS.md` #13), on the "Solar API first" route
@@ -216,6 +216,17 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   `0`, never "unknown".
 
 ### Fixed
+
+- 2026-10-16 — **Wrong endpoint suffix for the accumulation capture**
+  (`internal/fronius/solarapi`). The documented Solar API v1 realtime-data family is
+  served as `.cgi` (`GetInverterRealtimeData.cgi`), while `.fcgi` carries the flow
+  and inventory endpoints; the probe entry had inherited the `.fcgi` spelling from
+  the candidate list and the first hardware run answered `404` with the webserver's
+  XHTML error page (`Server: webserver`, `Content-Type: text/html`, `iso-8859-1`)
+  instead of JSON. The path is corrected to `.cgi` — same frozen query, same
+  purpose — and `docs/SOURCES.md`/`docs/PROBE-READONLY.md` record both the
+  correction and the shape of the 404 body, which is how a wrong path presents
+  itself on this device.
 
 - 2026-10-16 — **`/status/powerflow`: `inverters` is an array on the device, not an
   index-keyed object** (`internal/fronius/internalapi`). The bundle could not
