@@ -31,7 +31,20 @@ func ClassifyStatus(endpoint string, status int) error {
 }
 
 // ClassifyTransport distinguishes timeout expiry from other network failures.
+//
+// A failure that already carries a decided nature keeps it. The Digest
+// transport answers with the very status the device returned — a refusal after
+// a challenge, an HTTP 401 — and re-wrapping that as a transport failure would
+// hide an authentication problem behind a network excuse: the collector, the
+// detector and the interface all read the kind of the outermost error. Only a
+// plain failure, or one already classified as a transport failure, is
+// (re)classified here — so a context that expired can still upgrade a generic
+// transport error to a timeout.
 func ClassifyTransport(ctx context.Context, endpoint string, err error) error {
+	var typed *froniuserr.Error
+	if errors.As(err, &typed) && typed.Kind != froniuserr.KindTransport {
+		return err
+	}
 	kind := froniuserr.KindTransport
 	var netErr net.Error
 	switch {

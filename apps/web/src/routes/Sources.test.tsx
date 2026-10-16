@@ -812,6 +812,60 @@ describe('SourcesPage filters', () => {
     expect(screen.getByText('Sources shown: 1 / 3')).toBeInTheDocument()
     expect(screen.getByRole('article', { name: '/commands/GetServiceState?serviceId=<id>' })).toBeInTheDocument()
   })
+
+  it('filters everything out without reporting an API failure', async () => {
+    // The other side of the distinction the failure test makes: an empty list
+    // here is the filters' doing on a catalogue that arrived whole, so the
+    // reader gets the filter's own message and no error alert.
+    const user = userEvent.setup()
+    render(<SourcesPage />)
+
+    await user.type(screen.getByLabelText('Search'), 'nothing answers this')
+
+    expect(screen.getByText('No source matches these filters')).toBeInTheDocument()
+    expect(screen.getByText('Sources shown: 0 / 3')).toBeInTheDocument()
+    expect(screen.queryByTestId('api-error')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
+  })
+})
+
+describe('SourcesPage API failure', () => {
+  beforeEach(() => {
+    sourcesMock.mockReset()
+    capabilitiesMock.mockReset()
+  })
+
+  it('renders the API failure with a retry, not the catalogue nor the filter message', async () => {
+    const user = userEvent.setup()
+    const refetch = vi.fn()
+    sourcesMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('catalogue request failed'),
+      refetch,
+    })
+    capabilitiesMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: undefined,
+      refetch: vi.fn(),
+    })
+
+    render(<SourcesPage />)
+
+    expect(screen.getByTestId('api-error')).toBeInTheDocument()
+    expect(screen.getByText('catalogue request failed')).toBeInTheDocument()
+    // A failed request is not an empty filter result: no row, and no message
+    // claiming the filters kept everything out.
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
+    expect(screen.queryByText('No source matches these filters')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('SourcesPage legend', () => {

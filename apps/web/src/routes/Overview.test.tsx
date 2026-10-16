@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
-import { sampleSchema, type Sample } from '@/lib/schema'
+import userEvent from '@testing-library/user-event'
+import { CODE_NO_DATA, sampleSchema, type Sample } from '@/lib/schema'
 import type { DetailFamily } from '@/lib/schema'
 import { resolveEnergy } from '@/lib/energy'
 import { Overview } from './Overview'
@@ -307,5 +308,58 @@ describe('Overview inverter state chip', () => {
     render(<Overview />)
 
     expect(screen.queryByTestId('inverter-state-chip')).not.toBeInTheDocument()
+  })
+})
+
+describe('Overview load states', () => {
+  beforeEach(() => {
+    liveMock.mockReset()
+    detailMock.mockReset()
+  })
+
+  it('shows the API failure instead of the empty state, and retries', async () => {
+    const user = userEvent.setup()
+    const refetch = vi.fn()
+    // The failure first: a rejected request is not an empty database, and the
+    // reader must not be told nothing was recorded when the read itself failed.
+    liveMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('live query failed'),
+      refetch,
+    })
+
+    render(<Overview />)
+
+    expect(screen.getByTestId('api-error')).toBeInTheDocument()
+    expect(screen.getByText('live query failed')).toBeInTheDocument()
+    expect(screen.queryByText('No data')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('states an empty database when the API answered without a sample', () => {
+    // HTTP 200 carrying `no_data`: the request succeeded, there is simply no
+    // measurement yet. That is what the empty state names, and no alert says
+    // otherwise.
+    liveMock.mockReturnValue({
+      data: {
+        data: null,
+        meta: { generated_at: '2026-10-16T09:59:40.000Z' },
+        error: { code: CODE_NO_DATA, message: 'no sample recorded yet' },
+      },
+      isLoading: false,
+      isError: false,
+      error: undefined,
+      refetch: vi.fn(),
+    })
+
+    render(<Overview />)
+
+    expect(screen.getByText('No data')).toBeInTheDocument()
+    expect(screen.queryByTestId('api-error')).not.toBeInTheDocument()
   })
 })

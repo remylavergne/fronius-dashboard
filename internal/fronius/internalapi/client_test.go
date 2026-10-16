@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -473,6 +474,63 @@ func TestOversizedBodyIsRefused(t *testing.T) {
 	}
 	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
 		t.Fatalf("nature = %q", kind)
+	}
+}
+
+// refusalAfterChallengeDoer answers exactly like the Digest transport does when
+// the device offers a challenge and then refuses the authenticated request: a
+// classified refusal, sentinel included, without any HTTP response.
+type refusalAfterChallengeDoer struct{ err error }
+
+func (d refusalAfterChallengeDoer) Do(*http.Request) (*http.Response, error) { return nil, d.err }
+
+// TestARefusalIsNotDressedAsATransportFailure is the regression of an observed
+// defect: the client wrapped the transport's already-classified refusal with
+// ClassifyTransport, and `froniuserr.KindOf` reads the outermost error. The
+// detector therefore saw a network failure where the device had answered an
+// HTTP 401 — losing both its "the device refused us" reason and its
+// "no credentials configured" one.
+func TestARefusalIsNotDressedAsATransportFailure(t *testing.T) {
+	refusal := &froniuserr.Error{
+		Kind:       froniuserr.KindUnauthorized,
+		Endpoint:   VersionPath,
+		HTTPStatus: http.StatusUnauthorized,
+		Err: fmt.Errorf("%w: HTTP %d after the challenge",
+			froniuserr.ErrRefusedAfterChallenge, http.StatusUnauthorized),
+	}
+	client := newClient(t, "http://127.0.0.1:1", refusalAfterChallengeDoer{refusal})
+
+	_, err := client.Get(context.Background(), VersionPath)
+	if err == nil {
+		t.Fatal("a refusal must be reported")
+	}
+	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindUnauthorized {
+		t.Fatalf("nature = %q, want %q: %v", kind, froniuserr.KindUnauthorized, err)
+	}
+	if !errors.Is(err, froniuserr.ErrRefusedAfterChallenge) {
+		t.Fatalf("the challenge-then-refusal sequence was lost: %v", err)
+	}
+	var typed *froniuserr.Error
+	if !errors.As(err, &typed) || typed.HTTPStatus != http.StatusUnauthorized {
+		t.Fatalf("the status the device answered was lost: %v", err)
+	}
+}
+
+// TestAGenuineTransportFailureStaysOne: the same path must still classify a
+// real network failure as such, endpoint included.
+func TestAGenuineTransportFailureStaysOne(t *testing.T) {
+	client := newClient(t, "http://127.0.0.1:1", refusalAfterChallengeDoer{err: errors.New("connection refused")})
+
+	_, err := client.Get(context.Background(), VersionPath)
+	if err == nil {
+		t.Fatal("a transport failure must be reported")
+	}
+	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindTransport {
+		t.Fatalf("nature = %q, want %q: %v", kind, froniuserr.KindTransport, err)
+	}
+	var typed *froniuserr.Error
+	if !errors.As(err, &typed) || typed.Endpoint != VersionPath {
+		t.Fatalf("endpoint not reported: %v", err)
 	}
 }
 
