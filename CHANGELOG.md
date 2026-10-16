@@ -9,6 +9,17 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Phase 3 : agrégats horaires et purge planifiée.** Migration
+  `0003_agg.sql` : table `agg_hour` (`count_all`, `count_pv`, `sum_pv_w`,
+  `min_pv_w`, `max_pv_w`, `max_energy_day_wh`) qui matérialise la réduction
+  exacte des mesures — la moyenne se recompose depuis la somme et l'effectif, la
+  moyenne d'une union n'étant pas la moyenne des moyennes. Nouveau paquet
+  `internal/maintenance` : agrégation des heures closes toutes les 5 minutes avec
+  rattrapage au démarrage, et purge de rétention au démarrage puis une fois par
+  journée locale à partir de 03:00 (le `purge()` de `cmd/froniusd` y est
+  déplacé). Nouvelle cible `make test-perf` qui rejoue le critère de l'ADR 0006
+  sur un an de mesures.
+
 - 2026-10-16 — **Phase 2 : lecture authentifiée des chemins internes.**
   `internal/secret` : type `secret.String` qui masque sa valeur pour `fmt`,
   `slog` et `encoding/json`, `Reveal()` étant la seule sortie en clair.
@@ -28,6 +39,20 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   la paire est incomplète.
 
 ### Changed
+
+- 2026-10-16 — `internal/storage` : les lectures au pas horaire ou journalier
+  sont servies par `agg_hour` dès qu'elles portent sur des heures entières et
+  closes, le reste (entête partielle et heure ouverte) restant lu dans les
+  mesures brutes ; le résultat est identique, seule la durée change (14 ms contre
+  5 168 ms pour un an au pas 1 h, 5 ms contre 5 535 ms pour l'énergie
+  journalière). Une mesure écrite sous la borne d'eau
+  (`collector_state.agg_last_hour_utc`) abaisse celle-ci, sans quoi un historique
+  importé après coup ou une horloge d'appareil en retard aurait été omis des
+  agrégats sans que rien ne le signale. `PurgeBefore` supprime désormais les
+  agrégats de la même plage que les mesures et remonte la borne d'eau : les
+  agrégats ne sont jamais une seconde source de vérité. La borne de purge est
+  arrondie à l'heure pleine supérieure, pour que mesures et agrégats partagent la
+  même frontière. La purge n'a donc plus lieu uniquement au redémarrage.
 
 - 2026-10-16 — `internal/model` : les capacités prennent une détection à trois
   états (`unknown`, `absent`, `present`) au lieu de trois booléens de

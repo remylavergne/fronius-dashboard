@@ -157,14 +157,21 @@ est sûr, dans le sens de la migration.
 
 ## Rétention et purge
 
-`FRONIUS_RETENTION_DAYS=0` (défaut) conserve tout. Avec une valeur `N > 0`,
-`froniusd` exécute **une** purge au démarrage : tout ce qui est antérieur au jour
-local `N` jours en arrière est supprimé des mesures, des événements et des
-cycles de collecte, puis un événement `retention_purge` est enregistré.
+`FRONIUS_RETENTION_DAYS=0` (défaut) conserve tout et **désactive toute purge**
+(aucune n'est planifiée). Avec une valeur `N > 0`, `froniusd` exécute une purge
+au démarrage — rattrapage de la durée d'arrêt — puis **une purge par journée
+locale à partir de 03:00**. Chaque purge supprime ce qui est antérieur à minuit
+local `N` jours en arrière : mesures, événements, cycles de collecte, marques
+d'anti-duplication et agrégats horaires, puis un événement `retention_purge` est
+enregistré.
 
-Aucune purge périodique n'est active en phase 1 (ADR 0006) : le redémarrage est
-le seul déclencheur, ce qui rend l'opération prévisible. Avant d'activer une
-rétention, sauvegarder (§ ci-dessus) et vérifier le volume :
+La borne de purge est arrondie à l'heure pleine supérieure, et la même borne
+s'applique aux mesures et aux agrégats : sans cet alignement, l'heure à cheval
+sur la frontière perdrait son agrégat tout en gardant une partie de ses mesures,
+qui deviendraient invisibles des lectures agrégées (ADR 0006). Pour
+Europe/Brussels, l'arrondi est neutre.
+
+Avant d'activer une rétention, sauvegarder (§ ci-dessus) et vérifier le volume :
 
 ```bash
 sqlite3 data/fronius.db 'select count(*) from samples;'
@@ -172,7 +179,36 @@ du -h data/fronius.db
 ```
 
 Ordre de grandeur : un échantillon toutes les 5 s ≈ 17 280 lignes par jour,
-soit ≈ 6,3 millions par an.
+soit ≈ 6,3 millions par an. Les agrégats horaires ajoutent 24 lignes par jour
+(≈8 760 par an), soit un ordre de grandeur en dessous.
+
+## Agrégats horaires
+
+Les lectures au pas horaire ou journalier (`/api/v1/timeseries` avec
+`step=1h|1d`, `/api/v1/energy/daily`) ne parcourent pas les mesures : elles
+lisent `agg_hour`, alimentée par `internal/maintenance`, qui agrège les heures
+**closes** toutes les 5 minutes et rattrape au démarrage ce qui a été écrit
+depuis la dernière passe. L'heure en cours reste lue dans les mesures brutes :
+une heure encore alimentée n'est jamais matérialisée, sinon une lecture la
+croirait complète.
+
+Diagnostic :
+
+```bash
+sqlite3 data/fronius.db 'select count(*), min(bucket_utc), max(bucket_utc) from agg_hour;'
+sqlite3 data/fronius.db "select v from collector_state where k='agg_last_hour_utc';"
+```
+
+La seconde requête donne la borne d'eau : début de la première heure non
+agrégée. Elle doit être alignée sur l'heure et avancer d'elle-même (au plus une
+heure de retard après la fermeture d'une heure). Si elle recule, c'est qu'un
+historique a été importé sous la borne — comportement normal après un
+`--backfill-days`, la passe suivante le reprend.
+
+Une base dont la table `agg_hour` est vide reste correcte : toutes les lectures
+retombent sur les mesures brutes, plus lentement. Ce n'est donc jamais une
+panne, seulement un rattrapage à attendre (ou à provoquer en redémarrant).
+`make test-perf` mesure le gain sur un an de données (ADR 0006).
 
 ## Journalisation
 
@@ -199,6 +235,7 @@ sqlite3 data/fronius.db 'pragma integrity_check;'
 sqlite3 data/fronius.db 'vacuum;'          # après une purge importante
 sqlite3 data/fronius.db 'select ok, count(*) from collector_runs group by ok;'
 sqlite3 data/fronius.db 'select ts_utc, kind, severity, message from events order by id desc limit 10;'
+sqlite3 data/fronius.db 'select count(*) from agg_hour;'   # agrégats horaires
 ```
 
 ## Ce que ce service ne fait jamais

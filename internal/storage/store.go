@@ -106,7 +106,12 @@ func (s *Store) InsertSample(ctx context.Context, sm model.Sample) error {
 	if err != nil {
 		return fmt.Errorf("insertion de l'échantillon %s: %w", formatTS(sm.TS), err)
 	}
-	return nil
+	// Une mesure plus ancienne que la borne d'eau doit être reprise par la
+	// passe d'agrégation suivante (import d'un backfill après coup, horloge de
+	// l'appareil en retard) : sans cet abaissement, la lecture la croirait déjà
+	// agrégée et l'omettrait. Le coût est une instruction sans effet sur une
+	// table de quelques lignes.
+	return s.lowerWatermark(ctx, sm.TS)
 }
 
 // LatestSample retourne l'échantillon le plus récent, toutes sources confondues.
@@ -134,6 +139,11 @@ func (s *Store) SampleCount(ctx context.Context) (int64, error) {
 // Les buckets sont alignés sur l'epoch et un bucket sans aucune ligne n'est pas
 // émis : aucune interpolation n'est faite, l'absence de donnée doit rester
 // visible côté interface.
+//
+// Les pas multiples d'une heure sont servis par les agrégats horaires
+// (aggregate.go) lorsqu'ils existent ; les autres pas parcourent les mesures
+// brutes. Le résultat est le même dans les deux cas : la moyenne se recompose
+// depuis la somme et l'effectif, le minimum et le maximum sont associatifs.
 func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, error) {
 	if q.Step <= 0 {
 		return nil, fmt.Errorf("pas de temps invalide: %v", q.Step)
@@ -143,47 +153,33 @@ func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, er
 		return nil, fmt.Errorf("pas de temps trop fin pour un stockage à la seconde: %v", q.Step)
 	}
 
-	const sqlQ = `
-		SELECT CAST(strftime('%s', ts_utc) AS INTEGER) / ? * ? AS bucket,
-		       AVG(power_pv_w), MIN(power_pv_w), MAX(power_pv_w),
-		       COUNT(*), SUM(CASE WHEN power_pv_w IS NULL THEN 1 ELSE 0 END)
-		FROM samples
-		WHERE ts_utc >= ? AND ts_utc < ?
-		GROUP BY bucket
-		ORDER BY bucket`
-
-	rows, err := s.db.QueryContext(ctx, sqlQ, step, step, formatTS(q.From), formatTS(q.To))
-	if err != nil {
-		return nil, fmt.Errorf("série temporelle: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Bucket
-	for rows.Next() {
-		var (
-			bucket        int64
-			avg, min, max sql.NullFloat64
-			count         int
-			missingNull   sql.NullInt64
-		)
-		if err := rows.Scan(&bucket, &avg, &min, &max, &count, &missingNull); err != nil {
-			return nil, fmt.Errorf("lecture d'un bucket: %w", err)
+	acc := map[int64]*bucketAcc{}
+	fromAggregates := false
+	if q.Step >= time.Hour && q.Step%time.Hour == 0 {
+		closed, hasWM, err := s.aggWatermark(ctx)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, Bucket{
-			// La requête renvoie déjà le début du bucket en secondes depuis
-			// l'epoch (secondes / pas × pas).
-			Start:       time.Unix(bucket, 0).UTC(),
-			PowerPVAvgW: nullFloat(avg),
-			PowerPVMinW: nullFloat(min),
-			PowerPVMaxW: nullFloat(max),
-			Count:       count,
-			Missing:     int(missingNull.Int64),
-		})
+		if aggFrom, aggTo, ok := aggSplit(q.From, q.To, closed, hasWM); ok {
+			if err := s.aggBucketsInto(ctx, acc, aggFrom, aggTo, step); err != nil {
+				return nil, err
+			}
+			// Entête partielle et heure ouverte : mesures brutes.
+			if err := s.rawBucketsInto(ctx, acc, q.From, aggFrom, step); err != nil {
+				return nil, err
+			}
+			if err := s.rawBucketsInto(ctx, acc, aggTo, q.To, step); err != nil {
+				return nil, err
+			}
+			fromAggregates = true
+		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("parcours des buckets: %w", err)
+	if !fromAggregates {
+		if err := s.rawBucketsInto(ctx, acc, q.From, q.To, step); err != nil {
+			return nil, err
+		}
 	}
-	return out, nil
+	return bucketsFromAcc(acc), nil
 }
 
 // DailyEnergy retourne l'énergie d'une journée locale, calculée comme le
@@ -194,19 +190,37 @@ func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, er
 // l'été ou à l'hiver (journées de 23 h et 25 h). Prendre le maximum par date
 // évite qu'une remise à zéro du compteur à minuit ne soit interprétée comme une
 // énergie négative.
+//
+// Les heures entières closes sont lues dans les agrégats horaires
+// (aggregate.go) : le maximum d'une union est le maximum des maximums. L'entête
+// partielle, l'heure ouverte — ou la plage entière tant qu'aucune borne d'eau
+// n'existe — restent lues sur les mesures brutes.
 func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEnergy, error) {
-	const sqlQ = `
-		SELECT strftime('%Y-%m-%dT%H', ts_utc) AS hour_utc, MAX(energy_day_wh)
-		FROM samples
-		WHERE ts_utc >= ? AND ts_utc < ? AND energy_day_wh IS NOT NULL
-		GROUP BY hour_utc
-		ORDER BY hour_utc`
+	hours := map[string]float64{} // heure UTC « 2006-01-02T15 » → maximum
 
-	rows, err := s.db.QueryContext(ctx, sqlQ, formatTS(from), formatTS(to))
+	closed, hasWM, err := s.aggWatermark(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("énergie journalière: %w", err)
+		return nil, err
 	}
-	defer rows.Close()
+	if aggFrom, aggTo, ok := aggSplit(from, to, closed, hasWM); ok {
+		if err := s.aggHourlyEnergyInto(ctx, hours, aggFrom, aggTo); err != nil {
+			return nil, err
+		}
+		if err := s.rawHourlyEnergyInto(ctx, hours, from, aggFrom); err != nil {
+			return nil, err
+		}
+		if err := s.rawHourlyEnergyInto(ctx, hours, aggTo, to); err != nil {
+			return nil, err
+		}
+	} else if err := s.rawHourlyEnergyInto(ctx, hours, from, to); err != nil {
+		return nil, err
+	}
+
+	hourKeys := make([]string, 0, len(hours))
+	for h := range hours {
+		hourKeys = append(hourKeys, h)
+	}
+	slices.Sort(hourKeys)
 
 	type acc struct {
 		max  float64
@@ -215,12 +229,8 @@ func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEne
 	byDate := map[string]*acc{}
 	var order []string
 
-	for rows.Next() {
-		var hour string
-		var v float64
-		if err := rows.Scan(&hour, &v); err != nil {
-			return nil, fmt.Errorf("lecture d'un maximum horaire: %w", err)
-		}
+	for _, hour := range hourKeys {
+		v := hours[hour]
 		hourUTC, err := time.ParseInLocation("2006-01-02T15", hour, time.UTC)
 		if err != nil {
 			return nil, fmt.Errorf("heure UTC inattendue %q: %w", hour, err)
@@ -236,9 +246,6 @@ func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEne
 			a.max = v
 		}
 		a.seen = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("parcours des maxima horaires: %w", err)
 	}
 
 	slices.Sort(order)
@@ -585,6 +592,21 @@ func (s *Store) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {
 	// définitivement de le revoir, pour un gain nul.
 	if _, err := tx.ExecContext(ctx, `DELETE FROM device_events_seen WHERE seen_at_utc < ?`, limit); err != nil {
 		return 0, fmt.Errorf("purge des marques d'événements matériels: %w", err)
+	}
+	// Les agrégats suivent exactement la même borne que les mesures : une
+	// ligne d'agrégat qui mord sur la partie purgée décrit des mesures qui
+	// n'existent plus, et la lecture la croirait complète. La borne de purge
+	// étant alignée sur l'heure (voir internal/maintenance), les deux tables
+	// restent cohérentes à l'heure près.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM agg_hour WHERE bucket_utc < ?`, limit); err != nil {
+		return 0, fmt.Errorf("purge des agrégats: %w", err)
+	}
+	// La borne d'eau ne peut pas rester antérieure à la borne de purge :
+	// les heures qu'elle recouvre n'ont ni mesures ni agrégats.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE collector_state SET v = ? WHERE k = ? AND v < ?`,
+		limit, aggStateKey, limit); err != nil {
+		return 0, fmt.Errorf("borne d'eau après purge: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("validation de la purge: %w", err)

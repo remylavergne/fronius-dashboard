@@ -16,6 +16,7 @@ flowchart LR
   IA["internal/fronius/internalapi<br/>liste blanche + extraction"]
   COL["internal/collector<br/>polling 5 s + jitter"]
   DET["internal/detect<br/>identité, présence, événements"]
+  MAINT["internal/maintenance<br/>agrégation horaire, purge"]
   MOD["internal/model<br/>normalisation, détection"]
   SEC["internal/secret<br/>valeurs masquées"]
   DB[("SQLite WAL<br/>internal/storage")]
@@ -30,6 +31,8 @@ flowchart LR
   DG --> IA --> DET
   DET --> DB
   COL --> MOD --> DB
+  MAINT --> DB
+  DB --> MAINT
   SEC -.-> DG
   PROBE -.-> SIM
   PROBE -.-> INV
@@ -62,7 +65,8 @@ outil de diagnostic manuel, jamais lancé par le service ni par la CI.
 | `internal/fronius/solarapi` | Client Solar API et **seul** encodage de la forme du JSON | `fronius`, `froniuserr` |
 | `internal/fronius/internalapi` | Chemins internes : **liste blanche exécutable** et extraction tolérante | `fronius`, `froniuserr` |
 | `internal/model` | Modèle normalisé, unités, détection à trois états, capacités, événements | `solarapi` |
-| `internal/storage` | SQLite : migrations, séries, énergie journalière, identité, anti-duplication, purge | `model` |
+| `internal/storage` | SQLite : migrations, mesures, agrégats horaires, énergie journalière, identité, anti-duplication, purge | `model` |
+| `internal/maintenance` | Travaux de fond : agrégation des heures closes et purge de rétention planifiée | `storage`, `model` |
 | `internal/collector` | Boucle de collecte, backoff, événements | `solarapi`, `model`, `storage` |
 | `internal/detect` | Boucle de détection : identité, présence, événements, états et motifs | `internalapi`, `model`, `storage` |
 | `internal/api` | API REST, validation, enveloppe et DTO | `model`, `storage`, `config`, `detect`, `internalapi` |
@@ -124,6 +128,13 @@ n'entre dans le processus Node, ni dans un bundle, ni dans une réponse HTTP.
    l'un de trois états (`unknown`, `absent`, `present`), persisté tel quel,
    exposé par `/api/v1/system` et utilisé par `model.Capabilities`. Une lecture
    qui échoue produit `unknown` avec son motif — jamais `absent`.
+9. **Les agrégats sont exactement dérivables des mesures conservées.** `agg_hour`
+   ne contient qu'une réduction des mesures brutes et suit la même borne de
+   purge : aucune valeur ne survit comme agrégat alors que ses mesures ont été
+   supprimées, et aucune heure partielle n'est servie depuis un agrégat complet
+   (ADR 0006). Une lecture ne sert une heure depuis les agrégats que si elle est
+   entière, close et contenue dans la plage demandée ; le reste est lu dans les
+   mesures brutes.
 
 ## Décisions structurantes
 

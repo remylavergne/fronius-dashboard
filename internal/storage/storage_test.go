@@ -64,8 +64,8 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := first.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("comptage des migrations: %v", err)
 	}
-	if version != 2 || rows != 2 {
-		t.Fatalf("schema_migrations = (version=%d, lignes=%d), attendu (2, 2)", version, rows)
+	if version != 3 || rows != 3 {
+		t.Fatalf("schema_migrations = (version=%d, lignes=%d), attendu (3, 3)", version, rows)
 	}
 	// Le mode WAL doit être actif (preuve que la DSN a bien été appliquée).
 	var journalMode string
@@ -89,7 +89,7 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("comptage après second Open: %v", err)
 	}
-	if rows != 2 {
+	if rows != 3 {
 		t.Fatalf("migrations rejouées : %d lignes", rows)
 	}
 	// Les tables restent utilisables.

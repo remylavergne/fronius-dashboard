@@ -936,3 +936,63 @@ func TestNoStaticWebWhenUnset(t *testing.T) {
 		t.Fatalf("status = %d, attendu 404 sans FRONIUS_WEB_DIR", code)
 	}
 }
+
+// TestResponsesUnchangedAfterRollup vérifie au niveau de l'API que la bascule
+// vers les agrégats horaires (phase 3) ne change pas la charge utile : le corps
+// de données doit être identique avant et après l'agrégation, alors que la
+// première capture passe par les mesures brutes et la seconde par agg_hour.
+func TestResponsesUnchangedAfterRollup(t *testing.T) {
+	_, httpSrv, store := newTestServer(t, nil)
+	base := time.Date(2026, 10, 15, 22, 0, 0, 0, time.UTC)
+
+	// Valeurs exactement représentables en binaire et sommes exactes : une
+	// divergence ne peut alors venir que d'un bucket servi différemment, pas
+	// d'une réassociation de flottants.
+	for i := range 48 { // 12 heures à 15 minutes
+		insertSample(t, store, base.Add(time.Duration(i)*15*time.Minute), float64(i)*100, float64(i)*10)
+	}
+
+	paths := []string{
+		"/api/v1/timeseries?step=1h&from=2026-10-15T22:00:00Z&to=2026-10-16T10:00:00Z",
+		"/api/v1/timeseries?step=1d&from=2026-10-15T00:00:00Z&to=2026-10-16T10:00:00Z",
+		"/api/v1/energy/daily?from=2026-10-14T00:00:00Z&to=2026-10-16T10:00:00Z",
+	}
+	capture := func() []string {
+		out := make([]string, 0, len(paths))
+		for _, p := range paths {
+			code, _, body := doRequest(t, httpSrv, http.MethodGet, p)
+			if code != http.StatusOK {
+				t.Fatalf("%s : status = %d", p, code)
+			}
+			out = append(out, string(decodeEnvelope(t, body).Data))
+		}
+		return out
+	}
+
+	before := capture()
+	if !strings.Contains(before[0], "power_pv_avg_w") || !strings.Contains(before[2], "energy_wh") {
+		t.Fatalf("réponses vides avant agrégation : %v", before)
+	}
+
+	res, err := store.Rollup(context.Background(), time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Rollup: %v", err)
+	}
+	if res.Buckets == 0 {
+		t.Fatal("aucun agrégat écrit : la seconde capture ne testerait rien")
+	}
+	var aggRows int
+	if err := store.DB().QueryRow(`SELECT COUNT(*) FROM agg_hour`).Scan(&aggRows); err != nil {
+		t.Fatalf("comptage des agrégats: %v", err)
+	}
+	if aggRows < 12 {
+		t.Fatalf("%d heures agrégées, attendu au moins 12", aggRows)
+	}
+	after := capture()
+	for i, p := range paths {
+		if before[i] != after[i] {
+			t.Fatalf("%s : charge utile modifiée par l'agrégation\navant : %s\naprès : %s",
+				p, before[i], after[i])
+		}
+	}
+}

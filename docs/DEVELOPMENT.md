@@ -54,6 +54,7 @@ frontend n'a jamais l'adresse de l'onduleur.
 | `make build` | binaires statiques dans `bin/` + build du frontend |
 | `make test` | `go test ./... -race` puis `vitest --run` |
 | `make test-go` / `make test-web` | une seule moitié |
+| `make test-perf` | critère de l'ADR 0006 : un an de mesures (≈6,3 M de lignes) et < 200 ms par requête ; lent, à la demande |
 | `make lint` | `go vet ./...` puis `oxlint` |
 | `make fmt` | `go fmt ./...` |
 | `make seed` | 7 jours d'historique simulé |
@@ -91,6 +92,12 @@ démarrage. Ils sont lus par `froniusd` et `fronius-probe`, jamais par le
 frontend ni par l'API REST. Le client officiel interroge ces mêmes chemins toutes
 les 5 s ; 60 s suffisent ici, une identité et une présence changeant rarement.
 
+La cadence de la maintenance (agrégation horaire toutes les 5 min, purge
+quotidienne à partir de 03:00) n'est **pas** configurable : elle ne dépend
+d'aucun besoin d'exploitation, et l'exposer ajouterait une variable à valider,
+documenter et tester pour aucun gain. Seule la profondeur de rétention
+(`FRONIUS_RETENTION_DAYS`) est réglable (ADR 0006).
+
 ## Tests
 
 ```bash
@@ -116,7 +123,12 @@ Organisation :
   abandon d'un chemin après un 401 sans identifiants ;
 - `internal/model` : unités, qualité, capacités, invariant « pas de zéro » ;
 - `internal/storage` : migrations idempotentes, upsert, buckets, changement
-  d'heure (23 h / 25 h), purge ;
+  d'heure (23 h / 25 h), purge, et équivalence des lectures avant/après
+  agrégation (bornes au milieu d'une heure, heure ouverte, heure vide, rattrapage
+  d'un historique importé) ; `make test-perf` porte la mesure sur un an ;
+- `internal/maintenance` : borne de rétention alignée sur l'heure, une seule
+  purge par journée locale, rétention `0` sans purge, erreurs qui n'arrêtent pas
+  la boucle, passe réelle sur une base SQLite ;
 - `internal/collector` : jitter, backoff, anti-duplication des événements,
   annulation, absence d'insertion en cas d'échec ;
 - `internal/api` : 404/405, validation des paramètres, états vides, capacités

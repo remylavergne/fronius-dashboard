@@ -281,3 +281,45 @@
   `modelName`/`firmwareVersion`, forme de `/status/activeEvents`, lecture de l’état de charge
   de la batterie, filtres d’événements par date/sévérité dans l’interface, OpenAPI, export CSV,
   tests E2E, captures d’écran.
+
+- 2026-10-16 — Étape 15 (phase 3) : agrégats horaires et purge planifiée. Livré :
+  migration `0003_agg.sql` (`agg_hour` : `count_all`, `count_pv`, `sum_pv_w`,
+  `min_pv_w`, `max_pv_w`, `max_energy_day_wh`), bascule des lectures au pas
+  horaire ou journalier vers ces agrégats dès que la plage est entière et close,
+  invalidation de la borne d'eau à l'écriture (un historique importé sous la
+  borne est repris par la passe suivante), purge des agrégats avec celle des
+  mesures, et nouveau paquet `internal/maintenance` qui planifie l'agrégation
+  (toutes les 5 min, rattrapage au démarrage) et la purge (au démarrage puis
+  chaque jour à partir de 03:00, `FRONIUS_RETENTION_DAYS=0` la désactivant).
+  L'item « rétention et purge programmée » de la section 4 est ainsi
+  complètement satisfait (l'ADR 0006 le reportait à cette phase) ; `make
+  test-perf` rejoue le critère de sortie.
+
+  Vérifications exécutées : `go vet ./...`, `CGO_ENABLED=0 go build ./...`,
+  `go test ./... -race` (tous les paquets ok) ; équivalence brut/agrégat
+  vérifiée sur un jeu de données couvrant une heure vide, des valeurs absentes,
+  une entête au milieu d'une heure, la queue dans l'heure ouverte et une
+  transition d'heure locale (23 h) — buckets, effectifs et minimum/maximum
+  identiques, moyennes égales à 1e-9 relatif près ; au niveau de l'API, charge
+  utile **identique octet à octet** avant et après agrégation sur
+  `/timeseries?step=1h`, `step=1d` et `/energy/daily` ; anti-régression sur la
+  borne d'eau (abaissement à l'écriture, jamais d'heure ouverte agrégée, pas de
+  borne écrite sur une base vide, purge cohérente entre les deux tables) ;
+  mesure sur un an (6 307 200 mesures insérées en 22,7 s) : pas 1 h **14 ms**
+  contre 5 168 ms, énergie journalière **5 ms** contre 5 535 ms, pas 1 j 7 ms,
+  avec 8 760 et 366 buckets identiques dans les deux chemins — critère de
+  l'ADR 0006 (< 200 ms) largement tenu.
+
+  Écart au plan, assumé et documenté dans l'ADR : aucune table journalière n'est
+  créée. Le regroupement par date locale se fait en Go depuis la table horaire
+  (8 760 lignes pour un an, 5 ms), donc une seconde table n'apporterait qu'une
+  synchronisation et une purge supplémentaires à tester. Deux points de
+  conception non prévus par le plan et nécessaires à la correction : la lecture
+  ne sert une heure depuis les agrégats que si elle est **entière et contenue**
+  dans la plage demandée (un agrégat couvre l'heure complète, la lecture brute
+  ne voit que `[from, to)` — servir une heure partielle depuis un agrégat
+  inventerait des mesures), et la borne de purge est alignée sur l'heure pour que
+  mesures et agrégats partagent la même frontière. Non livré, laissé ouvert :
+  mêmes items que l'étape 14 (sonde matérielle et promotion des fixtures,
+  clés d'identité réelles, forme de `/status/activeEvents`, état de charge
+  batterie, filtres d'événements, OpenAPI, export CSV, tests E2E, captures).

@@ -3,7 +3,7 @@ GO ?= go
 PNPM ?= pnpm
 WEB := apps/web
 
-.PHONY: help build test test-go test-web lint lint-go lint-web fmt dev-sim dev-api dev-web seed clean
+.PHONY: help build test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-web seed clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -19,6 +19,9 @@ test-go: ## Tests Go avec détecteur de courses
 
 test-web: ## Tests frontend (vitest, run unique)
 	$(PNPM) --dir $(WEB) test --run
+
+test-perf: ## Mesure le critère de l'ADR 0006 (un an de données, < 200 ms ; ≈6,3 M de lignes)
+	FRONIUS_PERF_YEAR=1 $(GO) test ./internal/storage/ -run TestOneYearTimeSeriesPerformance -count=1 -v -timeout 30m
 
 lint: lint-go lint-web ## Lint backend + frontend
 

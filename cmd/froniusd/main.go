@@ -31,6 +31,7 @@ import (
 	"fronius-supervisor/internal/fronius/digest"
 	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/fronius/solarapi"
+	"fronius-supervisor/internal/maintenance"
 	"fronius-supervisor/internal/model"
 	"fronius-supervisor/internal/storage"
 )
@@ -103,12 +104,6 @@ func run(backfillDays int, forceBackfill bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if cfg.RetentionDays > 0 {
-		if err := purge(ctx, store, loc, cfg.RetentionDays, logger); err != nil {
-			return err
-		}
-	}
-
 	if backfillDays > 0 {
 		if err := backfill(ctx, client, store, cfg, backfillDays, forceBackfill, logger); err != nil {
 			return err
@@ -160,6 +155,23 @@ func run(backfillDays int, forceBackfill bool) error {
 		}
 	}()
 
+	// La maintenance (agrégation horaire, purge de rétention) démarre après le
+	// remplissage d'historique : sa première passe agrège alors ce que le
+	// backfill vient d'écrire.
+	maint := &maintenance.Runner{
+		Store:         store,
+		Loc:           loc,
+		RetentionDays: cfg.RetentionDays,
+		Log:           logger,
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := maint.Run(ctx); err != nil {
+			logger.Error("maintenance arrêtée sur erreur", "error", err)
+		}
+	}()
+
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           api.New(store, cfg, version(), logger).Handler(),
@@ -195,26 +207,6 @@ func run(backfillDays int, forceBackfill bool) error {
 	wg.Wait()
 	logger.Info("arrêt terminé")
 	return nil
-}
-
-// purge applique la rétention une fois au démarrage. Aucune purge planifiée
-// n'est active en phase 1 (ADR 0006) : elle n'a lieu que si l'opérateur a
-// explicitement fixé FRONIUS_RETENTION_DAYS.
-func purge(ctx context.Context, store *storage.Store, loc *time.Location, days int, logger *slog.Logger) error {
-	now := time.Now().In(loc)
-	limit := time.Date(now.Year(), now.Month(), now.Day()-days, 0, 0, 0, 0, loc)
-	deleted, err := store.PurgeBefore(ctx, limit)
-	if err != nil {
-		return err
-	}
-	logger.Info("purge de rétention terminée", "before", limit, "samples_deleted", deleted, "retention_days", days)
-	return store.InsertEvent(ctx, model.Event{
-		TS:       time.Now().UTC(),
-		Kind:     model.EventPurge,
-		Severity: model.SeverityInfo,
-		Message:  "purge de rétention exécutée",
-		Detail:   fmt.Sprintf("%d échantillons supprimés avant %s", deleted, limit.Format(time.RFC3339)),
-	})
 }
 
 // backfill reconstitue un historique en interrogeant le simulateur avec son
