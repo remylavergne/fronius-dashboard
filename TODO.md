@@ -18,14 +18,14 @@
 
 - [ ] Documenter `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` et ses champs réellement disponibles
 - [x] Relever autres endpoints Solar API documentés et utiles
-- [ ] Extraire méthodes/arguments/DTO des commandes internes utiles en lecture seule
+- [x] Extraire méthodes/arguments/DTO des commandes internes utiles en lecture seule (table par chemin dans `docs/ENDPOINTS.md`, provenance dans `docs/SOURCES.md`)
 - [ ] Auditer garde Angular `oi.a` et contrôles de composants sans supposer permissions serveur
 - [x] Construire matrice endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord
 - [x] Classifier chaque endpoint READ / MUTATION / DANGEROUS
 - [x] Analyser module `ytu1` Digest, gestion nonce et cas d’erreur
 - [x] Vérifier gestion 401/403, nonce expiré et cas d’absence d’auth
 - [x] Documenter récupération Technician et compteur sans effectuer d’essai
-- [ ] Vérifier anciens profils/gestionnaire de mots de passe si récupération encore souhaitée
+- [x] Vérifier anciens profils/gestionnaire de mots de passe si récupération encore souhaitée
 - [x] Documenter `SupportAccount`, SDP, ServiceFile comme non validés côté firmware
 - [x] Exclure des tests actifs les réglages réseau électrique, firmware et récupération
 

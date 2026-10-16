@@ -37,16 +37,22 @@ Webpack, qui reste stable.
 
 | Module | Rôle | Début | Retenu pour |
 |---|---|---|---|
-| `CNEH` | Stockage des identifiants dans `localStorage` (clé `AuthHash`) | 24792 | INTERDIT à reproduire |
-| `JWhm` | Classe HTTP de base : `callGet$`, `callPost$`, `callGetWithoutCatch$`, `callPostWithoutCatch$`, `_getUserAndPass` | 46761 | Phase 2 |
-| `LsM5` | DAO de login, mise à jour du store | 48466 | Contexte |
-| `i3oe` | Service de commandes (`Login`, `Logout`, `SetPassword`, `ActivatePasswords`, …) | 90501 | Phase 2 / hors périmètre |
-| `mgOI` | Composant de login | 121441 | Contexte |
-| `nuFz` | Action `[Login] login`, logique de rôle dans le store | 122472 | Contexte |
+| `CNEH` | Stockage des identifiants dans `localStorage` (clé `AuthHash`) | 24793 | INTERDIT à reproduire |
+| `JWhm` | Classe HTTP de base : `callGet$`, `callPost$`, `callGetWithoutCatch$`, `callPostWithoutCatch$`, `_getUserAndPass` | 46762 | Phase 2 |
+| `LsM5` | DAO de login, mise à jour du store | 48467 | Contexte |
+| `i3oe` | Service de commandes (`Login`, `Logout`, `SetPassword`, `ActivatePasswords`, …) | 90502 | Phase 2 / hors périmètre |
+| `pMcQ` | Énumération du **type d'enveloppe** de réponse : `Default = 0`, `Cgi = 1`, `CommandResult = 2` (l. 155872-155877) | 155866 | Extraction des enveloppes |
+| `mgOI` | Composant de login | 121442 | Contexte |
+| `nuFz` | Action `[Login] login`, logique de rôle dans le store | 122473 | Contexte |
 | `xeXE` | Génération des en-têtes HTTP Digest | 182391 | Phase 2 (implémenté) |
-| `ytu1` | Ré-export du module Digest | 183395 | Phase 2 (implémenté) |
-| `aYRN` | Registre d'endpoints « pollés » (module `b`), héritant de `JWhm` : intervalles et type d'enveloppe par chemin | 75885 | Chemins internes de la phase 2 |
-| `yTJA` | Service d'état : lit les mêmes chemins **sans** en-tête `Authorization` | 182982 | Deuxième voie vers les mêmes chemins |
+| `ytu1` | Ré-export du module Digest | 183396 | Phase 2 (implémenté) |
+| `aYRN` | Registre d'endpoints « pollés » (classe `b`, héritant de `JWhm`) : chemin, intervalle, type d'enveloppe et rôle déclaré par entrée (l. 76027-76045) | 75885 | Chemins internes de la phase 2 |
+| `yTJA` | Service d'état : deuxième client, indépendant de `JWhm`, qui lit `httpClient.get(this.url)` **sans** en-tête `Authorization` (l. 183019-183021) | 182982 | Deuxième voie vers les mêmes chemins |
+| `rCKn` | DAO de configuration : une instance par chemin `/config/*` (l. 161462-161485), `loadData()` = `GET` (l. 161422) et `saveData()` = `POST` (l. 161428), enveloppe `Default` | 161333 | Extraction des méthodes `/config/*` |
+| `lFFc` | `/commands/License` et ses variantes `?status=`, `?acknowledgement=`, `?serviceFile=` (l. 120669-120677) | 120656 | Extraction (hors liste blanche) |
+| `966A` | `/commands/InverterRollbackStatus` (l. 21341) | 21319 | Extraction (hors liste blanche) |
+| `rqlu` | Identifiant d'événement `prefix-eventID` et clé de traduction des états (l. 164699, 164705) | 164690 | DTO de `/status/activeEvents` |
+| `jRQl` | Énumération `T_SystemServiceId` (`GridlimitsAutotest = 21`, l. 116025) | 115999 | Argument `serviceId` |
 
 Autres repères : `createNode` (dérivation de mots de passe) vers 43079,
 `recoverPassword` vers 137550, `createSdpFile` vers 136669.
@@ -66,6 +72,15 @@ sur l'artefact :
 | `grep -c` sur `www-authenticate` sans préfixe `x-` | `0` | Aucune variante standard n'est lue par le client. |
 | `grep -c AuthHash` | `15` | Identifiants stockés en clair côté client (voir ci-dessous). |
 | `grep -c 'www-authenticate'` (hors préfixe `x-`) | `0` | Le client officiel ne lit que l'en-tête non standard. |
+
+Commandes de l'extraction méthode/arguments/DTO (voir `docs/ENDPOINTS.md`) :
+
+| Recherche | Résultat | Conséquence |
+|---|---|---|
+| `grep -n 'callGet\$(\|callGetWithoutCatch\$(\|callPost\$(\|callPostWithoutCatch\$('` | `53` occurrences | moins les 4 définitions de `JWhm` (l. 46782, 46787, 46791, 46796) et les 3 lignes de `_refreshValue` (l. 75958, 75960, 75963) ⇒ **46 lignes**, dont 2 délégations internes (l. 46784, 46793) ⇒ **44 sites d'appel** |
+| `grep -n '_httpClient\.\(get\|post\)(' \| awk '$1 < 46761 \|\| $1 > 46820'` (les `\|` sont les échappements shell) | `7` | 6 appels bruts sur des chemins de l'appareil (SDP, Service/License blob), 1 hors périmètre (icônes Angular Material, l. 54377) |
+| `grep -n '/status/version'` | `1` | une seule occurrence (l. 183050, module `yTJA`) : `/status/version` **n'est pas** dans le registre pollé `aYRN` |
+| `grep -n 'new h(t,"/config'` | `24` | un DAO et un littéral par chemin `/config/*` (l. 161462-161485) |
 
 **Conclusion structurante : le bundle ne contient aucun chemin Solar API.** Il ne
 fournit donc **aucun schéma** de `GetPowerFlowRealtimeData` : ni noms de champs,
@@ -87,8 +102,8 @@ deux clients distincts du bundle.
 
 | Voie | Module | En-tête `Authorization` | Preuve |
 |---|---|---|---|
-| Registre « pollé » | `aYRN` (l. 75885), `class b extends f.a` où `f = n("JWhm")` (l. 75899) | oui : `callGet$` = GET + Digest + **un** retry sur 401 (l. 75961-75963) | `/status/version` l. 76042, `/status/activeEvents` l. 76030, `/components/PowerMeter/readable` l. 76031, `/components/BatteryManagementSystem/readable` l. 76032 |
-| Service d'état | `yTJA` (l. 182982), classe `A` **indépendante de `JWhm`** | **non** : `this.httpClient.get(this.url)` (l. 183020), aucune construction d'en-tête | `/status/version` l. 183050, `/status/common` l. 183049, `/status/network` l. 183052, `/components/DataManager/readable` l. 183057 |
+| Registre « pollé » | `aYRN` (l. 75885), `let b = class extends f.a` où `f = n("JWhm")` (l. 75899, 75901) | oui : `callGet$` = GET + Digest + **un** retry sur 401 (l. 46782-46786) | `/status/devices` l. 76027, `/status/network` l. 76028, `/status/emrs` l. 76029, `/status/activeEvents` l. 76030, `/status/events` l. 76031, `/components/BatteryManagementSystem/readable` l. 76032, `/components/cache/readable` l. 76033, `/components/Ohmpilot/readable` l. 76034, `/components/PowerMeter/readable` l. 76035, `/status/powerflow` l. 76036, `/commands/GetUTCTime` l. 76037, `/status/common` l. 76041, `/commands/LicenseExchange` l. 76042, `/commands/GetServiceState?serviceId=` l. 76043, `/commands/RemoteAccess` l. 76044, `/commands/StandbyState` l. 76045 — **`/status/version` n'y figure pas** |
+| Service d'état | `yTJA` (l. 182982), classe `A` **indépendante de `JWhm`** | **non** : `this.httpClient.get(this.url)` (l. 183020), aucune construction d'en-tête | `/status/common` l. 183049, `/status/version` l. 183050, `/status/registrationData` l. 183051, `/status/network` l. 183052, `/status/capabilities` l. 183053, `/status/ioServices` l. 183054, `/status/powerflowcontroller` l. 183055, `/status/deviceDB` l. 183056, `/components/DataManager/readable` l. 183057, `/status/license` l. 183058, `/status/license/features` l. 183059, `/status/activeEvents?sync=true` l. 183060, `/status/events?sync=true` l. 183061 |
 
 Conséquence retenue : **un même chemin peut répondre sans authentification**. Le
 client de cette application émet donc toujours la requête nue d'abord, et ne
@@ -159,18 +174,45 @@ capture (`cmd/fronius-probe`).
 
 | Chemin | Champ | Clé prouvée ? | Preuve |
 |---|---|---|---|
-| `/status/version` | `serialNumber` | oui | l. 45243 (`t.serialNumber`), l. 183034 |
+| `/status/version` | `serialNumber` | oui | l. 45243, l. 127380, l. 143048 (`t.serialNumber`) |
 | `/status/version` | `numberOfPhases` | oui | l. 183034 |
 | `/status/version` | `devicegroup` | oui | l. 183035 (`"P" === t.devicegroup[0] ? 1 : 3`) |
+| `/status/version` | `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID` | oui | l. 126568, 128813, 128814, 128842, 128882, 143049 — champs lus, non utilisés par l'application à ce stade |
 | `/status/version` | `firmwareVersion`, `modelName` | **non** | candidats du simulateur, valeurs visiblement fausses (`1.24.3-sim`) |
-| `/components/PowerMeter/readable` | *(aucun)* | — | seule l'enveloppe `Cgi` est établie (l. 75958, 183011) : la détection se fait sur `Body.Data` non vide |
-| `/components/BatteryManagementSystem/readable` | *(aucun)* | — | idem |
-| `/status/activeEvents` | *(aucun)* | — | seule la lecture est établie (l. 76030) ; le JSON brut est conservé borné à 2 048 octets |
-| `/status/activeEvents` | `code`, `state`, `severity`, `level`, `message`, `text`, `description` | **non** | candidats : ils servent à la déduplication et à la sévérité, avec repli systématique |
+| `/components/PowerMeter/readable` | `channels` (23 signaux `SMARTMETER_*`), `attributes.addr`, `attributes["[ENABLE]"]` | oui | l. 129011, 129015, 130976-130983 ; enveloppe `Cgi` (l. 75958, 183011) ; la **détection** se fait toujours sur `Body.Data` non vide |
+| `/components/BatteryManagementSystem/readable` | `channels` (10 signaux) | oui | l. 128986 ; enveloppe `Cgi` (l. 75958) |
+| `/status/activeEvents` | `severity`, `viewer`, `uuid`, `timestamp`, `activeUntil`, `category`, `confirmable`, `label`, `sourceID`, `prefix`, `eventID` | oui | l. 135689-135701, 135654, 164699 — lecture établie (l. 76030) ; le JSON brut reste conservé borné à 2 048 octets |
+| `/status/activeEvents` | `code`, `state`, `severity`, `level`, `message`, `text`, `description` | **non** | candidats de l'application : ils servent à la déduplication et à la sévérité, avec repli systématique |
 
 Le client extrait l'identité par **listes de clés candidates ordonnées**
 (`internal/fronius/internalapi/client.go`) : ajouter une clé observée en tête de
 la liste correspondante suffit, aucune structure n'est à changer.
+
+## Extraction méthode / arguments / DTO par chemin
+
+`docs/ENDPOINTS.md` (section « Méthode, arguments et DTO par chemin (extraction
+bundle) ») porte la table par chemin. Provenance de cette extraction, tout en
+confiance `[SOURCE-JS]`, **module par module**, dans le bundle conservé non
+modifié :
+
+| Module | Lignes | Ce qui en est tiré |
+|---|---|---|
+| `aYRN` | 75885-76048 | registre pollé : chemin, intervalle, type d'enveloppe (l. 76027-76045) ; `_refreshValue` prouve que **toutes** les entrées sont lues en `GET` (l. 75955-75964) ; `_isUserAllowed` (l. 75972-75984) et `{user: "customer"}` (l. 76037-76040) |
+| `JWhm` | 46762-46822 | quatre méthodes d'appel : `callGet$`/`callGetWithoutCatch$` (GET) et `callPost$`/`callPostWithoutCatch$` (POST), plus `_getUserAndPass` (l. 46782-46813) |
+| `pMcQ` | 155866-155878 | énumération du type d'enveloppe : `Default`, `Cgi`, `CommandResult` |
+| `yTJA` | 182982-183066 | deuxième client sans en-tête : littéraux des chemins `/status/*` et `/components/DataManager/readable`, enveloppe par chemin (l. 183010-183021) |
+| `i3oe` | 90502-91250 | sites d'appel des `/commands/*`, arguments d'URL et corps de requête |
+| `rCKn` | 161333-161540 | DAO `/config/*` : un littéral par chemin, `loadData` (GET, l. 161422), `saveData` (POST, l. 161428) |
+| `lFFc`, `966A` | 120656-120780, 21319-21345 | `/commands/License` et variantes, `/commands/InverterRollbackStatus` |
+| `rqlu`, `jRQl` | 164690-164709, 115999-116025 | identifiant d'événement (`prefix`-`eventID`), énumération `T_SystemServiceId` |
+
+Les champs d'aboutissement (signaux `channels`, clés `Hosts[]`, etc.) sont
+relevés dans les composants consommateurs, dont les numéros de ligne figurent dans
+la même table. Version de référence inchangée : `WebUI 1.14.2-1` et
+`GEN24/DEVICEGROUP/GEN24PRIMO 1.19.7-1` (§ Matériel de référence).
+
+Ce que l'extraction **n'établit pas** : aucune permission serveur. Les rôles
+relevés sont des conditions d'affichage du client (voir `docs/UNKNOWNS.md` #6).
 
 ## Inventaire des endpoints
 
@@ -183,11 +225,11 @@ l'accessibilité, ni la méthode, ni les permissions.
 |---|---|---|---|
 | `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | aucune en phase 1 | `[OBSERVÉ-CONVERSATION]` « répond » ; **absent du bundle** ; schéma `[HYPOTHÈSE]` |
 | `/status/powerflow` | GET | interne | `[SOURCE-JS]` — interrogé toutes les 5 000 ms par le client officiel ; sert de base à `FRONIUS_POLL_INTERVAL` |
-| `/status/version` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 76042 et 183050 ; `[VÉRIFIÉ]` sur le simulateur. Fournit `serialNumber`, `numberOfPhases`, `devicegroup` |
-| `/status/activeEvents` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 76030 (intervalle 10 000 ms) ; `[VÉRIFIÉ]` sur le simulateur. Forme du corps non établie |
-| `/components/PowerMeter/readable` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 76031 (enveloppe `Cgi`) ; `[VÉRIFIÉ]` sur le simulateur. Présence déduite de `Body.Data` |
+| `/status/version` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 183050 (voie `yTJA`, sans en-tête — **ce chemin n'est pas dans le registre `aYRN`**) ; `[VÉRIFIÉ]` sur le simulateur. Fournit `serialNumber`, `numberOfPhases`, `devicegroup` |
+| `/status/activeEvents` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 76030 (intervalle 10 000 ms) ; `[VÉRIFIÉ]` sur le simulateur. Champs lus relevés dans `docs/ENDPOINTS.md` |
+| `/components/PowerMeter/readable` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 76035 (enveloppe `Cgi`) ; `[VÉRIFIÉ]` sur le simulateur. Présence déduite de `Body.Data` |
 | `/components/BatteryManagementSystem/readable` | GET | Digest « après 401 » | **appelé** (phase 2) : `[SOURCE-JS]` l. 76032 ; `[VÉRIFIÉ]` sur le simulateur. Présence déduite de `Body.Data` |
-| `/config/meter`, `/config/batteries` | non observé | — | **hors liste** : littéral et verbe hors de la zone lisible du bundle (module `rCKn`), non observés. Les utiliser reviendrait à inventer un contrat |
+| `/config/meter`, `/config/batteries` | `GET` (l. 161422) | Digest « après 401 » | **hors liste** par choix de périmètre : littéral et verbe **observés** (l. 161471 et 161462 ; module `rCKn`), l'affirmation inverse ayant été corrigée |
 | `/config/*` (24 chemins), `/status/*`, `/components/*` | GET | Digest « Customer » | `[OBSERVÉ-CONVERSATION]` pour quelques-uns (`/config/common`, `/config/modbus`, `/config/meter`, `/config/iomapping` : 200 ; `/config/powerlimits`, `/config/setup/*` : 200 `{}`) ; phase 2 |
 | `/commands/*` | GET/POST | Digest selon commande | `[SOURCE-JS]` ; plusieurs sont des mutations — **hors périmètre**, jamais appelées |
 
@@ -197,8 +239,10 @@ Ce qui manque encore et ce qui le lèverait :
 - Absence ou présence d'une authentification sur le firmware **1.19.7-1** → sonde
   `[À-TESTER]` : le simulateur exerce les deux cas, il ne prouve pas le firmware.
 - Noms réels du **modèle** et du **firmware** dans `/status/version` → sonde
-  `[À-TESTER]` : seuls `serialNumber`, `numberOfPhases` et `devicegroup` sont
-  établis ; `modelName` et `firmwareVersion` sont des candidats du simulateur.
+  `[À-TESTER]` : l'extraction établit les champs effectivement lus par le client
+  (`serialNumber`, `numberOfPhases`, `devicegroup`, `hardwareId`, `devicename`,
+  `articleNumber`, `swrevisions`, `hwrevisions`), mais **ni `modelName` ni
+  `firmwareVersion`** n'y figurent : ils restent des candidats du simulateur.
 - Forme de `/status/activeEvents` → sonde `[À-TESTER]` : le détail brut est
   conservé borné, donc aucune information n'est perdue en attendant.
 - Présence d'un Smart Meter ou d'une batterie sur l'installation : le simulateur

@@ -1,6 +1,6 @@
 # Inventaire statique des chemins présents dans le bundle
 
-> Extraction par expression régulière du JavaScript fourni. **Inventaire indicatif** : un chemin peut être utilisé en lecture, en écriture ou uniquement dans une fonctionnalité non disponible ; méthode et permissions ne sont pas inférées. Les chemins peuvent être incomplets lorsqu’ils sont construits dynamiquement.
+> Extraction par expression régulière du JavaScript fourni. **Inventaire indicatif** : un chemin peut être utilisé en lecture, en écriture ou uniquement dans une fonctionnalité non disponible. Les chemins peuvent être incomplets lorsqu’ils sont construits dynamiquement ; la méthode et les arguments de chaque chemin réellement interrogé sont désormais relevés depuis le registre pollé et les sites d’appel du bundle, avec leurs numéros de ligne, dans `docs/ENDPOINTS.md`. Les permissions, elles, ne sont jamais inférées.
 
 ## Endpoints `/commands/` (35)
 
@@ -108,8 +108,24 @@
 
 ## À relever par endpoint avant implémentation
 
-- Méthode exacte, paramètres, exemples de JSON **expurgés**.
-- Fréquence d'échantillonnage raisonnable, unités, timestamps, erreurs, timeout.
-- Permissions déclarées vs effectivement vérifiées, rôles et firmware concernés.
-- Effets de bord possibles, classification `read-only` / `mutation` / `dangerous`.
-- Documentation officielle ou tests de contrat disponibles.
+**Déjà relevé dans le bundle** (fait ; table par chemin et numéros de ligne dans
+`docs/ENDPOINTS.md`, section « Méthode, arguments et DTO par chemin (extraction
+bundle) ») : méthode HTTP, arguments d'URL, enveloppe de réponse, champs
+réellement lus par un consommateur, et rôle déclaré par le client — 54 chemins
+couverts, y compris les variantes `?sync=true`, `?status=true`, `?doScan=`,
+`?serviceId=`, `?componentId=`, `?testName=`.
+
+**Reste à relever, et cela exige une capture sur l'appareil** (sonde
+`cmd/fronius-probe`, hors de cette étape) :
+
+- exemples de JSON **expurgés** : forme réelle des charges utiles, en particulier
+  celles marquées `[NON OBSERVÉ]` (aucun consommateur dans le client officiel
+  n'en lit les champs) et celles dont les clés sont dynamiques ;
+- unités, timestamps et erreurs effectivement renvoyés par le firmware
+  `1.19.7-1` ;
+- permissions réellement **vérifiées par le serveur** (401/403 par rôle) : le
+  bundle ne prouve que des conditions d'affichage (`docs/UNKNOWNS.md` #6) ;
+- fréquence d'échantillonnage raisonnable et timeout adaptés à l'appareil ;
+- effets de bord observés et classification `read-only` / `mutation` /
+  `dangerous` confirmée par l'usage ;
+- documentation officielle ou tests de contrat disponibles.

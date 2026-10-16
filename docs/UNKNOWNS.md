@@ -9,14 +9,14 @@ dans `docs/SOURCES.md`.
 |---|---|---|---|
 | 1 | Forme du JSON de `GetPowerFlowRealtimeData` | `[HYPOTHÈSE]` encodée dans `dto.go`, décodage tolérant, fixtures marquées synthétiques | une capture réelle par `cmd/fronius-probe` et la promotion des fixtures |
 | 2 | Authentification **de la Solar API** sur le firmware 1.19.7-1 | `[À-TESTER]` : le client n'en envoie aucune ; les chemins internes, eux, sont authentifiés après un 401 | une réponse 401/403 de la sonde sur le chemin Solar API |
-| 3 | **Source partielle** de l'identité de l'onduleur | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur : `/status/version` est la source nommée, **seul `serialNumber` est un champ prouvé** (avec `numberOfPhases` et `devicegroup`) ; `modelName`/`firmwareVersion` sont des candidats. `device: null` tant qu'aucune lecture n'a abouti ; `device.identity` indisponible avec motif sinon | une capture réelle : confirmer les noms des clés de modèle et de firmware, puis les placer en tête des listes candidates |
-| 4 | Présence d'un Fronius Smart Meter | détectée par l'enveloppe `Cgi` de `/components/PowerMeter/readable` : `Body.Data` non vide ⇒ présent, vide ⇒ absent, illisible ⇒ **non déterminé** (jamais « absent »). Aucun champ nommé n'est utilisé | une capture réelle de `/components/PowerMeter/readable` |
-| 5 | Présence d'une batterie | même règle que #4 sur `/components/BatteryManagementSystem/readable` ; `battery.soc` reste indisponible **même batterie détectée**, faute de preuve qu'une mesure d'état de charge existe côté API | une capture réelle, puis la lecture de l'état de charge (phase ultérieure) |
-| 6 | Matrice de permissions par endpoint et par rôle | la **liste blanche du code** (`internal/fronius/internalapi/allowlist.go`) est la seule autorisation exécutable : quatre chemins internes, `READ`, GET ; les 79 autres sont inventoriés pour être évités | un compte de test et des captures ; voir `docs/ENDPOINTS.md` |
+| 3 | **Source partielle** de l'identité de l'onduleur | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur : `/status/version` est la source nommée, et l'extraction établit les champs **lus** (`serialNumber`, `numberOfPhases`, `devicegroup`, `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID` — voir `docs/ENDPOINTS.md`) ; l'application n'en consomme que trois, `modelName`/`firmwareVersion` restant des **candidats** non observés dans le bundle. `device: null` tant qu'aucune lecture n'a abouti ; `device.identity` indisponible avec motif sinon | une capture réelle : confirmer les noms des clés de modèle et de firmware, puis les placer en tête des listes candidates |
+| 4 | Présence d'un Fronius Smart Meter | détectée par l'enveloppe `Cgi` de `/components/PowerMeter/readable` : `Body.Data` non vide ⇒ présent, vide ⇒ absent, illisible ⇒ **non déterminé** (jamais « absent »). La détection ne dépend d'aucun champ nommé ; l'extraction relève en revanche les champs utilisables ensuite (`channels` : 23 signaux `SMARTMETER_*`, `attributes.addr`, `attributes["[ENABLE]"]` — `docs/ENDPOINTS.md`) | une capture réelle de `/components/PowerMeter/readable` |
+| 5 | Présence d'une batterie et état de charge | présence : même règle que #4 sur `/components/BatteryManagementSystem/readable` ; `battery.soc` reste **indisponible** dans l'application — décision de périmètre inchangée. Nuance apportée par l'extraction : le client officiel **lit bien** un état de charge relatif, `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` en `%`, dans `channels` de ce chemin (l. 128986), et aussi `inverters[<id>].SOC` dans `/status/powerflow` (l. 129053) : la preuve d'existence d'une mesure existe donc côté API interne, sans qu'aucune lecture n'ait été faite sur l'appareil | une capture réelle, puis une décision explicite (justification par une métrique indisponible en Solar API) avant toute lecture de l'état de charge |
+| 6 | Matrice de permissions par endpoint et par rôle | l'extraction (voir `docs/ENDPOINTS.md`) établit le **rôle déclaré par le client** — condition d'affichage, jamais une autorisation : `_isUserAllowed` (l. 75972-75984) accorde `customer` à `customer \| technician \| support`, et `technician`/`support` à `technician \| support` ; **une seule** entrée du registre déclare `user: "customer"` (`/commands/GetUTCTime`, l. 76039). Elle établit aussi le **compte envoyé** (`_getUserAndPass`, l. 46807-46813 : compte du groupe de requêtes, sauf `Login` en `passwordUser`) — **aucune permission serveur n'est prouvable depuis un bundle**. Décision inchangée : la **liste blanche du code** (`internal/fronius/internalapi/allowlist.go`) est la seule autorisation exécutable : quatre chemins internes, `READ`, GET ; les 79 autres sont inventoriés pour être évités | un compte de test et des captures HTTP par rôle (401 / 403 / 200) ; voir `docs/ENDPOINTS.md` |
 | 7 | Récupération d'un accès Technician | aucun secret ni moyen autonome confirmé ; **aucune tentative** | procédure officielle du fabricant, documentation de l'installateur |
 | 8 | En-tête de défi non standard `x-www-authenticate` | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur **et** client tiers : un seul retry sur 401, défi lu d'abord dans l'en-tête non standard, `www-authenticate` en repli | l'appareil réel, pour confirmer qu'il utilise bien l'en-tête non standard |
 | 9 | Détection dynamique du matériel | **implémentée** : `internal/detect` interroge les quatre chemins, la détection est persistée puis injectée dans `model.Capabilities(detection)` | la levée de #3, #4 et #5 par capture matérielle |
-| 11 | Forme de `/status/activeEvents` | lecture seule établie ; les clés `code`, `state`, `severity`, `level`, `message`, `text` sont des **candidats**. Le JSON brut est conservé (borné à 2 048 octets) et la déduplication repose sur `code`, puis `state`, puis l'empreinte SHA-256 du JSON — donc aucune information n'est perdue | une capture réelle : elle indiquera les clés de message et de sévérité |
+| 11 | Forme de `/status/activeEvents` | l'extraction établit les champs **lus** par le client : `severity`, `viewer`, `uuid`, `timestamp`, `activeUntil`, `category`, `confirmable`, `label`, `sourceID`, `prefix`, `eventID` (l. 135689-135701, 164699 ; charge utile = tableau, `for (const n of t)` l. 135689). Les clés employées par **l'application** (`code`, `state`, `severity`, `level`, `message`, `text`) restent des **candidats**, dont seul `severity` recoupe le client. Le JSON brut est conservé (borné à 2 048 octets) et la déduplication repose sur `code`, puis `state`, puis l'empreinte SHA-256 du JSON — donc aucune information n'est perdue | une capture réelle : elle indiquera les clés de message et de sévérité et permettra d'aligner la liste candidate sur les champs observés |
 | 12 | Signature du défi Digest (`cnonce="NaN"`) | non reproduite : le client officiel émet `NaN` par un bug de conversion ; nous émettons un `cnonce` aléatoire de 16 caractères hexadécimaux | si l'appareil refuse malgré tout, remplacer par la constante `"NaN"` (repli documenté dans `CHANGELOG.md`) |
 | 10 | Valeurs aberrantes de l'appareil | **aucun filtrage** : une valeur reçue est enregistrée telle quelle ; seules les valeurs *absentes* sont distinguées | un besoin réel observé (dérive, pic, compteur qui recule) et une règle explicite |
 
@@ -52,8 +52,11 @@ aucun en-tête n'est ajouté et le comportement reste celui de la phase 1.
 
 **Établi.** L'export PDF fournit modèle, version de firmware et numéro de série
 `[SOURCE-PDF]`. Côté HTTP, `/status/version` est la source nommée par le client
-officiel (deux modules distincts l'appellent), et **trois champs seulement** y
-sont prouvés : `serialNumber`, `numberOfPhases`, `devicegroup`.
+officiel (voie sans en-tête, module `yTJA`, l. 183050), et l'extraction y relève
+les champs **lus** : `serialNumber`, `numberOfPhases`, `devicegroup`, `hardwareId`,
+`devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID`. Ni
+`modelName` ni `firmwareVersion` n'y figurent : ce sont des candidats de
+l'application.
 
 **Décision.** L'identité est lue par `internal/detect` et persistée dans la table
 `device`. `modelName` et `firmwareVersion` — candidats non prouvés — sont
@@ -82,7 +85,13 @@ batterie détectée. Aucune carte correspondante n'est écrite en dur dans
 l'interface : elles dérivent de `/api/v1/capabilities`.
 
 **Ce qui la lèverait.** Une capture réelle des deux chemins `readable` — et, pour
-l'état de charge, une source de mesure qui reste à établir.
+l'état de charge, une décision explicite : le client officiel lit bien
+`BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` (`%`) dans les `channels` du chemin
+batterie (l. 128986) et `inverters[<id>].SOC` dans `/status/powerflow`
+(l. 129053), donc la mesure existe côté API interne ; son usage par cette
+application reste une décision séparée, non prise ici, qui exige une justification
+(une métrique que la Solar API ne fournit pas) et une capture pour confirmer le
+nom du signal sur le firmware **1.19.7-1**.
 
 ## 6. Matrice de permissions
 
@@ -92,10 +101,22 @@ conditionnent l'affichage. Aucun rôle serveur n'est prouvé. `docs/ENDPOINTS.md
 classe les 79 chemins en READ / MUTATION / DANGEROUS **par intention et usage
 dans le JS**.
 
+**Ce que l'extraction méthode/arguments/DTO ajoute.** Pour chaque chemin lu par le
+client officiel, `docs/ENDPOINTS.md` donne désormais la méthode, les arguments,
+l'enveloppe et le rôle **déclaré** par le client. Trois faits en ressortent :
+`_isUserAllowed` (l. 75972-75984) n'implémente qu'une hiérarchie d'affichage
+(`customer` ⊂ `technician` ⊂ `support`), **une seule** entrée du registre déclare
+un rôle (`user: "customer"` sur `/commands/GetUTCTime`, l. 76040), et le compte
+effectivement envoyé est celui du groupe de requêtes (`fallback`, l. 46809) sauf
+pour `Login` (`passwordUser`, l. 46811). Rien de tout cela n'est une autorisation :
+un bundle client ne peut pas prouver ce que le firmware accepte.
+
 **Décision.** La liste blanche du code est la seule autorisation exécutable :
 quatre chemins internes plus le chemin Solar API, tous `READ`, tous en GET. Tout
 le reste est inventorié pour être évité, jamais pour être autorisé. Une cellule
-« inconnu » n'est pas une permission implicite.
+« inconnu » n'est pas une permission implicite — et une méthode désormais
+**observée** (par exemple la `POST` du client officiel sur
+`/commands/ConnectedPowermeter`, l. 91025) ne change pas cette liste.
 
 ## 7. Récupération Technician
 
@@ -141,8 +162,16 @@ responsabilité est laissée au capteur et l'interface affiche ce qui est reçu.
 
 ## Inconnues hors périmètre MVP
 
-Documentées pour mémoire, sans décision nécessaire en phase 1 : DTO exacts des
-commandes internes utiles en lecture seule, garde Angular `oi.a` et contrôles de
-composants, format du fichier `sdp.cry`, rôle exact de `SupportAccount`, profils
-et gestionnaire de mots de passe, nécessité d'une authentification applicative
-pour l'accès distant (à trancher par un ADR avant tout accès distant permanent).
+Documentées pour mémoire, sans décision nécessaire en phase 1 : garde Angular
+`oi.a` et contrôles de composants, format du fichier `sdp.cry`, rôle exact de
+`SupportAccount`, profils et gestionnaire de mots de passe, nécessité d'une
+authentification applicative pour l'accès distant (à trancher par un ADR avant
+tout accès distant permanent).
+
+Les DTO des commandes internes en lecture seule ne sont **plus** une inconnue hors
+périmètre : ils sont extraits dans `docs/ENDPOINTS.md`. Ce qui reste `[NON
+OBSERVÉ]` après extraction — charge utile jamais consommée par le client officiel
+— est nommé dans cette table : `/status/registrationData` (bloc JSON),
+`/status/powerflowcontroller`, `/commands/StandbyState`, `/commands/GetSDPFile`,
+`/commands/ConnectedPowermeter?componentId=`, les deux variantes
+`?sync=true` et `/config/logging`, `/config/solarweb`, `/config/gridcode`.

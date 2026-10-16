@@ -9,6 +9,24 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Documentation : extraction méthode / arguments / DTO des chemins
+  internes en lecture seule.** `docs/ENDPOINTS.md` gagne une table par chemin
+  (54 chemins, 56 lignes) : méthode, arguments d'URL, enveloppe (`Default` /
+  `Cgi` / `CommandResult`), champs **réellement lus** et rôle **déclaré**, chaque
+  ligne adossée à des références de ligne du bundle. Les cellules de groupe de la
+  matrice sont remplacées par un renvoi et trois références fausses sont
+  corrigées : `/status/version` n'est **pas** dans le registre pollé `aYRN` (seule
+  la voie `yTJA`, l. 183050), `/components/PowerMeter/readable` est en l. 76035
+  (et non 76031), et le module `rCKn` — donc les littéraux `/config/*` — est
+  lisible (l. 161462-161485). Inventaire reproductible : 46 lignes d'appel
+  balayées hors `JWhm` (dont 2 délégations internes), 7 appels HTTP bruts,
+  10 `[NON OBSERVÉ]`, 7 charges utiles « schéma ». Provenance module par module
+  dans `docs/SOURCES.md` ; `docs/UNKNOWNS.md` #3, #4, #5, #6 et #11 sont mis à
+  jour avec ce que l'extraction établit (dont un signal d'état de charge lu par le
+  client officiel) sans jamais présenter un rôle client comme une permission
+  serveur ; `03-API-INVENTAIRE.md` ne laisse ouverts que les relevés exigeant une
+  capture sur l'appareil. **Aucun changement de code** : la liste blanche
+  exécutable reste inchangée.
 - 2026-10-16 — **Phase 3 : agrégats horaires et purge planifiée.** Migration
   `0003_agg.sql` : table `agg_hour` (`count_all`, `count_pv`, `sum_pv_w`,
   `min_pv_w`, `max_pv_w`, `max_energy_day_wh`) qui matérialise la réduction
