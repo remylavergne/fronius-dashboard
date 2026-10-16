@@ -37,8 +37,8 @@
 - [x] ADR stockage/rétention et agrégations
 - [x] ADR packaging Go statique/Docker Compose/NAS
 - [x] Initialiser module Go et structure internal/
-- [ ] Initialiser Vite React TypeScript strict et shadcn/ui
-- [ ] Installer Tailwind, TanStack Query, React Router, Recharts, Zod si nécessaire
+- [x] Initialiser Vite React TypeScript strict et shadcn/ui
+- [x] Installer Tailwind, TanStack Query, React Router, Recharts, Zod si nécessaire
 - [ ] Mettre en place lint/format/tests Go + frontend
 - [ ] Ajouter CI GitHub Actions ou équivalent
 - [x] Ajouter exemples `.env.example` sans secrets
@@ -57,7 +57,7 @@
 - [x] Implémenter mock/simulateur Fronius et fixtures anonymisées
 - [ ] Ajouter tests de contrat à partir des réponses réelles expurgées
 - [ ] Préparer client Digest optionnel isolé, sans l’utiliser si inutile au MVP
-- [ ] Vérifier que le frontend n’a jamais accès aux identifiants Fronius
+- [x] Vérifier que le frontend n’a jamais accès aux identifiants Fronius
 
 ## 4 — Persistance et API Go
 
@@ -82,22 +82,22 @@
 
 - [ ] Définir design system, thèmes clair/sombre et navigation responsive
 - [ ] Construire shell (sidebar, header, breadcrumb, navigation mobile)
-- [ ] Construire cartes KPI production instantanée / énergie du jour / état
-- [ ] Construire courbe puissance 24h avec tooltips, unités et sélection de période
+- [x] Construire cartes KPI production instantanée / énergie du jour / état
+- [x] Construire courbe puissance 24h avec tooltips, unités et sélection de période
 - [ ] Construire agrégats journaliers/hebdomadaires/mensuels/annuels
 - [ ] Ajouter comparaisons de périodes et calendrier de production
 - [ ] Ajouter état onduleur, firmware, réseau et diagnostics disponibles
 - [ ] Ajouter événements et filtres par date/sévérité
-- [ ] Ajouter page santé du collecteur et dernier rafraîchissement
+- [x] Ajouter page santé du collecteur et dernier rafraîchissement
 - [ ] Ajouter page paramètres et test de connectivité lecture seule
-- [ ] Ajouter page capacités (mesuré/estimé/indisponible/non vérifié)
-- [ ] Masquer les cartes consommation, import/export et autoconsommation sans compteur
-- [ ] Implémenter états loading/error/empty/offline/stale
-- [ ] Implémenter cache et rafraîchissement via TanStack Query
-- [ ] Implémenter graphiques Recharts responsives et accessibles
+- [x] Ajouter page capacités (mesuré/estimé/indisponible/non vérifié)
+- [x] Masquer les cartes consommation, import/export et autoconsommation sans compteur
+- [x] Implémenter états loading/error/empty/offline/stale
+- [x] Implémenter cache et rafraîchissement via TanStack Query
+- [x] Implémenter graphiques Recharts responsives et accessibles
 - [ ] Implémenter export CSV des historiques
-- [ ] Ajouter traduction FR avec structure i18n DE/EN
-- [ ] Ajouter navigation clavier et vérifications WCAG AA
+- [x] Ajouter traduction FR avec structure i18n DE/EN
+- [x] Ajouter navigation clavier et vérifications WCAG AA
 - [ ] Tester responsive desktop/tablette/mobile
 
 ## 6 — Qualité, déploiement, exploitation
@@ -217,3 +217,19 @@
   (`--list`, exécution complète, `--save`) ; son refus a été vérifié contre `192.0.2.10`
   **sans émettre de requête**. L'item « tests GET uniquement sur matériel » reste ouvert :
   cette exécution appartient à l'utilisateur.
+- 2026-10-16 — Étape 12 : interface React dans `apps/web`. Deux défauts détectés par la
+  vérification en navigateur, pas par les tests, et corrigés : (1) `connectNulls={false}` était
+  sans effet, car un bucket absent de la réponse ne figurait pas dans les données et Recharts
+  reliait ses voisins — les trous sont désormais matérialisés par des points `null` (limite de
+  5000 points, au-delà desquels la grille n'est pas complétée) ; (2) le pas était déduit de
+  l'écart entre les deux premiers buckets, ce qui est faux dès qu'un bucket manque — le serveur
+  expose maintenant `meta.step_s` (commit `fix(api)`). Vérifié en direct : KPI alimentés par le
+  simulateur, courbe 24 h annonçant « 1 point(s) sans mesure » et tracé coupé en deux
+  sous-chemins, page Capacités listant les 5 indisponibles avec leur motif, page Paramètres en
+  lecture seule, arrêt de `froniusd` → bandeau « API injoignable » **et** badge « Données
+  périmées » (fraîcheur rejugée localement quand l'API ne répond plus), reprise après
+  redémarrage, état vide sur base vierge, navigation clavier parcourant la barre latérale, et
+  build de production servi par `froniusd` (`FRONIUS_WEB_DIR`) avec repli SPA.
+  Non livré à cette étape, laissé ouvert : test de connectivité depuis la page Paramètres,
+  sélecteur de thème clair/sombre, fil d'Ariane, export CSV, tests E2E, vérification
+  responsive multi-appareils.

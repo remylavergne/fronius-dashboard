@@ -60,6 +60,16 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   `docs/ENDPOINTS.md` ; endpoints Solar API candidats `[À-TESTER]` pour
   l'identité de l'appareil et la détection compteur/batterie dans
   `docs/SOURCES.md`.
+- 2026-10-16 — Interface React (`apps/web`) : Vite 8 + React 19 + TypeScript 5.9
+  en mode strict (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`,
+  `verbatimModuleSyntax`), shadcn/ui (base Radix, style `radix-nova`), Tailwind 4,
+  TanStack Query, React Router 7, Recharts 3.10, zod 4. Quatre routes (vue
+  d'ensemble, système, capacités, paramètres), schémas zod miroirs des DTO Go,
+  `fetchJSON` classant les échecs en `network`/`http`/`schema`, i18n FR plate
+  prête pour EN/DE, états loading/error/empty/offline/stale, courbe 24 h/7 j/30 j
+  ou plage personnalisée avec trous réellement visibles, tableau des capacités,
+  navigation clavier et résumé textuel accessible du graphique. 56 tests vitest.
+
 
 ### Changed
 
