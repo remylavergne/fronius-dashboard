@@ -286,12 +286,21 @@ func (c *Client) ActiveEvents(ctx context.Context) ([]json.RawMessage, error) {
 // PowerFlow is the internal flow measurement of /status/powerflow.
 //
 // Shape provenance: the vendor interface reads these keys to draw its flow view
-// (bundle l. 129034, 129043-129063), and the reference device answered on
-// 2026-10-16 with `inverters` as an ARRAY — the bundle could not settle that,
-// since the vendor client reads it through Object.keys/Object.values, which
-// accept both an array and an index-keyed object. Only `site` is modelled here,
-// because only the day and year energies are consumed; `inverters` is kept as raw
-// JSON, so no shape is presumed for a member the application does not read.
+// (bundle l. 129034, 129043-129063), and the reference device was captured on
+// 2026-10-16 (firmware 1.19.7-1, 200, no challenge; promoted as
+// test/fixtures/internalapi/status_powerflow.json). The captured element keys:
+// `inverters` is an ARRAY of {CID, DT, E_Total, ID, P} — the bundle could not
+// settle that, since the vendor client reads it through Object.keys/Object.values,
+// which accept both an array and an index-keyed object; `site.MLoc` (integer 255)
+// is the internal twin of the Solar API's `Meter_Location` (a string there); and
+// `common` (datestamp/timestamp) and `version` are present but NOT read by this
+// application. Only `site` is modelled here, because only the day and year
+// energies are consumed; `inverters` is kept as raw JSON, so no shape is presumed
+// for a member the application does not read.
+//
+// Decisive: on this installation `site.E_Day` and `site.E_Year` are NULL, exactly
+// as in the Solar API answer, so the fallback restores neither KPI here
+// (docs/UNKNOWNS.md #13).
 //
 // Field names follow the protocol (`P_PV`, `E_Day`) so that a tag divergence
 // stands out on rereading, and every value is a pointer: absent stays nil.

@@ -41,7 +41,7 @@ The probe can only emit the requests of its allowlist, frozen in the binary
 | `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
 | `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
-| `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); observed on hardware on 2026-10-16 (200, `inverters` an array) but the body was not saved — the fixture values stay `[HYPOTHESIS]` until this capture is taken |
+| `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); **captured** 2026-10-16 (`200`, no challenge, `inverters` an array). The captured body has `site.E_Day`/`E_Year` **null too**, so the fallback fills nothing on this installation — its fate is an open decision (#13) |
 
 **Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
 of the allowlist at that time answered `200` on the **bare** request — no
@@ -53,8 +53,10 @@ and residual points: `docs/UNKNOWNS.md`, `docs/SOURCES.md`.
 
 Since then, the allowlist has a sixth entry, `/status/powerflow` (fallback for
 the day and year energies the Solar API returns as `null`, unknown #13), added
-later and **not yet captured in full** on hardware: the device answers `200`, but no
-body has been saved yet, so its fixture values stay `[HYPOTHESIS]`. The simulator now also serves that
+later and **captured** on hardware (2026-10-16, `200`, no challenge); the body is
+promoted as `internalapi/status_powerflow.json`. The captured body is **decisive**:
+`site.E_Day`/`E_Year` are **null there too**, so the fallback fills nothing on this
+installation (see #13). The simulator also serves that
 path — mirroring its own Solar API numbers, it does **not** reproduce the `null`
 case (the captured fixture does) — so a probe rehearsal against the simulator
 answers **six** paths with `200`.
@@ -64,8 +66,9 @@ answers **six** paths with `200`.
 The bundle extraction (`docs/ENDPOINTS.md`) replaced the unknowns with
 **client-code** facts; what remains is to obtain the **device** facts. Each
 capture of the allowlist closes a precise unknown. The first run took place on
-2026-10-16 (firmware 1.19.7-1) and closed all five unknowns below; the table is
-kept as the record of what each capture had to settle:
+2026-10-16 (firmware 1.19.7-1) and closed the five unknowns below; a later run
+the same day captured the sixth path, `/status/powerflow`. The table is kept as
+the record of what each capture had to settle:
 
 | Path                                           | Unknown to close                     | What the extraction already asserts                                                                                                                                                                                             | What the capture settles                                                                                 |
 | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -74,13 +77,15 @@ kept as the record of what each capture had to settle:
 | `/status/activeEvents`                         | #11 (event shape)                    | payload = array; 11 fields read; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728); identity = `uuid`, or `prefix`-`eventID`; text = `label`                                                          | the real names and types, the semantics of `viewer`, and whether `label` carries readable text or a code |
 | `/components/PowerMeter/readable`              | #4 (meter presence)                  | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]`                                                                                             | presence, real signal names and units on `1.19.7-1`                                                      |
 | `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge)     | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`                                                                                                                                              | presence, and whether the state of charge really exists on this firmware                                 |
-| `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **values `[HYPOTHESIS]`**, not captured | the real values and units of the day and year energies, and whether this internal path returns them where the Solar API nulls them |
+| `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **captured** 2026-10-16 (fixture `internalapi/status_powerflow.json`) | the real values and units of the day and year energies — **settled**: `site.E_Day`/`E_Year` are **null here too**, so this internal path does **not** return them where the Solar API nulls them (the fallback fills nothing, #13) |
 
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
 in § 8), exactly one further path has been added to the allowlist —
 `/status/powerflow`, the fallback for the day and year energies the Solar API
-returns as `null` (#13) — and its body is not captured yet (the device answers `200`,
-but nothing has been saved). The rule for adding
+returns as `null` (#13) — and its body is now **captured** too (2026-10-16,
+`200`, no challenge), promoted in § 8. The capture is decisive: the internal path
+returns those energies as **null too**, so the fallback fills nothing on this
+installation and the fate of the entry is an open decision (#13). The rule for adding
 remains a metric that the Solar API does not provide, and a metric is not chosen
 from an inventory (ADR 0008).
 
@@ -272,8 +277,8 @@ structural redaction.
 
 ## 8. Promotion of a redacted fixture
 
-**First promotion: 2026-10-16, firmware 1.19.7-1** — the five captures were
-promoted (`powerflow_produce_only.json` and the four internal fixtures); see
+**First promotion: 2026-10-16, firmware 1.19.7-1** — the six captures were
+promoted (`powerflow_produce_only.json` and the five internal fixtures); see
 `docs/SOURCES.md`.
 
 1. Check the written file: open `probe_*.json` and confirm that no serial

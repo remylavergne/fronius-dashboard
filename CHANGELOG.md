@@ -35,10 +35,31 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   `samples.fallback_source` column (migration `0004_fallback_source.sql`, empty
   string by default) and exposed by `/api/v1/live` as `fallback_source`.
   `cmd/fronius-sim` now also serves `/status/powerflow` (mirroring its own Solar
-  API numbers; it does **not** reproduce the `null` case, which the synthetic
-  fixture `test/fixtures/internalapi/status_powerflow.json` encodes). That shape
-  is still `[HYPOTHESIS]` until a hardware capture promotes it
-  (`docs/PROBE-READONLY.md`).
+  API numbers; it does **not** reproduce the `null` case).
+
+- 2026-10-16 — **`/status/powerflow` captured and its fixture promoted.** A
+  `cmd/fronius-probe --endpoint /status/powerflow` run against the reference
+  GEN24 captured the path (`200`, `digest_required: false`, firmware `1.19.7-1`)
+  and promoted `test/fixtures/internalapi/status_powerflow.json` (`synthetic:
+  false`, `confidence: "VERIFIED (hardware)"`, `captured_at`
+  `2026-10-16T14:47:07Z`) — the shape is no longer a `[HYPOTHESIS]`. The captured
+  body settles it: `inverters` is an **array** of `{CID, DT, E_Total, ID, P}`
+  (the bundle could not tell, its client reading that member through
+  `Object.keys`/`Object.values`), `site.MLoc` is the internal twin of the Solar
+  API's `Meter_Location` (integer `255`, versus the string `"unknown"`), and
+  `common`/`version` are not read by the application. **Decisive consequence:**
+  `site.E_Day` and `site.E_Year` are **null here too**, exactly as in the Solar
+  API answer, so the fallback **fills nothing on this installation** — it records
+  no `fallback_source`, logs no warning, and costs one extra GET per cycle. The
+  cause of the null stays unknown, and the fate of the entry is an **open
+  decision** (remove it, keep it dormant, or re-observe after midnight), with two
+  candidate paths: the documented Solar API accumulation endpoint
+  (`GetInverterRealtimeData` with `DataCollection=CumulationInverterData`, needing
+  one probe capture) or deriving the daily energy from our own stored `E_Total`
+  deltas (a **derived** metric, not a measurement). Tests cover both cases:
+  `TestFallbackFillsNothingWhenTheDeviceNullsItToo` (the observed reality, driven
+  by the promoted capture) and `TestFallbackCompletesTheNulledEnergies` (the fill
+  logic, with a body explicitly labelled hypothetical).
 
 - 2026-10-16 — **First hardware capture and fixture promotion.** Two
   `cmd/fronius-probe` runs against a real GEN24 (`http://192.0.2.10`, one
@@ -184,8 +205,9 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   member the application does not read. The fixture and the simulator both use the
   array form observed on the device, and the client test accepts both.
   The registers (`docs/ENDPOINTS.md`, `docs/PROBE-READONLY.md`, `docs/SOURCES.md`,
-  `docs/UNKNOWNS.md` #2/#13) now say "observed on hardware, body not saved"
-  instead of "not captured".
+  `docs/UNKNOWNS.md` #2/#13) then said "observed on hardware, body not saved"
+  instead of "not captured"; the same-day capture recorded in Added above replaces
+  that wording with the promoted fixture.
 
 - 2026-10-16 — **A refusal received after a Digest challenge is no longer reported
   as an absent endpoint** (`internal/fronius/digest`, `internal/detect`). When the

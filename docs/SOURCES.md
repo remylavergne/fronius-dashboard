@@ -186,7 +186,7 @@ exercise the client's reading tolerance, and to be confirmed by a capture
 | `/status/version` | `modelName`, `model` | **no** | candidates: **no model key** is observed in the bundle **nor in the capture**. `devicegroup` is not a model fallback — it is the device group, a sibling field (l. 183035), and the code no longer substitutes it |
 | `/components/PowerMeter/readable` | `channels` (23 `SMARTMETER_*` signals), `attributes.addr`, `attributes["[ENABLE]"]` | yes | l. 129011, 129015, 130976-130983; envelope `Cgi` (l. 75958, 183011); **detection** is always based on a non-empty `Body.Data`. **Captured 2026-10-16**: `Body.Data` empty ⇒ **absent**, `Content-Type: text/javascript` |
 | `/components/BatteryManagementSystem/readable` | `channels` (10 signals) | yes | l. 128986; envelope `Cgi` (l. 75958). **Captured 2026-10-16**: `Body.Data` empty ⇒ **absent**, `Content-Type: text/javascript` |
-| `/status/powerflow` | `site.E_Day`, `site.E_Year`, `site.E_Total`, `site.P_PV`, `site.P_Grid`, `site.P_Load`, `site.P_Akku`, `inverters[<id>].SOC`, `inverters[<id>].BatMode`, `Smartloads.Ohmpilots[<id>].P_AC_Total` | yes | l. 129034, 129043-129063 — read by the official client; **the application uses only `E_Day`/`E_Year`**, as a fallback (`docs/UNKNOWNS.md` #13). **Not captured on hardware**: the values are `[HYPOTHESIS]`, the fixture `internalapi/status_powerflow.json` is synthetic |
+| `/status/powerflow` | `site.E_Day`, `site.E_Year`, `site.E_Total`, `site.P_PV`, `site.P_Grid`, `site.P_Load`, `site.P_Akku`, `inverters[<id>].SOC`, `inverters[<id>].BatMode`, `Smartloads.Ohmpilots[<id>].P_AC_Total` | yes | l. 129034, 129043-129063 — read by the official client; **the application uses only `E_Day`/`E_Year`**, as a fallback (`docs/UNKNOWNS.md` #13). **Captured `[VERIFIED]` (hardware) 2026-10-16**: the fixture `internalapi/status_powerflow.json` is promoted (`synthetic: false`, firmware `1.19.7-1`, `captured_at` `2026-10-16T14:47:07Z`); `site.E_Day` and `site.E_Year` are **null here too**, so the fallback restores nothing on this installation (`docs/UNKNOWNS.md` #13) |
 | `/status/activeEvents` | body **root array** (not a `Cgi` envelope) | yes | **captured 2026-10-16**: the response body is a root JSON array, one element per active event |
 | `/status/activeEvents` | `severity` (integer: 1 error, 2 warning, 3 information) | yes | l. 135690 + l. 135728-135733 (`getEventLevel`); **used by the application** (`severityValue`, `internal/detect/detector.go`) — before the fix, the integer severity was not recognized and every hardware event was classified as "information". **Captured 2026-10-16: integer `3`** (`docs/UNKNOWNS.md` #11 confirmed) |
 | `/status/activeEvents` | `uuid`, `prefix`-`eventID` (instance identity) | yes | l. 135693, 164699, 135742 (comparison), 135760 (`ConfirmEvent` receives `{uuid}`); **used by the application** as an anti-duplication key. Captured keys: `uuid` `"56b077da-0d11-45be-8b24-7b09d53ad558"`, `prefix` `"GEN24"`, `eventID` `1260` |
@@ -234,7 +234,7 @@ nor the method, nor the permissions.
 | Path | Method | Auth | Proof status |
 |---|---|---|---|
 | `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16): `200 OK`, no `Authorization`, schema captured (§ Shape of the Solar API v1 response); **absent from the bundle** |
-| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **called** by the application as a **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13). Served by `cmd/fronius-sim`; **observed** on hardware 2026-10-16 (`200`, 372 bytes, `inverters` an **array** — the bundle could not tell, its client reading that member through `Object.keys`/`Object.values`) but **not saved**, so the fixture values stay `[HYPOTHESIS]` |
+| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **called** by the application as a **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13). Served by `cmd/fronius-sim`; **captured** `[VERIFIED]` (hardware, 2026-10-16, firmware `1.19.7-1`): `200`, `digest_required: false`, promoted as `internalapi/status_powerflow.json` — `inverters` is an **array** of `{CID, DT, E_Total, ID, P}` (the bundle could not tell, its client reading that member through `Object.keys`/`Object.values`), `site.MLoc` is the internal twin of the Solar API's `Meter_Location` (integer `255`, versus the string `"unknown"`), and `common`/`version` are **not read** by the application. **Decisive:** `site.E_Day` and `site.E_Year` are **null here too**, so the fallback delivers nothing on this installation (`docs/UNKNOWNS.md` #13) |
 | `/status/version` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 183050 (`yTJA` route, without a header — **this path is not in the `aYRN` registry**); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`). Provides `serialNumber`, `numberOfPhases`, `devicegroup`, `swrevisions` |
 | `/status/activeEvents` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76030 (10,000 ms interval); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, root array). Fields read listed in `docs/ENDPOINTS.md` |
 | `/components/PowerMeter/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76035 (envelope `Cgi`); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no meter**). Presence deduced from `Body.Data` |
@@ -251,8 +251,8 @@ captures):
 - Authentication on firmware **1.19.7-1** → **none required**: all five paths
   allowlisted at that time answered `200` with no `Authorization` header and no `401`, so the Digest
   "after 401" machinery is never exercised by this device (`docs/UNKNOWNS.md` #2
-  resolved). The sixth path, `/status/powerflow`, was added later and is not
-  captured in full yet.
+  resolved). The sixth path, `/status/powerflow`, was added later and is
+  **captured** (2026-10-16, `200`, no challenge).
 - Real names of the **model** and the **firmware** in `/status/version` → **captured**:
   `swrevisions.GEN24` = `1.19.7-1` (the key read by the application), `numberOfPhases`
   = `1`, `devicegroup` = `P6RW`; **no model key exists**, so `Model` stays empty and
@@ -350,7 +350,7 @@ by the client:
 | `solarapi/powerflow_status7.json` | `true` | `HYPOTHESIS` | `cmd/fronius-sim`, `Head.Status.Code = 7` — no status-7 event on the installation |
 | `solarapi/powerflow_invalid.json` | — | — | truncated body, deliberately unreadable |
 
-Four internal captures were promoted on **2026-10-16** (firmware `1.19.7-1`,
+Five internal captures were promoted on **2026-10-16** (firmware `1.19.7-1`,
 redacted by `fronius-probe --save`):
 
 | File | `_provenance` | Path |
@@ -359,13 +359,19 @@ redacted by `fronius-probe --save`):
 | `internalapi/status_activeevents.json` | **no** — the body is a root array, which cannot carry a sibling key, so **its provenance is recorded here** | `/status/activeEvents` |
 | `internalapi/components_powermeter_readable.json` | yes | `/components/PowerMeter/readable` (empty `Body.Data`) |
 | `internalapi/components_batterymanagementsystem_readable.json` | yes | `/components/BatteryManagementSystem/readable` (empty `Body.Data`) |
+| `internalapi/status_powerflow.json` | yes | `/status/powerflow` |
 
-The internal fixture `internalapi/status_powerflow.json` (`synthetic: true`,
-`confidence: HYPOTHESIS`) is **hand-written from the bundle extraction**
-(`docs/ENDPOINTS.md`, l. 129034 and l. 129043-129063): its values are
-illustrative, not captured. It is to be **promoted by a probe run** on
-`/status/powerflow` (`docs/PROBE-READONLY.md` § 8), after which the `[HYPOTHESIS]`
-shape can be dropped.
+The internal fixture `internalapi/status_powerflow.json` is **promoted**
+(`synthetic: false`, `confidence: VERIFIED (hardware)`, firmware `1.19.7-1`,
+`captured_at` `2026-10-16T14:47:07Z`, `http_status: 200`,
+`digest_required: false`): it replaces the hand-written fixture built from the
+bundle extraction (`docs/ENDPOINTS.md`, l. 129034 and l. 129043-129063). The
+captured body settles the shape — `inverters` is an **array** of
+`{CID, DT, E_Total, ID, P}`, `site.MLoc` is the internal twin of the Solar API's
+`Meter_Location` (integer `255`, versus the string `"unknown"`), and
+`common`/`version` are not read by the application. **Decisive:** `site.E_Day`
+and `site.E_Year` are **null here too**, so the fallback delivers nothing on this
+installation (`docs/UNKNOWNS.md` #13).
 
 Unit-level hardware identifiers (`hardwareId`, `commonName`, `hwrevisions`) were
 **masked by hand** before versioning; the shape and the key names are untouched,
@@ -414,7 +420,8 @@ timestamps and live power values.
 Promoted into `test/fixtures` on **2026-10-16** (§ Fixtures). Consequences
 recorded in `docs/UNKNOWNS.md`: #2 resolved (no authentication required), #4 and
 #5 resolved (no Smart Meter, no battery), #11 confirmed (integer `severity`), #13
-new (`E_Day`/`E_Year` null on this firmware).
+new (`E_Day`/`E_Year` null on this firmware — on the Solar API **and** on the
+internal `/status/powerflow`, so the fallback delivers nothing, see #13).
 
 ## Reference hardware
 

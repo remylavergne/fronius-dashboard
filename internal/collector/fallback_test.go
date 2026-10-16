@@ -51,16 +51,12 @@ func capturedEnvelope(t *testing.T) solarapi.PowerFlowEnvelope {
 	return env
 }
 
-// fixturePowerFlowClient serves the /status/powerflow fixture through the real
-// internal client: the fallback path is exercised for what it is in production,
-// allowlist lookup and Default-envelope decoding included.
-func fixturePowerFlowClient(t *testing.T) *internalapi.Client {
+// powerFlowClient serves a /status/powerflow body through the real internal
+// client: the fallback is exercised as it is in production, allowlist lookup and
+// Default-envelope decoding included.
+func powerFlowClient(t *testing.T, body []byte) *internalapi.Client {
 	t.Helper()
 
-	body, err := os.ReadFile(filepath.Join("..", "..", "test", "fixtures", "internalapi", "status_powerflow.json"))
-	if err != nil {
-		t.Fatalf("reading the fixture: %v", err)
-	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != internalapi.PowerFlowPath {
 			http.NotFound(w, r)
@@ -79,14 +75,57 @@ func fixturePowerFlowClient(t *testing.T) *internalapi.Client {
 	return c
 }
 
-// TestFallbackCompletesTheNulledEnergies: the capture has no day or year energy,
-// the internal fixture does — the persisted sample carries both, and says where
-// they came from.
+// capturedPowerFlowClient serves the promoted capture of /status/powerflow.
+func capturedPowerFlowClient(t *testing.T) *internalapi.Client {
+	t.Helper()
+
+	body, err := os.ReadFile(filepath.Join("..", "..", "test", "fixtures", "internalapi", "status_powerflow.json"))
+	if err != nil {
+		t.Fatalf("reading the fixture: %v", err)
+	}
+	return powerFlowClient(t, body)
+}
+
+// TestFallbackFillsNothingWhenTheDeviceNullsItToo is the OBSERVED case: on the
+// reference installation, `/status/powerflow` returns `site.E_Day` and
+// `site.E_Year` as null, exactly like the Solar API (captured 2026-10-16). The
+// sample therefore keeps its energies absent, records no fallback source, and is
+// still persisted — the fallback must not turn an absent value into anything.
+func TestFallbackFillsNothingWhenTheDeviceNullsItToo(t *testing.T) {
+	sink := newFakeSink()
+	c := newCollector(&fakeSource{results: []result{{env: capturedEnvelope(t)}}}, sink)
+	c.Fallback = capturedPowerFlowClient(t)
+
+	sm, err := c.CollectOnce(context.Background())
+	if err != nil {
+		t.Fatalf("CollectOnce: %v", err)
+	}
+	if sm.EnergyDayWh != nil || sm.EnergyYearWh != nil {
+		t.Fatalf("energies = (%v, %v), want absent: the device nulls them on both paths",
+			sm.EnergyDayWh, sm.EnergyYearWh)
+	}
+	if sm.FallbackSource != "" {
+		t.Fatalf("fallback_source = %q, want empty when nothing was filled", sm.FallbackSource)
+	}
+	if len(sink.samples) != 1 {
+		t.Fatalf("inserted samples = %d, want 1", len(sink.samples))
+	}
+	if sm.EnergyTotalWh == nil || *sm.EnergyTotalWh != 15089488.925277777 {
+		t.Fatalf("energy_total_wh = %v, want the Solar API value untouched", sm.EnergyTotalWh)
+	}
+}
+
+// TestFallbackCompletesTheNulledEnergies covers the fill logic itself, with a
+// HYPOTHETICAL internal answer: no observed firmware populates these two counters,
+// so the body below is fabricated to keep the code path honest. If a firmware ever
+// reports them, this is the behaviour that takes over.
 func TestFallbackCompletesTheNulledEnergies(t *testing.T) {
+	const hypothetical = `{"site": {"E_Day": 4123.4, "E_Year": 4215488.4, "E_Total": 15089488.9}}`
+
 	src := &fakeSource{results: []result{{env: capturedEnvelope(t)}}}
 	sink := newFakeSink()
 	c := newCollector(src, sink)
-	c.Fallback = fixturePowerFlowClient(t)
+	c.Fallback = powerFlowClient(t, []byte(hypothetical))
 
 	sm, err := c.CollectOnce(context.Background())
 	if err != nil {

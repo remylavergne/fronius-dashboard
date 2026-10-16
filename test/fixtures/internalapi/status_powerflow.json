@@ -1,29 +1,40 @@
 {
-  "site": {
-    "E_Day": 4123.4,
-    "E_Total": 15089488.925277777,
-    "E_Year": 4215488.4,
-    "P_Akku": null,
-    "P_Grid": null,
-    "P_Load": null,
-    "P_PV": 228.35735321044922,
-    "rel_Autonomy": null,
-    "rel_SelfConsumption": null
+  "common": {
+    "datestamp": "16.10.2026",
+    "timestamp": "16:47:07"
   },
   "inverters": [
     {
-      "DT": 1,
-      "P": 185.58811950683594,
-      "SOC": null
+      "CID": 0,
+      "DT": 0,
+      "E_Total": 15089627.579722222,
+      "ID": 1,
+      "P": 0.0
     }
   ],
-  "Smartloads": {
-    "Ohmpilots": {}
+  "site": {
+    "BatteryStandby": false,
+    "E_Day": null,
+    "E_Total": 15089627.579722222,
+    "E_Year": null,
+    "MLoc": 255,
+    "Mode": "produce-only",
+    "P_Akku": null,
+    "P_Grid": null,
+    "P_Load": null,
+    "P_PV": 0.0,
+    "rel_Autonomy": null,
+    "rel_SelfConsumption": null
   },
+  "version": "12",
   "_provenance": {
-    "synthetic": true,
-    "source": "hand-written from the bundle extraction (docs/ENDPOINTS.md)",
-    "confidence": "HYPOTHESIS",
-    "note": "Shape taken from the keys the vendor interface reads on /status/powerflow (bundle l. 129034 and l. 129043-129063): site.P_PV/P_Grid/P_Load/P_Akku/E_Day/E_Year/E_Total, inverters, Smartloads.Ohmpilots. The reference device was observed on 2026-10-16 answering with `inverters` as an ARRAY (the bundle could not tell: the vendor client uses Object.keys/Object.values, which accept arrays and objects alike), and this fixture follows the observation. The VALUES remain illustrative: promote the fixture with a probe run (docs/PROBE-READONLY.md § 8) before treating it as contractual."
+    "synthetic": false,
+    "source": "fronius-probe",
+    "confidence": "VERIFIED (hardware)",
+    "firmware": "1.19.7-1",
+    "captured_at": "2026-10-16T14:47:07Z",
+    "http_status": 200,
+    "digest_required": false,
+    "note": "Captured on the reference installation, verbatim (only _provenance added). captured_at comes from the device's own `common` block (local 16:47:07, Europe/Brussels). Shape facts: `inverters` is an ARRAY of {CID, DT, E_Total, ID, P} — the bundle could not tell, its client reading that member through Object.keys/Object.values; `site.MLoc` is the internal twin of the Solar API's `Meter_Location` (integer 255 here, versus the string \"unknown\"); `common` and `version` are not read by this application. DECISIVE FACT: `site.E_Day` and `site.E_Year` are null here too, exactly as in the Solar API answer — so this path does NOT deliver the day and year energies (docs/UNKNOWNS.md #13)."
   }
 }
