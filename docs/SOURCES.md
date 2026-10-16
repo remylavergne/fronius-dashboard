@@ -18,6 +18,24 @@ hardware or about a protocol must be traceable to a line of this file.
 Standing rule: "found in the bundle" ≠ "allowed by the server". No `[SOURCE-JS]`
 item may be presented as a firmware permission.
 
+## Machine-readable catalogue
+
+`internal/sources/catalog.go` is the **machine-readable form** of this register
+and of `docs/ENDPOINTS.md`: one entry per known source, each carrying its
+transport (`solar_api` / `internal_api`), state (`called` / `captured` /
+`candidate` / `archived`), the field-level status of what it returns
+(`displayed` / `stored` / `validated` / `ignored` / `unverified`, an `ignored` or
+`unverified` field carrying its reason), the proofs (the register's own marker
+and, for a captured source, the firmware that produced it) and the capability it
+feeds or would unlock. It is served by `GET /api/v1/sources` (the "Data sources"
+page).
+
+`internal/sources/catalog_test.go` binds the catalogue to the registers: the
+`called` set is exactly the code allowlist plus the one Solar API path, every
+capability id exists (or is a candidate the catalogue introduces), every declared
+fixture exists on disk, and the catalogue holds exactly the Solar API paths of
+the candidate table below and every internal path of `docs/ENDPOINTS.md`. A path
+cannot be added to one without the other.
 
 ## Vendor artefact
 
@@ -370,6 +388,9 @@ has a `cmd/fronius-probe` entry and has since been **captured** on the device
 | `/solar_api/v1/GetStorageRealtimeData.fcgi` | State of charge and power of the battery, if present | `[TO-TEST]` — would unlock `battery.soc` |
 | `/solar_api/v1/GetActiveDeviceInfo.fcgi` | List of the system's active devices | `[TO-TEST]` |
 | `/solar_api/v1/GetDeviceInfo.fcgi` | Device inventory | `[TO-TEST]` |
+| `/solar_api/v1/GetStringRealtimeData.fcgi` | Per-string DC measurements (voltage, current, power) — the granularity a Primo exposes for its DC inputs | `[TO-TEST]` |
+| `/solar_api/v1/GetSensorRealtimeData.fcgi` | External sensor channels (irradiance, temperature) when a sensor card is fitted | `[TO-TEST]` |
+| `/solar_api/v1/GetArchiveData.cgi` | Historical time series held by the device itself — the only candidate that could fill the daily chart from the device, `agg_hour.max_energy_day_wh` being `null` on this firmware | `[TO-TEST]` |
 
 Consequence for phase 1: detecting the presence of a Smart Meter or a battery is
 **feasible without any write**, through simple GETs on these endpoints, but it is

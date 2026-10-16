@@ -1,4 +1,4 @@
-import { CircleDot, Gauge, ListChecks, Settings, SunMedium } from 'lucide-react'
+import { CircleDot, Database, Gauge, ListChecks, Settings, SunMedium } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useT } from '@/i18n'
@@ -22,6 +22,7 @@ export function AppShell({ children }: AppShellProps) {
     { to: '/', label: t('nav.overview'), icon: Gauge },
     { to: '/system', label: t('nav.system'), icon: CircleDot },
     { to: '/capabilities', label: t('nav.capabilities'), icon: ListChecks },
+    { to: '/sources', label: t('nav.sources'), icon: Database },
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 

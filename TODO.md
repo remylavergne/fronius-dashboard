@@ -73,6 +73,7 @@
 - [x] Implement `/api/v1/live` and `/api/v1/timeseries`
 - [x] Implement `/api/v1/energy/daily` and `/api/v1/events`
 - [x] Implement `/api/v1/capabilities` and non-sensitive settings
+- [x] Publish the source catalogue: machine-readable register of every endpoint and field, served by /api/v1/sources
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
@@ -92,6 +93,7 @@
 - [x] Add collector health page and last refresh
 - [ ] Add settings page and read-only connectivity test
 - [x] Add capabilities page (measured/estimated/unavailable/unverified)
+- [x] Data sources page: states, field inventory, reasons and capability join
 - [x] Hide consumption, import/export and self-consumption cards without a meter
 - [x] Implement loading/error/empty/offline/stale states
 - [x] Implement cache and refresh via TanStack Query
@@ -410,3 +412,58 @@
   "Test backup and restore of the database" (phase 6). No deviation from the
   plan; not delivered: no scheduler — backups stay manual, though a `save` may run
   while the service runs.
+
+- 2026-10-16 — Step 19 (phase 4/5): source catalogue. Delivered:
+  `internal/sources/catalog.go` — the machine-readable register of every known
+  source, with `type Transport` (`solar_api` | `internal_api`), `type State`
+  (`called` | `captured` | `candidate` | `archived`), `type FieldStatus`
+  (`displayed` | `stored` | `validated` | `ignored` | `unverified`), the types
+  `Field`, `Proof` and `Source`, and `Catalog()`, `Called()`, `ByID()`, `IDs()`,
+  `Summarize()` (counters by state and by field status). Semantics recorded: a
+  source's `Capability` is the capability it feeds (today if `Called`, otherwise
+  the one it would feed); `WouldUnlock` names a capability that **does not exist
+  yet**; a field's `Capability` must exist or be a candidate the catalogue
+  introduces. It holds the Solar API families (the called
+  `GetPowerFlowRealtimeData.fcgi`, the accumulation collection captured through
+  the probe, and `CommonInverterData`, `3PInverterData`, `GetInverterInfo`,
+  `GetLoggerInfo`, `GetMeterRealtimeData`, `GetStorageRealtimeData`,
+  `GetActiveDeviceInfo`, `GetDeviceInfo`, `GetStringRealtimeData`,
+  `GetSensorRealtimeData`, `GetArchiveData`, `/solar_api/GetAPIVersion` as
+  candidates) and the internal API (the four allowlisted paths called; the five
+  promoted captures; `/status/powerflow` archived after the clean cutover;
+  `/status/common`, `/status/devices`, `/status/network`, `/status/emrs`,
+  `/components/cache/readable`, `/components/Ohmpilot/readable`,
+  `/commands/GetUTCTime`, `/commands/GetServiceState` as candidates from the
+  bundle extraction). Field-level facts named: `Body.Data.Site.E_Day`/`E_Year`
+  unverified (null on this firmware, the energy is derived);
+  `Body.Data.Site.P_Grid`/`P_Load`/`rel_*`/`P_Akku` unverified (no meter, no
+  battery); `Body.Data.DeviceStatus.InverterState`/`StatusCode`/`ErrorCode`
+  unverified with `would_unlock: inverter.state` (captured, never read);
+  `/status/version` exposes `apiversions`, `hwrevisions` (three board
+  revisions), `commonName`, `hardwareId`, `minAppVersions` and eleven
+  `swrevisions` components where only `GEN24` is read; `/status/activeEvents` is
+  a **bare root JSON array** (not an envelope) whose `uuid`, `prefix`+`eventID`,
+  `severity` and `label` are used and whose other keys are kept verbatim in the
+  raw detail. New route `GET /api/v1/sources` (`internal/api/sources.go`)
+  returns `{data: {summary, sources}, meta: {generated_at}}`, registered in
+  `internal/api/server.go` like the seven other routes. Frontend:
+  `apps/web/src/routes/Sources.tsx`, the "Data sources" page (summary strip,
+  filters, one block per source with proofs/capabilities/docs, expandable field
+  inventory, legend).
+
+  Tests: `internal/sources/catalog_test.go` binds the catalogue to the registers
+  (unique sorted ids, `GET` only, every ignored/unverified field carries its
+  reason, every capability id exists or is a candidate the catalogue introduces,
+  the `called` set equals the code allowlist plus the one Solar API path, every
+  declared fixture exists on disk, every Solar API path of `docs/SOURCES.md`'s
+  candidate table is held in both directions, every internal path appears in
+  `docs/ENDPOINTS.md`, the summary counters agree with the list, and a caller
+  cannot mutate the package's data); `internal/api/sources_test.go` covers the
+  payload, the counters, the three states, the called set and `405` on `POST`.
+  Documentation: `docs/SOURCES.md` and `docs/ENDPOINTS.md` point at the catalogue
+  as the machine-readable form of the provenance registers, `docs/ARCHITECTURE.md`
+  (package row, frontend route, invariant 11), `docs/RUNBOOK.md` (one `curl`).
+  Boxes checked at this step: "Publish the source catalogue" (phase 4) and
+  "Data sources page" (phase 5). No deviation from the plan; the catalogue is
+  data — it touches neither the network nor the database, and it adds nothing to
+  the allowlist or the simulator.

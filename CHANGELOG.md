@@ -9,6 +9,34 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Source catalogue.** `internal/sources/catalog.go` is the
+  machine-readable register of every source the device exposes and of what this
+  application does with it: `type Transport` (`solar_api` | `internal_api`),
+  `type State` (`called` | `captured` | `candidate` | `archived`), `type
+  FieldStatus` (`displayed` | `stored` | `validated` | `ignored` |
+  `unverified`) and the types `Field`, `Proof` and `Source`, with `Catalog()`,
+  `Called()`, `ByID()`, `IDs()` and `Summarize()`. One entry per source carries
+  its path, query, method, proofs (register marker + firmware), the capability it
+  feeds — or `WouldUnlock` for a candidate that names a capability that **does
+  not exist yet** — and its field inventory, an `ignored` or `unverified` field
+  carrying its reason. New route `GET /api/v1/sources`
+  (`internal/api/sources.go`) returns `{data: {summary, sources}, meta:
+  {generated_at}}`, registered like the seven other routes.
+  `internal/sources/catalog_test.go` binds the catalogue to the registers:
+  unique sorted ids, `GET` only, every ignored/unverified field carries its
+  reason, every capability id exists or is a candidate the catalogue introduces,
+  the `called` set equals the code allowlist plus the one Solar API path, every
+  declared fixture exists on disk, the Solar API paths of the candidate table of
+  `docs/SOURCES.md` and the internal paths of `docs/ENDPOINTS.md` are held
+  exactly (both directions), the summary counters agree with the list, and a
+  caller cannot mutate the package's data; `internal/api/sources_test.go` covers
+  the payload, the counters, the three states, the called set and `405` on
+  `POST`. The React side gains the "Data sources" page
+  (`apps/web/src/routes/Sources.tsx`): a summary strip, filters, one block per
+  source with its proofs, capabilities and docs, an expandable field inventory
+  and a legend. Documentation updated (`docs/SOURCES.md`, `docs/ENDPOINTS.md`,
+  `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`).
+
 - 2026-10-16 — **Database backup and restore.** `internal/storage/backup.go`
   (`Store.Backup`, `Store.Restore`, `VerifyBackup`, `Inspect`, `BackupInfo`):
   the snapshot is SQLite's `VACUUM INTO` taken **through the application's own

@@ -69,7 +69,8 @@ diagnostic tool, never started by the service or by CI.
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
 | `internal/collector` | Collection loop, backoff, events | `solarapi`, `model`, `storage` |
 | `internal/detect` | Detection loop: identity, presence, events, states and reasons | `internalapi`, `model`, `storage` |
-| `internal/api` | REST API, validation, envelope and DTO | `model`, `storage`, `config`, `detect`, `internalapi` |
+| `internal/sources` | Machine-readable catalogue of every known source: transport (`solar_api` / `internal_api`), state, field-level status, proofs and capability join; served by `GET /api/v1/sources` | — |
+| `internal/api` | REST API, validation, envelope and DTO | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
 
 The direction of the dependencies is acyclic and goes from the most concrete
 (the binaries) to the most abstract (the typed errors). No internal package
@@ -84,7 +85,7 @@ imports a `cmd/`.
 | `src/lib/queries.ts` | TanStack Query hooks, polling 5 s, ranges and steps |
 | `src/lib/chart.ts` | Buckets → chart points, **materialized gaps** |
 | `src/lib/freshness.ts` | Staleness decision displayed |
-| `src/routes/*` | Overview, System, Capabilities, Settings |
+| `src/routes/*` | Overview, System, Capabilities, Settings, Sources |
 | `src/i18n/*` | Flat FR dictionary, ready for EN/DE |
 
 The frontend talks only to `/api` (relayed by the Vite proxy in development). It
@@ -142,6 +143,18 @@ Node process, nor a bundle, nor an HTTP response.
    carries everything over or leaves the database untouched. It requires the
    collector stopped (see `docs/RUNBOOK.md`), and it keeps the current database
    aside before rewriting it.
+11. **The catalogue is the machine-readable register, and it cannot drift.**
+   `internal/sources/catalog.go` holds one entry per known source — transport,
+   path, state (`called` / `captured` / `candidate` / `archived`), field-level
+   status (`displayed` / `stored` / `validated` / `ignored` / `unverified`) with
+   its reason, proofs and capability join — and `GET /api/v1/sources` serves it.
+   `internal/sources/catalog_test.go` enforces the binding: the `called` set is
+   exactly the code allowlist plus the one Solar API path, every ignored or
+   unverified field carries its reason, every capability id exists or is
+   introduced by the catalogue, every declared fixture exists, and the catalogue
+   holds exactly the Solar API paths of the candidate table of `docs/SOURCES.md`
+   and every internal path of `docs/ENDPOINTS.md`. A path cannot be added to one
+   without the other.
 
 ## Structuring decisions
 

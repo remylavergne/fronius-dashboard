@@ -77,6 +77,80 @@ export const en = {
   'capabilities.unverified': 'unverified',
   'capabilities.readOnly': 'read-only',
 
+  'nav.sources': 'Data sources',
+  'sources.title': 'Data sources',
+  'sources.intro':
+    'The whole catalogue of what this inverter answers, what this project does with each field of each answer, and what is still unmapped. A source is one endpoint or one query variant of an endpoint; a field is one value inside its answer. Counters come from the same list the backend returns. The legend at the end of the page defines both vocabularies: a field counted as ignored is a decision, a field counted as unverified is an absence of evidence.',
+
+  'sources.summary.title': 'Catalogue summary',
+  'sources.summary.sources': 'Sources',
+  'sources.summary.sourcesHint': 'endpoints and query variants catalogued',
+  'sources.summary.fields': 'Fields',
+  'sources.summary.fieldsHint': 'values named by the catalogue, all sources together',
+
+  'sources.state.called': 'called',
+  'sources.state.calledDescription': 'read by this project today',
+  'sources.state.captured': 'captured',
+  'sources.state.capturedDescription':
+    'not read, but a redacted answer was captured on the reference hardware',
+  'sources.state.candidate': 'candidate',
+  'sources.state.candidateDescription':
+    'documented or read by the manufacturer interface, never observed on this firmware',
+  'sources.state.archived': 'archived',
+  'sources.state.archivedDescription':
+    'was read once, its capture is kept, and it is no longer used',
+
+  'sources.status.displayed': 'displayed',
+  'sources.status.displayedDescription': 'read into the model and shown by the interface',
+  'sources.status.stored': 'stored',
+  'sources.status.storedDescription': 'read and persisted, whether or not it is displayed',
+  'sources.status.validated': 'validated',
+  'sources.status.validatedDescription': 'read to accept or reject the payload, never shown',
+  'sources.status.ignored': 'ignored',
+  'sources.status.ignoredDescription': 'present in the answer and deliberately not used',
+  'sources.status.unverified': 'unverified',
+  'sources.status.unverifiedDescription':
+    'never observed carrying a value on the reference installation',
+
+  'sources.transport.solarApi': 'Solar API v1',
+  'sources.transport.internalApi': 'Internal API',
+
+  'sources.filter.transport': 'Transport',
+  'sources.filter.state': 'State',
+  'sources.filter.search': 'Search',
+  'sources.filter.searchPlaceholder': 'Path, what it provides, or a field path',
+  'sources.filter.allTransports': 'All transports',
+  'sources.filter.allStates': 'All states',
+  'sources.filter.visible': 'Sources shown',
+  'sources.filter.none': 'No source matches these filters',
+  'sources.filter.noneHint': 'Clear the search, or widen the transport and state filters.',
+
+  'sources.called': 'read by this project',
+  'sources.id': 'Source id',
+  'sources.method': 'Method',
+  'sources.fixture': 'Captured fixture',
+  'sources.proofs': 'Proofs',
+  'sources.firmware': 'firmware',
+  'sources.docs': 'References',
+  'sources.note': 'Note',
+  'sources.capability': 'Capability',
+  'sources.candidateCapability': 'Candidate capability',
+  'sources.unmapped': 'Fields ignored or unverified',
+
+  'sources.fields.inventory': 'Field inventory',
+  'sources.fields.none': 'No field is inventoried for this source.',
+  'sources.fields.path': 'Field',
+  'sources.fields.type': 'Type',
+  'sources.fields.status': 'Status',
+  'sources.fields.why': 'Why',
+  'sources.fields.capability': 'Capability',
+
+  'sources.legend.title': 'Legend',
+  'sources.legend.intro':
+    'Two vocabularies, deliberately distinct: the state says what this project does with a source, the field status what it does with one value inside the answer.',
+  'sources.legend.states': 'Source states',
+  'sources.legend.statuses': 'Field statuses',
+
   'system.title': 'System',
   'system.application': 'Monitoring application',
   'system.config': 'Effective configuration',

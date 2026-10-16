@@ -16,6 +16,13 @@
 - Anything that is not `READ` is **out of scope** and is never called by
   the application, the probe or the tests.
 
+The **field-level view** of these paths — which fields are displayed, stored,
+validated, ignored or unverified, each with its reason, plus the capability a
+source feeds or would unlock — lives in the machine-readable catalogue
+`internal/sources/catalog.go`, served by `GET /api/v1/sources`.
+`internal/sources/catalog_test.go` keeps that catalogue in step with this
+document: every internal path it holds must appear here.
+
 ## Executable allowlist
 
 Five entries, and no others: this is the table frozen in

@@ -5,6 +5,7 @@ import { useT } from '@/i18n'
 import { CapabilitiesPage } from '@/routes/Capabilities'
 import { Overview } from '@/routes/Overview'
 import { SettingsPage } from '@/routes/Settings'
+import { SourcesPage } from '@/routes/Sources'
 import { SystemPage } from '@/routes/System'
 
 function NotFound() {
@@ -16,6 +17,7 @@ const router = createBrowserRouter([
   { path: '/', element: <AppShell><Overview /></AppShell> },
   { path: '/system', element: <AppShell><SystemPage /></AppShell> },
   { path: '/capabilities', element: <AppShell><CapabilitiesPage /></AppShell> },
+  { path: '/sources', element: <AppShell><SourcesPage /></AppShell> },
   { path: '/settings', element: <AppShell><SettingsPage /></AppShell> },
   { path: '*', element: <AppShell><NotFound /></AppShell> },
 ])

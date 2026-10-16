@@ -236,6 +236,121 @@ export const capabilitySchema = z.object({
 export type Capability = z.infer<typeof capabilitySchema>
 
 // ---------------------------------------------------------------------------
+// Source catalogue (/api/v1/sources)
+// ---------------------------------------------------------------------------
+
+/**
+ * One value of a source, named by the path it has in the answer.
+ *
+ * `type` is the JSON type observed in the capture (`float`, `string`, object…),
+ * `status` what this project does with the value: `displayed` (read into the
+ * model and shown), `stored` (read and persisted), `validated` (read to accept
+ * or reject the payload, never shown), `ignored` (present in the answer and
+ * deliberately unused) or `unverified` (never observed carrying a value on the
+ * reference installation). Those five words are a closed vocabulary of the
+ * backend (`internal/sources`), but they are read as plain strings: an unknown
+ * status is rendered as it arrives rather than failing the whole page.
+ *
+ * `why` explains an ignored or an unverified field — required for those two by
+ * the backend — and `capability` names the capability the field feeds.
+ */
+export const sourceFieldSchema = z.object({
+  path: z.string(),
+  type: z.string(),
+  status: z.string(),
+  why: z.string().optional(),
+  capability: z.string().optional(),
+})
+export type SourceField = z.infer<typeof sourceFieldSchema>
+
+/**
+ * Provenance of a claim about a source: the register's own marker (`[VERIFIED]`,
+ * `[SOURCE-JS]`, `[DOC]`…), the firmware that produced the evidence (empty when
+ * the proof did not come from the device) and the detail.
+ */
+export const sourceProofSchema = z.object({
+  tag: z.string(),
+  firmware: z.string().optional(),
+  detail: z.string(),
+})
+export type SourceProof = z.infer<typeof sourceProofSchema>
+
+/**
+ * One endpoint, or one query variant of an endpoint.
+ *
+ * `transport` is `solar_api` (documented Solar API v1) or `internal_api` (the
+ * manufacturer's web interface, Digest-protected and reachable only through the
+ * code allowlist); `state` is one of `called`, `captured`, `candidate`,
+ * `archived`; `called` says whether this application reads it today (a probe
+ * run by the user is not a call).
+ *
+ * `capability` names a capability that exists in `/api/v1/capabilities` today,
+ * `would_unlock` a capability that does **not** exist yet — a candidate id, to
+ * be rendered as such and never as a measured capability.
+ *
+ * The optional keys mirror the Go tags (`omitempty`), and every collection is
+ * `nullish` as well: `encoding/json` marshals a nil slice as `null`, so an
+ * absent key and a `null` mean the same absence here, while `[]` and a
+ * populated array are both accepted. The identity keys (`id`, `path`, `method`,
+ * `state`) stay required: without them a source can neither be rendered nor
+ * filtered.
+ */
+export const sourceSchema = z.object({
+  id: z.string(),
+  transport: z.string(),
+  path: z.string(),
+  query: z.string().optional(),
+  method: z.string(),
+  provides: z.string(),
+  state: z.string(),
+  called: z.boolean(),
+  fixture: z.string().optional(),
+  capability: z.string().optional(),
+  would_unlock: z.string().optional(),
+  fields: z.array(sourceFieldSchema).nullish(),
+  proofs: z.array(sourceProofSchema).nullish(),
+  docs: z.array(z.string()).nullish(),
+  note: z.string().optional(),
+})
+export type Source = z.infer<typeof sourceSchema>
+
+/**
+ * Counters computed by the backend over exactly the list it returns, so the
+ * interface never recounts: a divergence between the two would be a bug on one
+ * side, not something the page papers over.
+ */
+export const sourceSummarySchema = z.object({
+  sources: z.number(),
+  called: z.number(),
+  captured: z.number(),
+  candidates: z.number(),
+  archived: z.number(),
+  fields: z.number(),
+  fields_displayed: z.number(),
+  fields_stored: z.number(),
+  fields_validated: z.number(),
+  fields_ignored: z.number(),
+  fields_unverified: z.number(),
+})
+export type SourceSummary = z.infer<typeof sourceSummarySchema>
+
+/**
+ * Catalogue payload: what the device answers, and what this project does with
+ * each field of each answer.
+ *
+ * Static data (it changes only with a deployment), so the answer carries no
+ * measurement, only the envelope's `generated_at`. The runtime half — is the
+ * device answering, which capability is available and why — stays in
+ * `/api/v1/system`, `/api/v1/health` and `/api/v1/capabilities`: the interface
+ * joins them, the API does not duplicate them.
+ */
+export const sourcesSchema = z.object({
+  summary: sourceSummarySchema,
+  sources: z.array(sourceSchema),
+})
+export type SourceCatalogue = z.infer<typeof sourcesSchema>
+
+// ---------------------------------------------------------------------------
 // Envelopes per endpoint
 // ---------------------------------------------------------------------------
 
@@ -247,6 +362,7 @@ export const timeseriesEnvelopeSchema = envelopeSchema(z.array(bucketSchema))
 export const energyDailyEnvelopeSchema = envelopeSchema(z.array(dailyEnergySchema))
 export const eventsEnvelopeSchema = envelopeSchema(z.array(eventSchema))
 export const capabilitiesEnvelopeSchema = envelopeSchema(z.array(capabilitySchema))
+export const sourcesEnvelopeSchema = envelopeSchema(sourcesSchema)
 
 export type HealthEnvelope = z.infer<typeof healthEnvelopeSchema>
 export type SystemEnvelope = z.infer<typeof systemEnvelopeSchema>
@@ -255,6 +371,7 @@ export type TimeseriesEnvelope = z.infer<typeof timeseriesEnvelopeSchema>
 export type EnergyDailyEnvelope = z.infer<typeof energyDailyEnvelopeSchema>
 export type EventsEnvelope = z.infer<typeof eventsEnvelopeSchema>
 export type CapabilitiesEnvelope = z.infer<typeof capabilitiesEnvelopeSchema>
+export type SourcesEnvelope = z.infer<typeof sourcesEnvelopeSchema>
 
 /** Error code signalling a still-empty database (`/api/v1/live`). */
 export const CODE_NO_DATA = 'no_data'

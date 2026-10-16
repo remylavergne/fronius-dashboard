@@ -17,10 +17,11 @@ import {
   energyDailyEnvelopeSchema,
   healthEnvelopeSchema,
   liveEnvelopeSchema,
+  sourcesEnvelopeSchema,
   systemEnvelopeSchema,
   timeseriesEnvelopeSchema,
 } from './schema'
-import type { CapabilitiesEnvelope, EnergyDailyEnvelope, HealthEnvelope, LiveEnvelope, SystemEnvelope, TimeseriesEnvelope } from './schema'
+import type { CapabilitiesEnvelope, EnergyDailyEnvelope, HealthEnvelope, LiveEnvelope, SourcesEnvelope, SystemEnvelope, TimeseriesEnvelope } from './schema'
 
 const POLL_MS = 5000
 
@@ -59,6 +60,14 @@ export function useCapabilities(): UseQueryResult<CapabilitiesEnvelope> {
   return useQuery({
     queryKey: ['capabilities'],
     queryFn: ({ signal }) => fetchJSON('/api/v1/capabilities', capabilitiesEnvelopeSchema, signal),
+    ...pollOptions,
+  })
+}
+
+export function useSources(): UseQueryResult<SourcesEnvelope> {
+  return useQuery({
+    queryKey: ['sources'],
+    queryFn: ({ signal }) => fetchJSON('/api/v1/sources', sourcesEnvelopeSchema, signal),
     ...pollOptions,
   })
 }

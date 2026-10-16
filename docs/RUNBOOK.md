@@ -49,7 +49,14 @@ curl -s localhost:8080/api/v1/health | jq
 ```bash
 curl -s localhost:8080/api/v1/live | jq '.data.power_pv_w, .meta.stale'
 curl -s localhost:8080/api/v1/capabilities | jq -r '.data[]|select(.available==false)|.id+" — "+.reason'
+curl -s localhost:8080/api/v1/sources | jq '.data.summary'
 ```
+
+The last call lists what the device exposes and what this application does with
+it: each source with its state (`called` / `captured` / `candidate` /
+`archived`), its fields with their status, and the capability it feeds or would
+unlock. It is the machine-readable form of `docs/SOURCES.md` and
+`docs/ENDPOINTS.md` (see `internal/sources/catalog.go`).
 
 `meta.stale = true` means: no measurement for longer than `FRONIUS_STALE_AFTER`.
 The displayed values remain the last known ones — they are not wrong, they are
