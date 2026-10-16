@@ -320,6 +320,37 @@ schema above rests on the hardware capture, reconciled with the official Fronius
 Solar API v1 documentation against firmware **1.19.7-1**. The SQLite columns stay
 in base units.
 
+## Derived quantities — day and year energies
+
+`[VERIFIED]` (hardware), firmware `1.19.7-1`, 2026-10-16: no local endpoint
+publishes the day or year counter (`docs/UNKNOWNS.md` #13). The two quantities
+are therefore **computed**, not measured, from our own stored total:
+
+- **Source (measured):** the `energy_total_wh` of our collected samples — the
+  live total the device does return (`E_Total` / `TOTAL_ENERGY`).
+- **Derivation (a computation):** the difference between the current sample's
+  total and the most recent stored sample **at or before the local boundary** —
+  midnight for the day, 1 January for the year (store timezone
+  `Europe/Brussels`). A baseline more than **10 minutes** before the boundary is
+  refused: a collector outage must not turn older production into today's. The
+  other refusals are a boundary with no sample at or before it (a fresh
+  installation before its first local midnight, or before 1 January), a counter
+  that went backwards since the boundary, and a current sample without a total;
+  each carries its reason (`day_reason` / `year_reason`).
+- **Confidence and provenance:** the derived value is `[VERIFIED]` as a run
+  observation (tests and a runtime pass, `docs/UNKNOWNS.md` #13), but it rests on
+  a computation over our own data — **never** labelled as a measurement. The
+  measured fields `energy_day_wh` / `energy_year_wh` stay `null` on this firmware,
+  and the interface marks the derived value **"estimated from the total"**
+  (`kpi.energyDerived`).
+
+Code: `internal/api/derived.go` (the rule, the 10-minute tolerance, the
+refusals), `Store.TotalEnergyAt` in `internal/storage` (the baseline lookup),
+`apps/web/src/lib/energy.ts` (`resolveEnergy`: measured wins, otherwise derived
+and flagged), KPI wiring in `apps/web/src/routes/Overview.tsx`. The daily
+**chart** (`/api/v1/energy/daily`) is **not** derived: it still reads
+`agg_hour.max_energy_day_wh`, `null` on this firmware, so it stays empty.
+
 ## Other Solar API endpoints — unverified candidates
 
 These names come from the **public Fronius Solar API v1 documentation**. None has

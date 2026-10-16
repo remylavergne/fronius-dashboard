@@ -9,6 +9,32 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Derived day and year energies (option b).** No local endpoint
+  publishes the day or year counter on firmware `1.19.7-1` (`docs/UNKNOWNS.md`
+  #13: `GetPowerFlowRealtimeData.fcgi`, `/status/powerflow` and the documented
+  accumulation collection all return them `null` while the total is live). The
+  two KPIs are now **derived from our own stored total**: `GET /api/v1/live`
+  gains an `energy_derived` object (`from: "energy_total_wh"`, `day_wh`,
+  `day_baseline_utc`, `day_reason`, `year_wh`, `year_baseline_utc`,
+  `year_reason`), **present on that endpoint only**. The value is the difference
+  between the current sample's total and the most recent stored sample **at or
+  before the local boundary** — midnight for the day, 1 January for the year
+  (store timezone `Europe/Brussels`, via `Store.TotalEnergyAt`). A value is
+  **refused**, carrying its reason, when no sample carries a total at or before
+  the boundary, when the closest sample before it is **older than 10 minutes**, when
+  the counter **went backwards** since the boundary, or when the current sample
+  carries no total. Measured fields are untouched: `energy_day_wh` /
+  `energy_year_wh` stay `null` when the device does not report them, a computed
+  value is never presented as a measurement, and the interface marks it
+  **"estimated from the total"** (`kpi.energyDerived`, `resolveEnergy` in
+  `apps/web/src/lib/energy.ts`, KPI wiring in `apps/web/src/routes/Overview.tsx`).
+  Code: `internal/api/derived.go` (rule, tolerance, refusals). **Consequence
+  documented:** on a fresh installation the day value is refused until a first
+  local midnight has a baseline, the year value until a baseline exists before
+  1 January — the reason string says so, no zero is invented. The daily **chart**
+  (`/api/v1/energy/daily`) is **not** covered: it reads `agg_hour.max_energy_day_wh`,
+  `null` on this firmware, so it stays empty — a separate, open decision.
+
 - 2026-10-16 — **Seventh probe endpoint: the documented Solar API accumulation
   data.** `cmd/fronius-probe` carries a new allowlist entry,
   `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`

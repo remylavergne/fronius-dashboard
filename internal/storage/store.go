@@ -125,6 +125,32 @@ func (s *Store) LatestSample(ctx context.Context) (model.Sample, error) {
 	return sm, err
 }
 
+// TotalEnergyAt returns the total energy recorded at or before t: the most recent
+// sample that carries one. The second return is that sample's timestamp — the
+// baseline a derived energy is measured from — and the third says whether one was
+// found at all.
+func (s *Store) TotalEnergyAt(ctx context.Context, t time.Time) (float64, time.Time, bool, error) {
+	var (
+		ts    string
+		value float64
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT ts_utc, energy_total_wh FROM samples
+		 WHERE ts_utc <= ? AND energy_total_wh IS NOT NULL
+		 ORDER BY ts_utc DESC LIMIT 1`, formatTS(t)).Scan(&ts, &value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, time.Time{}, false, nil
+	}
+	if err != nil {
+		return 0, time.Time{}, false, fmt.Errorf("reading the total energy at or before %s: %w", formatTS(t), err)
+	}
+	parsed, err := parseTS(ts)
+	if err != nil {
+		return 0, time.Time{}, false, err
+	}
+	return value, parsed, true, nil
+}
+
 // SampleCount returns the number of retained samples.
 func (s *Store) SampleCount(ctx context.Context) (int64, error) {
 	var n int64

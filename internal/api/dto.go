@@ -88,6 +88,9 @@ type sampleDTO struct {
 	RelAutonomyPct        *float64      `json:"rel_autonomy_pct"`
 	RelSelfConsumptionPct *float64      `json:"rel_self_consumption_pct"`
 	Inverters             []inverterDTO `json:"inverters"`
+	// EnergyDerived is filled by the endpoints that derive the day and year
+	// energies; the other endpoints leave it nil.
+	EnergyDerived *derivedEnergyDTO `json:"energy_derived,omitempty"`
 }
 
 type inverterDTO struct {
@@ -95,6 +98,24 @@ type inverterDTO struct {
 	DT          int      `json:"dt"`
 	PowerW      *float64 `json:"power_w"`
 	EnergyDayWh *float64 `json:"energy_day_wh"`
+}
+
+// derivedEnergyDTO carries the day and year energies COMPUTED from our own stored
+// total energy, for the installations whose firmware does not publish the day and
+// year counters (docs/UNKNOWNS.md #13).
+//
+// It is deliberately separate from the measured fields: a computed value never
+// takes the place of a measurement. Each derivation carries its baseline and, when
+// it could not be established, the reason — an absent value with a reason beats a
+// wrong value.
+type derivedEnergyDTO struct {
+	From            string   `json:"from"`
+	DayWh           *float64 `json:"day_wh"`
+	DayBaselineUTC  string   `json:"day_baseline_utc"`
+	DayReason       string   `json:"day_reason"`
+	YearWh          *float64 `json:"year_wh"`
+	YearBaselineUTC string   `json:"year_baseline_utc"`
+	YearReason      string   `json:"year_reason"`
 }
 
 func sampleToDTO(sm model.Sample) sampleDTO {

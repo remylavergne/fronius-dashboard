@@ -345,7 +345,14 @@ func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.applyFreshness(m, sm.TS)
-	s.writeData(w, http.StatusOK, sampleToDTO(sm), m)
+
+	// The day and year energies are derived from our own stored total, because the
+	// measured fields are null on firmware that does not publish those counters
+	// (docs/UNKNOWNS.md #13). The measured values keep their place: the client
+	// prefers them when they exist.
+	dto := sampleToDTO(sm)
+	dto.EnergyDerived = s.derivedEnergyFromTotal(ctx, sm)
+	s.writeData(w, http.StatusOK, dto, m)
 }
 
 func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {

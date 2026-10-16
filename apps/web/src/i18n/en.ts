@@ -20,6 +20,7 @@ export const en = {
   'kpi.energyToday': 'Energy of the day',
   'kpi.energyYear': 'Energy of the year',
   'kpi.energyTotal': 'Total energy',
+  'kpi.energyDerived': 'estimated from the total',
   'kpi.collector': 'Collector',
   'kpi.samples': 'Recorded samples',
   'kpi.lastSample': 'Last measurement',

@@ -49,6 +49,38 @@ func mustInsert(t *testing.T, s *Store, sm model.Sample) {
 	}
 }
 
+func TestTotalEnergyAtReturnsTheMostRecentValueAtOrBefore(t *testing.T) {
+	s := openStore(t, brussels(t))
+	ctx := context.Background()
+	base := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+	// A sample without a total must not be chosen as the baseline.
+	noTotal := sample(base.Add(-2*time.Hour), 10)
+	mustInsert(t, s, noTotal)
+	withTotal := sample(base.Add(-time.Hour), 20)
+	withTotal.EnergyTotalWh = new(float64(1000))
+	mustInsert(t, s, withTotal)
+	later := sample(base.Add(time.Hour), 30)
+	later.EnergyTotalWh = new(float64(1100))
+	mustInsert(t, s, later)
+
+	value, ts, ok, err := s.TotalEnergyAt(ctx, base)
+	if err != nil {
+		t.Fatalf("TotalEnergyAt: %v", err)
+	}
+	if !ok || value != 1000 {
+		t.Fatalf("value = %v (found=%v), want 1000", value, ok)
+	}
+	if !ts.Equal(base.Add(-time.Hour)) {
+		t.Fatalf("baseline = %v, want the sample one hour before", ts)
+	}
+
+	// Nothing precedes the oldest sample: the caller gets an explicit absence.
+	if _, _, ok, err := s.TotalEnergyAt(ctx, base.Add(-10*time.Hour)); err != nil || ok {
+		t.Fatalf("ok = %v (err=%v), want no baseline", ok, err)
+	}
+}
+
 func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	loc := brussels(t)
 	path := filepath.Join(t.TempDir(), "nested", "dir", "fronius.db")

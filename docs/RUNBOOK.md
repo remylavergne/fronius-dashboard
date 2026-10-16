@@ -205,6 +205,39 @@ to the raw measurements, more slowly. So it is never a failure, only a catch-up
 to wait for (or to trigger by restarting). `make test-perf` measures the gain on
 one year of data (ADR 0006).
 
+## Day and year energies (derived)
+
+The reference firmware publishes **no** day and no year counter on any local
+endpoint (`docs/UNKNOWNS.md` #13): the measured fields `energy_day_wh` /
+`energy_year_wh` stay `null`. To fill the two KPIs, `/api/v1/live` carries an
+`energy_derived` object **computed from our own stored total**:
+
+- `day_wh` / `year_wh` — the difference between the current sample's total energy
+  and the most recent stored sample **at or before the local boundary** (midnight
+  for the day, 1 January for the year, store timezone `Europe/Brussels`);
+- `day_baseline_utc` / `year_baseline_utc` — the timestamp the value was measured
+  from;
+- `day_reason` / `year_reason` — why a value is absent, when it is.
+
+**These are estimates, never measurements.** The interface shows the measured
+counter whenever the device reports it, and marks the derived one **"estimated
+from the total"**; a card with neither shows a dash, never a `0`.
+
+Reading a `*_reason` (empty means the value is present):
+
+| Reason (text) | Meaning | What to do |
+|---|---|---|
+| `no sample carries a total energy at or before <boundary>` | no baseline exists yet — normal on a **fresh install** before the first local midnight (day) or before 1 January (year) | wait for the boundary; nothing is broken |
+| `no sample within 10m0s of the boundary: the closest one is … earlier` | the **10-minute tolerance** is exceeded — a collector outage or a silent device | check `collector.last_success_utc`; the day value resumes after the next boundary, or restart once collection is healthy |
+| `the total energy counter went backwards since the boundary` | the device counter reset | investigate the inverter; the value stays refused rather than wrong |
+| `the current sample carries no total energy` | this cycle did not read `E_Total` | check the last collection cycle |
+| `the baseline could not be read` | database read error | check `/api/v1/health` (`db.ok`) |
+
+The **daily chart** (`/api/v1/energy/daily`) is **not** derived and stays empty on
+this firmware: it reads the hourly aggregate `max_energy_day_wh`, which the device
+does not feed. That is a separate, open decision — not a fault of the derived
+KPIs.
+
 ## Logging
 
 `log/slog` on stderr. `FRONIUS_LOG_FORMAT=json` for ingestion by a log

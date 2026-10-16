@@ -143,6 +143,28 @@ export type System = z.infer<typeof systemSchema>
 
 const nullableNumber = z.number().nullable()
 
+/**
+ * Day and year energies derived from the total counter.
+ *
+ * The firmware of some inverters publishes no dedicated day/year counter
+ * (`energy_day_wh` / `energy_year_wh` stay `null`); the backend then derives
+ * those two quantities from `energy_total_wh`. `from` names the counter the
+ * derivation starts from, each `*_baseline_utc` is the boundary the
+ * subtraction is anchored to, and each `*_wh` is `null` when no sample close
+ * enough to the boundary exists — the matching `*_reason` then says why.
+ * Mirrors `derivedEnergyDTO` of `internal/api/dto.go`.
+ */
+export const derivedEnergySchema = z.object({
+  from: z.string(),
+  day_wh: nullableNumber,
+  day_baseline_utc: z.string(),
+  day_reason: z.string(),
+  year_wh: nullableNumber,
+  year_baseline_utc: z.string(),
+  year_reason: z.string(),
+})
+export type DerivedEnergy = z.infer<typeof derivedEnergySchema>
+
 export const inverterSchema = z.object({
   id: z.string(),
   dt: z.number(),
@@ -167,6 +189,11 @@ export const sampleSchema = z.object({
   rel_autonomy_pct: nullableNumber,
   rel_self_consumption_pct: nullableNumber,
   inverters: z.array(inverterSchema),
+  /**
+   * Present on `/api/v1/live` only; absent on the endpoints that do not derive
+   * it. Kept optional so a payload without it never fails the schema.
+   */
+  energy_derived: derivedEnergySchema.nullable().optional(),
 })
 export type Sample = z.infer<typeof sampleSchema>
 

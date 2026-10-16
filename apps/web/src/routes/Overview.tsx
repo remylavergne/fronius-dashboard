@@ -11,6 +11,7 @@ import { useT } from '@/i18n'
 import { ApiError } from '@/lib/api'
 import { inferStepSeconds, toPowerPoints } from '@/lib/chart'
 import { formatAge, formatKWh, formatW } from '@/lib/format'
+import { resolveEnergy } from '@/lib/energy'
 import { resolveStale } from '@/lib/freshness'
 import {
   RANGES,
@@ -46,6 +47,7 @@ const STEP_LABELS: Record<StepKey, string> = {
   '1d': '1 day',
 }
 
+/** Value of an energy KPI plus whether it comes from the derivation. */
 /**
  * Overview: production, energies, collector status and curve.
  *
@@ -81,6 +83,8 @@ export function Overview() {
 
   const sample = live.data?.data ?? null
   const meta = live.data?.meta
+  const dayEnergy = resolveEnergy(sample?.energy_day_wh, sample?.energy_derived?.day_wh)
+  const yearEnergy = resolveEnergy(sample?.energy_year_wh, sample?.energy_derived?.year_wh)
   const noData = live.data?.error?.code === CODE_NO_DATA
   // "Unreachable" covers two situations indistinguishable to the user: the API
   // does not answer (`network`) or it answers with a server error — which the
@@ -152,13 +156,21 @@ export function Overview() {
           />
           <KpiCard
             label={t('kpi.energyToday')}
-            value={formatKWh(sample.energy_day_wh)}
-            hint={`${t('kpi.lastSample')}: ${formatAge(sample.ts)}`}
+            value={formatKWh(dayEnergy.wh)}
+            hint={
+              dayEnergy.estimated
+                ? t('kpi.energyDerived')
+                : `${t('kpi.lastSample')}: ${formatAge(sample.ts)}`
+            }
           />
           <KpiCard
             label={t('kpi.energyYear')}
-            value={formatKWh(sample.energy_year_wh)}
-            hint={`${t('kpi.energyTotal')}: ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim()}
+            value={formatKWh(yearEnergy.wh)}
+            hint={
+              yearEnergy.estimated
+                ? t('kpi.energyDerived')
+                : `${t('kpi.energyTotal')}: ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim()
+            }
           />
           <KpiCard
             label={t('kpi.collector')}
