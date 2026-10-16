@@ -378,6 +378,35 @@ Material — this is not a Fronius path.
   `_getRequiredUsersTechnician` (l. 128962-128963) =
   `technician | support | utility` (l. 128971, 128975, 128985, 129001, 129010,
   129014).
+- **Route guard**: the 37 route entries of the AppModule array (`const Yb`,
+  l. 155510-155701, `RouterModule.forRoot(Yb)` l. 155779) carry
+  `canActivate: [oi.a]`; the lazy `ji.a.solarWeb` route (l. 155691) carries
+  **none**. `[INFERENCE]` that `oi.a` is module `euqz` (l. 81184-81388): the
+  import binding of `oi` lies outside the readable window, and the mapping rests
+  on (i) `canActivate(t, e) {` (l. 81341) being the **only** such definition in
+  the bundle, (ii) `euqz` exporting exactly one binding, `a` = class `M`
+  (l. 81248, 81251), (iii) `oi.a` appearing in the AppModule provider list
+  (l. 138531).
+  **It is not a role gate.** `canActivate` (l. 81341-81347) chains four
+  middlewares — `_updateMiddleware` (l. 81311), `_exchangeMiddleware`,
+  `_dashboardMiddleware`, `_defaultMiddleware` (l. 81325) — and yields `true`,
+  `false` (`_generateResult`, l. 81283-81286) or a **redirect `UrlTree`** to
+  `/update`, `/exchange`, `/dashboard` or `/startPage`. Its role part is
+  `_mapLoggedInUser` (l. 81366-81374) → `_mainMenuDAO.isUserPermittedForUrl`
+  (l. 43732-43741) → the three-valued enum `Wfm5` (`Permitted = 0`,
+  `NotPermitted = 1`, `ProfiRequired = 2`, l. 70078-70090): on `ProfiRequired`
+  or on an unauthorized path that is not a login-free one, the observable
+  completes **without emitting**, so the navigation is cancelled rather than
+  refused. The route table states a client-side minimum per menu entry
+  (`H8nL`, l. 43533-43674: `DEVICE_CONFIGURATION` → `technician`, l. 43533-43535;
+  `INVERTER` → `customer`, l. 43542) and the same strings enable or disable the
+  menu entries (l. 43803); the login string is expanded into role flags by
+  the map `D` (l. 77898-77905, `customer` → `RoleEverybody` + `RoleCustomer`).
+- The **only authorization-like value that comes back from the device** and is
+  read by the client is `writePermission`, compared field by field
+  (`isEditAllowed(this._user, t && t.writePermission)`, l. 69202): the flag's
+  value per firmware and per account is unknown, and no boolean appearing in a
+  payload constitutes a matrix.
 - **None** of these roles is a server permission: the bundle contains
   no authorization matrix, only display conditions. Unknown
   #6 of `docs/UNKNOWNS.md` remains open.

@@ -53,11 +53,15 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   `E_Day`, `E_Year`, `E_Total`); `cmd/fronius-sim` serves that endpoint too
   (documented shape, values from its own curve), so a probe rehearsal against the
   simulator answers **seven** paths with `200` (`296` bytes, query echoed in
-  `Head.RequestArguments`). It is **not captured on the device yet** — the
-  capture, run by the user, is the next step; the probe's file name for it would
-  be `solar_api_v1_getinverterrealtimedata.json`. The application's client does
-  **not** call the endpoint: it becomes a client call only if the capture proves
-  it carries the counters.
+  `Head.RequestArguments`). **Since captured on the device** (2026-10-16, firmware
+  `1.19.7-1`, file `solar_api_v1_getinverterrealtimedata.json`): the answer is
+  `200`, `883` bytes, and its `DAY_ENERGY` / `YEAR_ENERGY` are **null** while
+  `TOTAL_ENERGY` is live — the third and last candidate source settled, so **no
+  local endpoint exposes the day and year counters** (`docs/UNKNOWNS.md` #13,
+  option (b) implements the derivation). The application's client does
+  **not** call the endpoint. Bonus, recorded but not implemented: the same answer
+  carries `Body.Data.DeviceStatus` (`InverterState` `"Sleeping"`, `StatusCode`
+  13) — the documented source of the inverter state the flow endpoints lack.
 
 - 2026-10-16 — **Device name and article number surfaced.** `/status/version`
   carries `devicename` (`"Primo GEN24 3.6 Plus"`) and `articleNumber`
@@ -187,6 +191,27 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   the pair is incomplete.
 
 ### Changed
+
+- 2026-10-16 — **Route guard audited: it is a navigation condition, not a role
+  gate.** The 37 guarded routes of the AppModule array (`canActivate: [oi.a]`,
+  `const Yb` l. 155510-155701; the lazy `ji.a.solarWeb` route carries none) are
+  protected by the bundle's only `CanActivate` definition (`canActivate(t, e)`,
+  l. 81341, module `euqz` l. 81184-81388; the `oi` → `euqz` binding is an
+  `[INFERENCE]`, the import binding lying outside the readable window, and three
+  concurring clues are recorded). It chains four middlewares
+  (`_updateMiddleware` l. 81311 … `_defaultMiddleware` l. 81325) yielding `true`,
+  `false` or a redirect `UrlTree` (`/update`, `/exchange`, `/dashboard`,
+  `/startPage`), and its role branch is a **client-side** menu permission
+  (`_mapLoggedInUser` l. 81366-81374 → `isUserPermittedForUrl` l. 43732 → the
+  three-valued `Wfm5` enum, l. 70078): a refusal **cancels the navigation** (the
+  observable never emits) instead of answering `403`. Per-route minima are a
+  client table (`H8nL`: `technician` for `DEVICE_CONFIGURATION`, `customer` for
+  `INVERTER`) and the role flags expand from the login string (map `D`,
+  l. 77898-77905). The only authorization-like value the client reads **from the
+  device** is `writePermission` (l. 69202), compared field by field: a payload
+  boolean is not a permission matrix, so `docs/UNKNOWNS.md` #6 stays open and the
+  executable authorization remains the code allowlist. Recorded in
+  `docs/ENDPOINTS.md` § Declared roles (client only) and `docs/UNKNOWNS.md` #6.
 
 - 2026-10-16 — **Repository language switched to English.** Documentation, code
   comments, user-facing strings (API messages, capability and detection reasons,

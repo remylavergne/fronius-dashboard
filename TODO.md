@@ -7,19 +7,19 @@
 - [x] Create the monorepo Git repository and a development README
 - [x] Import the MD files from the folder and reference the original sources without publishing any secrets
 - [x] Verify the hardware/firmware inventory against the PDF export
-- [ ] Identify the metrics actually returned by the Solar API (anonymized samples)
+- [x] Identify the metrics actually returned by the Solar API (anonymized samples) — redacted capture of 2026-10-16 promoted as `test/fixtures/solarapi/powerflow_produce_only.json`; exact keys in `docs/SOURCES.md` § Shape of the Solar API v1 response
 - [x] Dynamically detect the presence of a meter and a battery (absence/unknown distinguished)
-- [ ] Confirm the absence of Smart Meter and battery on the real hardware (probe, to be run by the user)
+- [x] Confirm the absence of Smart Meter and battery on the real hardware (probe, to be run by the user) — capture of 2026-10-16: both `/components/*/readable` answers carry an **empty** `Body.Data` (`docs/UNKNOWNS.md` #4, #5)
 - [x] Define MVP vs phase 2 (control) goals and success criteria
 - [x] Choose license, branch strategy, commit conventions
 - [x] Record all unknowns in a decision register
 
 ## 1 — API research and security
 
-- [ ] Document `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` and its fields actually available
+- [x] Document `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` and its fields actually available — `docs/SOURCES.md` § Shape of the Solar API v1 response; two `[HYPOTHESIS]` divergences settled (`Meter_Location` string, `E_Day`/`E_Year` null)
 - [x] Extract other documented and useful Solar API endpoints
 - [x] Extract methods/arguments/DTO of the internal commands useful in read-only mode (table per path in `docs/ENDPOINTS.md`, provenance in `docs/SOURCES.md`)
-- [ ] Audit the Angular guard `oi.a` and the component checks without assuming server permissions
+- [x] Audit the Angular guard `oi.a` and the component checks without assuming server permissions — the guard is module `euqz` (only `CanActivate` in the bundle, l. 81341) and is **not** a role gate: four middlewares + a client-side menu lookup whose refusal cancels the navigation; the client-side role tables and the single device-published `writePermission` flag are recorded in `docs/ENDPOINTS.md` § Declared roles and `docs/UNKNOWNS.md` #6 (still open: no server matrix is provable from a bundle)
 - [x] Build the endpoint/method/parameters/declared role/tested role/side effect matrix
 - [x] Classify each endpoint READ / MUTATION / DANGEROUS
 - [x] Analyze the `ytu1` Digest module, nonce handling and error cases
@@ -56,7 +56,7 @@
 - [x] Guarantee that no automatic retry triggers a write
 - [x] Add collector metrics and redacted structured logs
 - [x] Implement the Fronius mock/simulator and anonymized fixtures
-- [ ] Add contract tests from the real redacted responses
+- [x] Add contract tests from the real redacted responses — `internal/fronius/solarapi/contract_test.go` (promoted capture) and `internal/detect/contract_test.go` (the four internal captures); a guard covers the whole `test/fixtures` tree
 - [x] Prepare an optional isolated Digest client, without using it if unnecessary for the MVP
 - [x] Verify that the frontend never has access to the Fronius credentials
 
@@ -321,3 +321,42 @@
   same items as step 14 (hardware probe and promotion of the fixtures,
   real identity keys, shape of `/status/activeEvents`, battery state of charge,
   event filters, OpenAPI, CSV export, E2E tests, screenshots).
+
+- 2026-10-16 — Step 16 (capture session, run by the user): the probe was executed against
+  the hardware (firmware `1.19.7-1`) and its answers became the reference. Promoted as
+  fixtures and consumed by two contract tests: `test/fixtures/solarapi/powerflow_produce_only.json`
+  (`internal/fronius/solarapi/contract_test.go`) and the five internal bodies
+  `status_version`, `status_activeevents`, `status_powerflow`,
+  `components_powermeter_readable`, `components_batterymanagementsystem_readable`
+  (`internal/detect/contract_test.go`). Four registers of unknowns were settled by the
+  capture: #1 (shape of `GetPowerFlowRealtimeData`, two `[HYPOTHESIS]` divergences —
+  `Meter_Location` is a string, `E_Day`/`E_Year` are **null**), #4 and #5 (no Smart Meter,
+  no battery: an **empty** `Body.Data` on both `/components/*/readable`), and #13 (three
+  candidate sources for the day and year counters — the flow endpoint, the internal
+  `/status/powerflow` and the documented accumulation collection — all `null`, only the
+  total is live). Consequences: the internal `/status/powerflow` **fallback was removed**
+  (clean cutover: allowlist back to four entries, `samples.fallback_source` dropped by
+  migration `0006`), and the two quantities are now **derived** from our own stored total
+  (option (b), `internal/api/derived.go`, commit `2489ce4`). Boxes ticked at this step:
+  "Identify the metrics actually returned by the Solar API", "Confirm the absence of
+  Smart Meter and battery", "Document `GetPowerFlowRealtimeData.fcgi` and its fields" and
+  "Add contract tests from the real redacted responses". Left open: the route guard
+  `oi.a` audit, the accumulation answer's `DeviceStatus` (recorded as a candidate, see
+  `docs/UNKNOWNS.md` #13), the daily chart derivation, OpenAPI, CSV export, E2E tests.
+
+- 2026-10-16 — Step 17: audit of the route guard, the last open item of phase 1. The 37 guarded
+  routes of the AppModule array carry `canActivate: [oi.a]` (the lazy `ji.a.solarWeb` route carries
+  none) and the bundle contains **one** `CanActivate` definition (`canActivate(t, e)`, l. 81341, module
+  `euqz`, l. 81184-81388): the `oi` → `euqz` binding is an `[INFERENCE]` (the import binding lies
+  outside the readable window; three concurring clues recorded). The guard is **not a role gate** — it
+  chains four middlewares (`_updateMiddleware` l. 81311 … `_defaultMiddleware` l. 81325) that yield
+  `true`, `false` or a redirect `UrlTree` (`/update`, `/exchange`, `/dashboard`, `/startPage`) — its role
+  part reads a client-side menu permission (`_mapLoggedInUser` l. 81366-81374 → `isUserPermittedForUrl`
+  l. 43732 → the three-valued `Wfm5` enum at l. 70078), and a refusal **cancels the navigation** (the
+  observable never emits) rather than answering 403. The per-route minima are a client table
+  (`H8nL`, `technician` for `DEVICE_CONFIGURATION`, `customer` for `INVERTER`) and the role flags are
+  expanded from the login string (map `D`, l. 77898-77905). The only authorization-like value the client
+  reads **from the device** is `writePermission` (l. 69202), compared field by field — unknown #6 stays
+  open: a payload boolean is not a matrix, and the executable authorization remains the code allowlist.
+  Recorded in `docs/ENDPOINTS.md` § Declared roles (client only) and `docs/UNKNOWNS.md` #6.
+  Remaining open boxes: `backup/restore` (tested), `OpenAPI`, the phase-5/6 interface and packaging work.
