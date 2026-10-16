@@ -1,0 +1,12 @@
+-- 0004_fallback_source.sql
+--
+-- Records which internal path completed a sample when the primary source
+-- returned a quantity as null. Today the only case is /status/powerflow
+-- supplying the day and year energies, which the Solar API nulls on firmware
+-- 1.19.7-1 (docs/UNKNOWNS.md #13, docs/ENDPOINTS.md).
+--
+-- The default is the empty string: an existing row, and any sample the primary
+-- source fills entirely, carries no fallback. It is deliberately not NULL: the
+-- column answers "where did this value come from", and an empty answer is a
+-- fact, not a missing value.
+ALTER TABLE samples ADD COLUMN fallback_source TEXT NOT NULL DEFAULT '';

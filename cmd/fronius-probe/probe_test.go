@@ -96,8 +96,8 @@ func TestMaskHeaderValue(t *testing.T) {
 }
 
 func TestWhitelistIsGetOnly(t *testing.T) {
-	if len(whitelist) != 5 {
-		t.Fatalf("allowlist = %d entries, want 5", len(whitelist))
+	if len(whitelist) != 6 {
+		t.Fatalf("allowlist = %d entries, want 6", len(whitelist))
 	}
 	seen := map[string]bool{}
 	for _, ep := range whitelist {
@@ -116,8 +116,10 @@ func TestWhitelistIsGetOnly(t *testing.T) {
 		seen[ep.path] = true
 	}
 
-	// The four internal paths require a Digest on the official client side;
-	// the Solar API endpoint never sends an authentication header.
+	// The five internal paths are reached with a Digest by the official client;
+	// the Solar API endpoint never sends an authentication header. (The flag
+	// describes the official client, not this device: the capture of 2026-10-16
+	// shows that firmware 1.19.7-1 answers all of them without a challenge.)
 	for _, ep := range whitelist {
 		wantDigest := ep.path != "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 		if ep.digest != wantDigest {

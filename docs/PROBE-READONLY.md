@@ -32,7 +32,7 @@ responsibility.
 ## 2. Exact requests emitted
 
 The probe can only emit the requests of its allowlist, frozen in the binary
-(five entries, all `READ` and all `GET`):
+(six entries, all `READ` and all `GET`):
 
 | Path                                           | Digest    | What it provides                                                        |
 | ---------------------------------------------- | --------- | ----------------------------------------------------------------------- |
@@ -41,13 +41,22 @@ The probe can only emit the requests of its allowlist, frozen in the binary
 | `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
 | `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
+| `/status/powerflow`                            | after 401 | fallback for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13); shape still `[HYPOTHESIS]` — not captured yet |
 
-**Result of the first real run** (2026-10-16, firmware 1.19.7-1): all five paths
-answered `200` on the **bare** request — no `Authorization` header was ever
+**Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
+of the allowlist at that time answered `200` on the **bare** request — no
+`Authorization` header was ever
 constructed and no `401` was ever issued, so `digest_required` is `false` for all
 five and the "after 401" column was never triggered. The two component paths
 replied with `Content-Type: text/javascript` (not `application/json`). Details
 and residual points: `docs/UNKNOWNS.md`, `docs/SOURCES.md`.
+
+Since then, the allowlist has a sixth entry, `/status/powerflow` (fallback for
+the day and year energies the Solar API returns as `null`, unknown #13), added
+later and **not yet captured** on hardware. The simulator now also serves that
+path — mirroring its own Solar API numbers, it does **not** reproduce the `null`
+case (the captured fixture does) — so a probe rehearsal against the simulator
+answers **six** paths with `200`.
 
 ### What the capture must confirm, path by path
 
@@ -64,9 +73,12 @@ kept as the record of what each capture had to settle:
 | `/status/activeEvents`                         | #11 (event shape)                    | payload = array; 11 fields read; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728); identity = `uuid`, or `prefix`-`eventID`; text = `label`                                                          | the real names and types, the semantics of `viewer`, and whether `label` carries readable text or a code |
 | `/components/PowerMeter/readable`              | #4 (meter presence)                  | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]`                                                                                             | presence, real signal names and units on `1.19.7-1`                                                      |
 | `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge)     | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`                                                                                                                                              | presence, and whether the state of charge really exists on this firmware                                 |
+| `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **values `[HYPOTHESIS]`**, not captured | the real values and units of the day and year energies, and whether this internal path returns them where the Solar API nulls them |
 
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
-in § 8), **no other path was added to the allowlist**: the rule for adding
+in § 8), exactly one further path has been added to the allowlist —
+`/status/powerflow`, the fallback for the day and year energies the Solar API
+returns as `null` (#13) — and it is not captured yet. The rule for adding
 remains a metric that the Solar API does not provide, and a metric is not chosen
 from an inventory (ADR 0008).
 
@@ -170,10 +182,10 @@ Towards the local simulator (no risk, no hardware):
 # terminal 1
 go run ./cmd/fronius-sim --api-user sim --api-password simpass --with-meter
 
-# terminal 2: without credentials, the four internal paths answer 401
+# terminal 2: without credentials, the five internal paths answer 401
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081
 
-# terminal 2: with the simulator account, the five paths answer 200.
+# terminal 2: with the simulator account, the six paths answer 200.
 # The simulator password is "simpass"; it is entered on standard input
 # so it does not appear in the shell history.
 export FRONIUS_DEVICE_USER=sim
@@ -286,7 +298,7 @@ promoted (`powerflow_produce_only.json` and the four internal fixtures); see
 
 3. Rename after the captured **path** (`status_version.json`,
    `components_powermeter_readable.json`, `status_activeevents.json`,
-   `components_batterymanagementsystem_readable.json`, or
+   `components_batterymanagementsystem_readable.json`, `status_powerflow.json`, or
    `powerflow_produce_only.json`, `powerflow_with_meter.json`, …) and replace
    the corresponding synthetic file.
 4. Re-run `go test ./...`: the contract test
@@ -311,7 +323,7 @@ This rule covers:
 
 - the application (`froniusd`): all its clients are built behind
   `fronius.ReadOnly`;
-- the probe (`fronius-probe`): allowlist of a single GET;
+- the probe (`fronius-probe`): allowlist of `GET` only;
 - the simulator (`fronius-sim`): it never contacts the inverter;
 - tests and CI: no test performs an outgoing request to an inverter.
 

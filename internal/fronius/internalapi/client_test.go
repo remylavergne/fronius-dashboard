@@ -39,16 +39,17 @@ func (d *countingDoer) Do(r *http.Request) (*http.Response, error) {
 	return d.inner.Do(r)
 }
 
-func TestAllowlistIsExactlyFourReadEndpoints(t *testing.T) {
+func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 	list := Allowlist()
-	if len(list) != 4 {
-		t.Fatalf("allowlist = %d entries, want 4", len(list))
+	if len(list) != 5 {
+		t.Fatalf("allowlist = %d entries, want 5", len(list))
 	}
 	want := map[string]Envelope{
 		VersionPath:      EnvelopeDefault,
 		ActiveEventsPath: EnvelopeDefault,
 		PowerMeterPath:   EnvelopeCgi,
 		BatteryPath:      EnvelopeCgi,
+		PowerFlowPath:    EnvelopeDefault,
 	}
 	for _, ep := range list {
 		if ep.Class != ClassRead {
@@ -325,6 +326,59 @@ func TestComponentPresentRejectsNonCgiPath(t *testing.T) {
 	_, err := c.ComponentPresent(context.Background(), VersionPath)
 	if err == nil {
 		t.Fatal("a path with a Default envelope is not a component")
+	}
+}
+
+func TestPowerFlowDecodesTheInternalShape(t *testing.T) {
+	// Keys as the vendor client reads them (bundle l. 129034, 129043-129063); a
+	// real capture is still missing, so the values below are illustrative.
+	const body = `{
+	  "site": {"P_PV": 228.35, "P_Grid": null, "P_Load": null, "P_Akku": null,
+	           "E_Day": 4123.4, "E_Year": 4215488.4, "E_Total": 15089488.9},
+	  "inverters": {"1": {"DT": 1, "P": 185.58, "SOC": null}},
+	  "Smartloads": {"Ohmpilots": {}}
+	}`
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	pf, err := newClient(t, srv.URL, &http.Client{}).PowerFlow(context.Background())
+	if err != nil {
+		t.Fatalf("PowerFlow: %v", err)
+	}
+	if pf.Site.E_Day == nil || *pf.Site.E_Day != 4123.4 {
+		t.Fatalf("site.E_Day = %v", pf.Site.E_Day)
+	}
+	if pf.Site.E_Year == nil || *pf.Site.E_Year != 4215488.4 {
+		t.Fatalf("site.E_Year = %v", pf.Site.E_Year)
+	}
+	// A null stays nil: no invented zero.
+	if pf.Site.P_Grid != nil || pf.Site.P_Akku != nil {
+		t.Fatalf("null powers must stay nil: %+v", pf.Site)
+	}
+	if len(pf.Inverters) != 1 || pf.Inverters["1"].P == nil || *pf.Inverters["1"].P != 185.58 {
+		t.Fatalf("inverters = %+v", pf.Inverters)
+	}
+	if pf.Inverters["1"].SOC != nil {
+		t.Fatalf("SOC must stay nil: %v", pf.Inverters["1"].SOC)
+	}
+}
+
+func TestPowerFlowRejectsAnUnexpectedShape(t *testing.T) {
+	// An empty object is not an empty measurement: it is a body we cannot read.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer srv.Close()
+
+	_, err := newClient(t, srv.URL, &http.Client{}).PowerFlow(context.Background())
+	if err == nil {
+		t.Fatal("an empty body must be a decode error")
+	}
+	if kind, _ := froniuserr.KindOf(err); kind != froniuserr.KindDecode {
+		t.Fatalf("KindOf = %q, want %q", kind, froniuserr.KindDecode)
 	}
 }
 

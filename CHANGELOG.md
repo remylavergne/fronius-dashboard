@@ -9,6 +9,26 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Internal `/status/powerflow` fallback for the day and year
+  energies.** The Solar API returns `E_Day` and `E_Year` as `null` on firmware
+  `1.19.7-1` (`docs/UNKNOWNS.md` #13, cause still unknown); the decided fallback
+  (option B) reads the internal `/status/powerflow` path. `internalapi.PowerFlow`
+  (DTO) and `Client.PowerFlow` serve it; the path joins the executable allowlist
+  (class `READ`, envelope `Default`), bringing it to **five internal paths plus
+  the Solar API endpoint** — six paths callable by the application and by
+  `cmd/fronius-probe --endpoint /status/powerflow`. The collector fills **only**
+  the missing day and year energies: **a measured Solar API value is never
+  overwritten**, and the fallback is called only when one of the two is missing.
+  A fallback failure is merely logged as a warning — it is **not** a collection
+  failure — and never invents a zero. The provenance is recorded in the new
+  `samples.fallback_source` column (migration `0004_fallback_source.sql`, empty
+  string by default) and exposed by `/api/v1/live` as `fallback_source`.
+  `cmd/fronius-sim` now also serves `/status/powerflow` (mirroring its own Solar
+  API numbers; it does **not** reproduce the `null` case, which the synthetic
+  fixture `test/fixtures/internalapi/status_powerflow.json` encodes). That shape
+  is still `[HYPOTHESIS]` until a hardware capture promotes it
+  (`docs/PROBE-READONLY.md`).
+
 - 2026-10-16 — **First hardware capture and fixture promotion.** Two
   `cmd/fronius-probe` runs against a real GEN24 (`http://192.0.2.10`, one
   without credentials, one with) captured the five allowlisted paths on firmware

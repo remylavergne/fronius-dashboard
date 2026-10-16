@@ -4,7 +4,8 @@
 // table is not callable (the client refuses before building the request), and no
 // entry is of class MUTATION or DANGEROUS. The 79 paths catalogued in
 // docs/ENDPOINTS.md stay out of the list: they only serve to know what must not
-// be called.
+// be called. Every entry here is justified by a metric the Solar API does not
+// provide (docs/adr/0008-exposed-data-scope.md).
 package internalapi
 
 import "errors"
@@ -53,6 +54,10 @@ const (
 	ActiveEventsPath = "/status/activeEvents"
 	PowerMeterPath   = "/components/PowerMeter/readable"
 	BatteryPath      = "/components/BatteryManagementSystem/readable"
+	// PowerFlowPath is the internal flow measurement of the vendor interface.
+	// It is read as a FALLBACK for the day and year energies, which the Solar API
+	// returns as null on firmware 1.19.7-1 (docs/UNKNOWNS.md #13).
+	PowerFlowPath = "/status/powerflow"
 )
 
 // ErrNotAllowed is returned by Get for any path outside the allowlist. It is a
@@ -68,7 +73,7 @@ var allowlist = []Endpoint{
 		Envelope: EnvelopeDefault,
 		Digest:   true,
 		Purpose:  "device identity: serial number, device group, number of phases",
-		Evidence: "bundle references/fronius-original.js: polled registry l. 76042 (module aYRN), 401 retry l. 75961-75963; headerless path l. 183050 (module yTJA); fields serialNumber l. 45243, numberOfPhases and devicegroup l. 183034-183035. Verified by cmd/fronius-sim (/status/version).",
+		Evidence: "bundle references/fronius-original.js: headerless path l. 183050 (module yTJA) — this path is NOT in the polled aYRN registry; fields serialNumber l. 45243, numberOfPhases and devicegroup l. 183034-183035, firmware swrevisions.GEN24 l. 128882. Captured 2026-10-16 on firmware 1.19.7-1: 200 without Authorization. Verified by cmd/fronius-sim.",
 	},
 	{
 		Path:     ActiveEventsPath,
@@ -76,7 +81,7 @@ var allowlist = []Endpoint{
 		Envelope: EnvelopeDefault,
 		Digest:   true,
 		Purpose:  "active events reported by the device",
-		Evidence: "bundle: polled registry l. 76030 (module aYRN, interval 10,000 ms). Body shape NOT established (docs/UNKNOWNS.md); the raw detail is kept. Verified by cmd/fronius-sim (/status/activeEvents).",
+		Evidence: "bundle: polled registry l. 76030 (module aYRN, interval 10,000 ms); field mapping l. 135689-135701. Captured 2026-10-16 on firmware 1.19.7-1: root array, integer severity, uuid identity. Verified by cmd/fronius-sim.",
 	},
 	{
 		Path:     PowerMeterPath,
@@ -84,7 +89,7 @@ var allowlist = []Endpoint{
 		Envelope: EnvelopeCgi,
 		Digest:   true,
 		Purpose:  "presence of a Fronius Smart Meter",
-		Evidence: "bundle: polled registry l. 76031 with Cgi envelope l. 75958 (module aYRN); Body.Data decoding l. 183011 (module yTJA). No named field is proven: only the presence is inferred. Verified by cmd/fronius-sim (/components/PowerMeter/readable).",
+		Evidence: "bundle: polled registry l. 76035 with Cgi envelope l. 75958 (module aYRN); Body.Data decoding l. 183011 (module yTJA). Presence is inferred from a non-empty Body.Data. Captured 2026-10-16 on firmware 1.19.7-1 (empty Body.Data: no meter, Content-Type text/javascript). Verified by cmd/fronius-sim.",
 	},
 	{
 		Path:     BatteryPath,
@@ -92,7 +97,15 @@ var allowlist = []Endpoint{
 		Envelope: EnvelopeCgi,
 		Digest:   true,
 		Purpose:  "presence of a battery",
-		Evidence: "bundle: polled registry l. 76032 with Cgi envelope (module aYRN). No named field is proven. Verified by cmd/fronius-sim (/components/BatteryManagementSystem/readable).",
+		Evidence: "bundle: polled registry l. 76032 with Cgi envelope (module aYRN). Captured 2026-10-16 on firmware 1.19.7-1 (empty Body.Data: no battery). Verified by cmd/fronius-sim.",
+	},
+	{
+		Path:     PowerFlowPath,
+		Class:    ClassRead,
+		Envelope: EnvelopeDefault,
+		Digest:   true,
+		Purpose:  "day and year energy, which the Solar API returns as null on this firmware (fallback only: a measured Solar API value is never overwritten)",
+		Evidence: "bundle: polled registry l. 76036 (module aYRN, interval 5,000 ms, Default envelope); consumed fields l. 129034 and l. 129049-129052 (site.E_Day, site.E_Year, site.P_*). NOT yet captured on hardware: the DTO keys come from the vendor client, so the values are [HYPOTHESIS] until a probe run (docs/PROBE-READONLY.md).",
 	},
 }
 

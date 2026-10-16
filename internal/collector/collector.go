@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"fronius-supervisor/internal/fronius/froniuserr"
+	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/fronius/solarapi"
 	"fronius-supervisor/internal/model"
 	"fronius-supervisor/internal/storage"
@@ -38,6 +39,14 @@ type Source interface {
 	GetPowerFlowRealtimeData(ctx context.Context) (solarapi.PowerFlowEnvelope, error)
 }
 
+// PowerFlowSource optionally supplies the internal flow measurement used to
+// complete quantities the Solar API returns as null — today the day and year
+// energies on firmware 1.19.7-1 (docs/UNKNOWNS.md #13). A nil Fallback disables
+// the behaviour entirely.
+type PowerFlowSource interface {
+	PowerFlow(ctx context.Context) (internalapi.PowerFlow, error)
+}
+
 // Sink persists the effects of a collection cycle.
 //
 // InsertEvent does not appear in the minimal definition of the plan but it is
@@ -54,7 +63,11 @@ type Sink interface {
 type Collector struct {
 	Source Source
 	Sink   Sink
-	Log    *slog.Logger
+	// Fallback completes the sample with the internal flow measurement when the
+	// primary source returns a quantity as null. Optional: nil means "no fallback",
+	// and a fallback failure never fails a cycle.
+	Fallback PowerFlowSource
+	Log      *slog.Logger
 	// Interval is the nominal period on success.
 	Interval time.Duration
 	// Jitter is the amplitude of the random variation applied to Interval.
@@ -120,6 +133,7 @@ func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 	}
 
 	sm := model.FromPowerFlow(env, started)
+	sm = c.completeFromInternal(ctx, sm)
 	if err := c.Sink.InsertSample(ctx, sm); err != nil {
 		// The persistence failure is not a device failure: no
 		// hardware-failure event, and the error is returned as is.
@@ -140,6 +154,39 @@ func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 
 	c.onSuccess(ctx, started)
 	return sm, nil
+}
+
+// completeFromInternal fills the day and year energies from the internal flow
+// measurement when the Solar API returned them as null, and leaves every other
+// value alone: a measured Solar API value is never overwritten.
+//
+// A failure of the fallback is not a collection failure — the primary sample is
+// still persisted as it came — but it is logged, and the sample keeps its
+// absent energies rather than a zero.
+func (c *Collector) completeFromInternal(ctx context.Context, sm model.Sample) model.Sample {
+	if c.Fallback == nil || (sm.EnergyDayWh != nil && sm.EnergyYearWh != nil) {
+		return sm
+	}
+
+	pf, err := c.Fallback.PowerFlow(ctx)
+	if err != nil {
+		c.log().Warn("internal powerflow fallback unavailable", "error", err)
+		return sm
+	}
+
+	filled := false
+	if sm.EnergyDayWh == nil && pf.Site.E_Day != nil {
+		sm.EnergyDayWh = pf.Site.E_Day
+		filled = true
+	}
+	if sm.EnergyYearWh == nil && pf.Site.E_Year != nil {
+		sm.EnergyYearWh = pf.Site.E_Year
+		filled = true
+	}
+	if filled {
+		sm.FallbackSource = internalapi.PowerFlowPath
+	}
+	return sm
 }
 
 func (c *Collector) recordFailure(ctx context.Context, started time.Time, duration time.Duration, err error) {

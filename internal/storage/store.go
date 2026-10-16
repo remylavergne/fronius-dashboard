@@ -57,7 +57,7 @@ type EventsQuery struct {
 	From, To time.Time // zero value = no bound
 }
 
-const sampleColumns = `ts_utc, source, ts_source, quality, mode,
+const sampleColumns = `ts_utc, source, ts_source, quality, mode, fallback_source,
 	power_pv_w, energy_day_wh, energy_year_wh, energy_total_wh,
 	power_grid_w, power_load_w, power_battery_w,
 	rel_autonomy_pct, rel_self_consumption_pct, inverters_json`
@@ -81,11 +81,12 @@ func (s *Store) InsertSample(ctx context.Context, sm model.Sample) error {
 	}
 
 	const q = `INSERT INTO samples (` + sampleColumns + `)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(ts_utc, source) DO UPDATE SET
 			ts_source = excluded.ts_source,
 			quality = excluded.quality,
 			mode = excluded.mode,
+			fallback_source = excluded.fallback_source,
 			power_pv_w = excluded.power_pv_w,
 			energy_day_wh = excluded.energy_day_wh,
 			energy_year_wh = excluded.energy_year_wh,
@@ -98,7 +99,7 @@ func (s *Store) InsertSample(ctx context.Context, sm model.Sample) error {
 			inverters_json = excluded.inverters_json`
 
 	_, err = s.db.ExecContext(ctx, q,
-		formatTS(sm.TS), sm.Source, sm.TSSource, string(sm.Quality), sm.Mode,
+		formatTS(sm.TS), sm.Source, sm.TSSource, string(sm.Quality), sm.Mode, sm.FallbackSource,
 		sm.PowerPVW, sm.EnergyDayWh, sm.EnergyYearWh, sm.EnergyTotalWh,
 		sm.PowerGridW, sm.PowerLoadW, sm.PowerBatteryW,
 		sm.RelAutonomyPct, sm.RelSelfConsumptionPct, string(inverters),
@@ -617,11 +618,11 @@ func (s *Store) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {
 // scanSample reads a row of `samples`.
 func scanSample(row interface{ Scan(...any) error }) (model.Sample, error) {
 	var (
-		ts, source, tsSource, quality, mode, invertersJSON string
-		pv, eDay, eYear, eTotal                            sql.NullFloat64
-		pGrid, pLoad, pBat, relAuto, relSelf               sql.NullFloat64
+		ts, source, tsSource, quality, mode, fallbackSource, invertersJSON string
+		pv, eDay, eYear, eTotal                                            sql.NullFloat64
+		pGrid, pLoad, pBat, relAuto, relSelf                               sql.NullFloat64
 	)
-	if err := row.Scan(&ts, &source, &tsSource, &quality, &mode,
+	if err := row.Scan(&ts, &source, &tsSource, &quality, &mode, &fallbackSource,
 		&pv, &eDay, &eYear, &eTotal, &pGrid, &pLoad, &pBat,
 		&relAuto, &relSelf, &invertersJSON); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -641,6 +642,7 @@ func scanSample(row interface{ Scan(...any) error }) (model.Sample, error) {
 		Source:                source,
 		Quality:               model.Quality(quality),
 		Mode:                  mode,
+		FallbackSource:        fallbackSource,
 		PowerPVW:              nullFloat(pv),
 		EnergyDayWh:           nullFloat(eDay),
 		EnergyYearWh:          nullFloat(eYear),

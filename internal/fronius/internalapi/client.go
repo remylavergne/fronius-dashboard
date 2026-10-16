@@ -2,7 +2,7 @@
 //
 // The only request builder is Get: the verb is the constant http.MethodGet, no
 // method parameter exists in this API. Every path first goes through the
-// allowlist (allowlist.go), which contains exactly four entries; an absent path
+// allowlist (allowlist.go), which contains exactly five entries; an absent path
 // is refused before any URL construction.
 package internalapi
 
@@ -266,6 +266,69 @@ func (c *Client) ActiveEvents(ctx context.Context) ([]json.RawMessage, error) {
 		Endpoint: ep.Path,
 		Err:      fmt.Errorf("unexpected shape: neither indexed Body.Data nor root array"),
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Internal flow measurement (fallback for the day and year energies)
+// ---------------------------------------------------------------------------
+
+// PowerFlow is the internal flow measurement of /status/powerflow.
+//
+// Shape provenance: the vendor interface reads exactly these keys to draw its
+// flow view (bundle l. 129034, 129043-129063), but this path has NOT been
+// captured on hardware yet, so every field is a pointer and the DTO stays
+// deliberately small: only what the application consumes is modelled, and an
+// unknown key is ignored. Field names follow the protocol (`P_PV`, `E_Day`) so
+// that a tag divergence stands out on rereading.
+type PowerFlow struct {
+	Site      PowerFlowSite                `json:"site"`
+	Inverters map[string]PowerFlowInverter `json:"inverters"`
+}
+
+// PowerFlowSite is the site measurement point of the internal flow view.
+type PowerFlowSite struct {
+	P_PV    *float64 `json:"P_PV"`
+	P_Grid  *float64 `json:"P_Grid"`
+	P_Load  *float64 `json:"P_Load"`
+	P_Akku  *float64 `json:"P_Akku"`
+	E_Day   *float64 `json:"E_Day"`
+	E_Year  *float64 `json:"E_Year"`
+	E_Total *float64 `json:"E_Total"`
+}
+
+// PowerFlowInverter is one inverter of the internal flow view.
+type PowerFlowInverter struct {
+	P   *float64 `json:"P"`
+	SOC *float64 `json:"SOC"`
+}
+
+// PowerFlow reads /status/powerflow (Default envelope: the body is the payload).
+//
+// A body that carries none of the expected keys is a decode error, not an empty
+// measurement: a shape we cannot read proves nothing, as for the components.
+func (c *Client) PowerFlow(ctx context.Context) (PowerFlow, error) {
+	ep, ok := Lookup(PowerFlowPath)
+	if !ok {
+		return PowerFlow{}, fmt.Errorf("%w: %q", ErrNotAllowed, PowerFlowPath)
+	}
+	body, err := c.get(ctx, ep)
+	if err != nil {
+		return PowerFlow{}, err
+	}
+
+	var pf PowerFlow
+	if err := json.Unmarshal(body, &pf); err != nil {
+		return PowerFlow{}, jsonDecodeError(ep.Path, err)
+	}
+	if pf.Site.P_PV == nil && pf.Site.E_Day == nil && pf.Site.E_Year == nil &&
+		pf.Site.E_Total == nil && len(pf.Inverters) == 0 {
+		return PowerFlow{}, &froniuserr.Error{
+			Kind:     froniuserr.KindDecode,
+			Endpoint: ep.Path,
+			Err:      fmt.Errorf("no expected key found: neither site.P_* nor inverters"),
+		}
+	}
+	return pf, nil
 }
 
 // ---------------------------------------------------------------------------

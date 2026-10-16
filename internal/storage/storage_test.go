@@ -49,6 +49,36 @@ func mustInsert(t *testing.T, s *Store, sm model.Sample) {
 	}
 }
 
+func TestSampleKeepsItsFallbackSource(t *testing.T) {
+	s := openStore(t, brussels(t))
+	ts := time.Date(2026, 10, 16, 15, 17, 23, 0, time.UTC)
+
+	sm := sample(ts, 228.35)
+	sm.EnergyDayWh = new(4123.4)
+	sm.FallbackSource = "/status/powerflow"
+	mustInsert(t, s, sm)
+
+	got, err := s.LatestSample(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSample: %v", err)
+	}
+	if got.FallbackSource != "/status/powerflow" {
+		t.Fatalf("fallback_source = %q, want the internal path", got.FallbackSource)
+	}
+
+	// A sample the primary source fills entirely carries no fallback: the empty
+	// string is a fact ("nothing was completed"), not a missing value.
+	plain := sample(ts.Add(time.Second), 100)
+	mustInsert(t, s, plain)
+	got, err = s.LatestSample(context.Background())
+	if err != nil {
+		t.Fatalf("LatestSample: %v", err)
+	}
+	if got.FallbackSource != "" {
+		t.Fatalf("fallback_source = %q, want empty", got.FallbackSource)
+	}
+}
+
 func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	loc := brussels(t)
 	path := filepath.Join(t.TempDir(), "nested", "dir", "fronius.db")
@@ -64,8 +94,8 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := first.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("counting the migrations: %v", err)
 	}
-	if version != 3 || rows != 3 {
-		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (3, 3)", version, rows)
+	if version != 4 || rows != 4 {
+		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (4, 4)", version, rows)
 	}
 	// The WAL mode must be active (proof that the DSN was actually applied).
 	var journalMode string
@@ -89,7 +119,7 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("counting after second Open: %v", err)
 	}
-	if rows != 3 {
+	if rows != 4 {
 		t.Fatalf("migrations replayed: %d rows", rows)
 	}
 	// The tables remain usable.

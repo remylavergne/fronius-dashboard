@@ -55,6 +55,11 @@ type Sample struct {
 	Source   string    // SourceSolarAPI
 	Quality  Quality
 	Mode     string
+	// FallbackSource names the internal path that completed this sample when the
+	// primary source returned a quantity as null (today: the day and year
+	// energies, docs/UNKNOWNS.md #13). Empty means "nothing was completed", not
+	// "unknown": the primary source produced every value.
+	FallbackSource string
 
 	PowerPVW      *float64
 	EnergyDayWh   *float64

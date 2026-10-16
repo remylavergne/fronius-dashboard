@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Internal paths served. The list is strictly equal to that of the client
@@ -29,10 +30,14 @@ const (
 	activeEventsPath = "/status/activeEvents"
 	powerMeterPath   = "/components/PowerMeter/readable"
 	batteryPath      = "/components/BatteryManagementSystem/readable"
+	internalFlowPath = "/status/powerflow"
 )
 
-// internalPaths is the frozen list of internal paths.
-var internalPaths = []string{versionPath, activeEventsPath, powerMeterPath, batteryPath}
+// internalPaths is the frozen list of internal paths the simulator serves. It
+// matches the application allowlist (internal/fronius/internalapi): the same
+// paths, so that a probe rehearsal against the simulator answers exactly what
+// the device answers.
+var internalPaths = []string{versionPath, activeEventsPath, powerMeterPath, batteryPath, internalFlowPath}
 
 // Challenge headers.
 const (
@@ -70,7 +75,7 @@ func newDigestAuth() *digestAuth {
 	return &digestAuth{lastNC: map[string]uint64{}}
 }
 
-// registerInternal registers the four internal paths.
+// registerInternal registers every internal path the simulator serves.
 func (s *simulator) registerInternal(mux *http.ServeMux) {
 	for _, path := range internalPaths {
 		mux.HandleFunc(path, s.logged(s.internalHandler(path)))
@@ -99,6 +104,8 @@ func (s *simulator) internalHandler(path string) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, cgiBody(s.activeEventsData()))
 		case powerMeterPath, batteryPath:
 			writeJSON(w, http.StatusOK, cgiBody(s.componentData(path)))
+		case internalFlowPath:
+			writeJSON(w, http.StatusOK, s.powerFlowBody())
 		default:
 			http.NotFound(w, r)
 		}
@@ -131,6 +138,57 @@ func (s *simulator) versionBody() versionJSON {
 		FirmwareVersion: "1.24.3-sim",
 		ModelName:       "Fronius Primo GEN24 3.6 Plus (simulated)",
 	}
+}
+
+// powerFlowJSON is the shape of /status/powerflow, as the vendor interface reads
+// it (bundle l. 129034 and l. 129043-129063): site.E_Day/E_Year/E_Total and the
+// powers, inverters indexed by id, Smartloads.Ohmpilots.
+//
+// The simulator mirrors its own Solar API answer, energies included: it does NOT
+// reproduce the null E_Day/E_Year of firmware 1.19.7-1, which the captured
+// fixture test/fixtures/internalapi/status_powerflow.json covers.
+type powerFlowJSON struct {
+	Site struct {
+		EDay   *float64 `json:"E_Day"`
+		ETotal *float64 `json:"E_Total"`
+		EYear  *float64 `json:"E_Year"`
+		PAkku  *float64 `json:"P_Akku"`
+		PGrid  *float64 `json:"P_Grid"`
+		PLoad  *float64 `json:"P_Load"`
+		PPV    *float64 `json:"P_PV"`
+	} `json:"site"`
+	Inverters map[string]struct {
+		DT  int      `json:"DT"`
+		P   *float64 `json:"P"`
+		SOC *float64 `json:"SOC"`
+	} `json:"inverters"`
+	Smartloads struct {
+		Ohmpilots map[string]any `json:"Ohmpilots"`
+	} `json:"Smartloads"`
+}
+
+// powerFlowBody builds the internal flow measurement at the current instant.
+func (s *simulator) powerFlowBody() powerFlowJSON {
+	now := time.Now()
+	snap := s.gen.snapshotAt(now)
+
+	var out powerFlowJSON
+	out.Site.EDay = new(snap.EDayWh)
+	out.Site.EYear = new(snap.EYearWh)
+	out.Site.ETotal = new(snap.ETotalWh)
+	out.Site.PPV = new(snap.PowerW)
+	if s.opt.withMeter {
+		load := s.gen.loadW(now)
+		out.Site.PLoad = new(load)
+		out.Site.PGrid = new(round1(snap.PowerW - load))
+	}
+	out.Inverters = map[string]struct {
+		DT  int      `json:"DT"`
+		P   *float64 `json:"P"`
+		SOC *float64 `json:"SOC"`
+	}{"1": {DT: 1, P: new(snap.PowerW)}}
+	out.Smartloads.Ohmpilots = map[string]any{}
+	return out
 }
 
 // cgiJSON is the `Cgi` envelope: the payload is Body.Data, an object

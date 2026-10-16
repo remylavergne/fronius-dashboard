@@ -6,7 +6,7 @@
 // the agent or by CI.
 //
 // Guarantees:
-//   - allowlist of five endpoints, GET only, selectable via
+//   - allowlist of six endpoints, GET only, selectable via
 //     --endpoint; any other path is refused before building the URL;
 //   - refusal of a non-local address without an explicit --allow-non-loopback;
 //   - no write to the device: no non-GET method is built,
@@ -61,10 +61,11 @@ type endpoint struct {
 	digest bool
 }
 
-// whitelist is the phase 2 allowlist: the four internal paths
-// (identity, presence of a meter and a battery, events) and the Solar API
-// endpoint of phase 1. Every addition to this list is a decision
-// that is documented, tested and reviewed (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
+// whitelist is the phase 2 allowlist: the five internal paths (identity,
+// presence of a meter and a battery, events, and the flow measurement that
+// completes the day and year energies) and the Solar API endpoint of phase 1.
+// Every addition to this list is a decision that is documented, tested and
+// reviewed (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
 var whitelist = []endpoint{
 	{
 		method:         http.MethodGet,
@@ -99,6 +100,13 @@ var whitelist = []endpoint{
 		classification: "READ",
 		digest:         true,
 		note:           "Presence of a battery (Body.Data indexed by component id)",
+	},
+	{
+		method:         http.MethodGet,
+		path:           internalapi.PowerFlowPath,
+		classification: "READ",
+		digest:         true,
+		note:           "Internal flow measurement: day and year energy (site.E_Day, site.E_Year), which the Solar API nulls on firmware 1.19.7-1. Shape NOT captured yet: this is the expected capture",
 	},
 }
 

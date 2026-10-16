@@ -179,12 +179,13 @@ exercise the client's reading tolerance, and to be confirmed by a capture
 | `/status/version` | `numberOfPhases` | yes | l. 183034; **captured = `1`** (single-phase installation) |
 | `/status/version` | `devicegroup` | yes | l. 183035 (`"P" === t.devicegroup[0] ? 1 : 3`); **captured = `"P6RW"`** |
 | `/status/version` | `hwrevisions.FAMILYID` | yes | l. 143049; captured (`hwrevisions`, 3 entries — masked by hand) |
-| `/status/version` | `hardwareId`, `devicename`, `articleNumber` | yes | l. 126568, 128813, 128814, 128842 — **read** by the official client, **not used** by the application at this stage: exposing them up to the screen costs 14 files including an SQL migration `0004` (`docs/UNKNOWNS.md` #3), decision deferred. **Captured** (`devicename` `"Primo GEN24 3.6 Plus"`, `articleNumber` `"4,210,141,002"`) but **not surfaced** |
+| `/status/version` | `hardwareId`, `devicename`, `articleNumber` | yes | l. 126568, 128813, 128814, 128842 — **read** by the official client, **not used** by the application at this stage: exposing them up to the screen costs 14 files including a dedicated SQL migration (`docs/UNKNOWNS.md` #3), decision deferred. **Captured** (`devicename` `"Primo GEN24 3.6 Plus"`, `articleNumber` `"4,210,141,002"`) but **not surfaced** |
 | `/status/version` | `swrevisions.GEN24` | yes | l. 128882, 135137 — **read by the application**: the software version the official client displays; nested key, read before the flat candidates (`firmwareOf`, `internal/fronius/internalapi/client.go`). **Captured `[VERIFIED]` = `1.19.7-1`**, matching the system export (§ Reference hardware) |
 | `/status/version` | `firmwareVersion` | **no** | fallback candidate, used only if `swrevisions.GEN24` is absent; **not present** in the capture |
 | `/status/version` | `modelName`, `model` | **no** | candidates: **no model key** is observed in the bundle **nor in the capture**. `devicegroup` is not a model fallback — it is the device group, a sibling field (l. 183035), and the code no longer substitutes it |
 | `/components/PowerMeter/readable` | `channels` (23 `SMARTMETER_*` signals), `attributes.addr`, `attributes["[ENABLE]"]` | yes | l. 129011, 129015, 130976-130983; envelope `Cgi` (l. 75958, 183011); **detection** is always based on a non-empty `Body.Data`. **Captured 2026-10-16**: `Body.Data` empty ⇒ **absent**, `Content-Type: text/javascript` |
 | `/components/BatteryManagementSystem/readable` | `channels` (10 signals) | yes | l. 128986; envelope `Cgi` (l. 75958). **Captured 2026-10-16**: `Body.Data` empty ⇒ **absent**, `Content-Type: text/javascript` |
+| `/status/powerflow` | `site.E_Day`, `site.E_Year`, `site.E_Total`, `site.P_PV`, `site.P_Grid`, `site.P_Load`, `site.P_Akku`, `inverters[<id>].SOC`, `inverters[<id>].BatMode`, `Smartloads.Ohmpilots[<id>].P_AC_Total` | yes | l. 129034, 129043-129063 — read by the official client; **the application uses only `E_Day`/`E_Year`**, as a fallback (`docs/UNKNOWNS.md` #13). **Not captured on hardware**: the values are `[HYPOTHESIS]`, the fixture `internalapi/status_powerflow.json` is synthetic |
 | `/status/activeEvents` | body **root array** (not a `Cgi` envelope) | yes | **captured 2026-10-16**: the response body is a root JSON array, one element per active event |
 | `/status/activeEvents` | `severity` (integer: 1 error, 2 warning, 3 information) | yes | l. 135690 + l. 135728-135733 (`getEventLevel`); **used by the application** (`severityValue`, `internal/detect/detector.go`) — before the fix, the integer severity was not recognized and every hardware event was classified as "information". **Captured 2026-10-16: integer `3`** (`docs/UNKNOWNS.md` #11 confirmed) |
 | `/status/activeEvents` | `uuid`, `prefix`-`eventID` (instance identity) | yes | l. 135693, 164699, 135742 (comparison), 135760 (`ConfirmEvent` receives `{uuid}`); **used by the application** as an anti-duplication key. Captured keys: `uuid` `"56b077da-0d11-45be-8b24-7b09d53ad558"`, `prefix` `"GEN24"`, `eventID` `1260` |
@@ -232,7 +233,7 @@ nor the method, nor the permissions.
 | Path | Method | Auth | Proof status |
 |---|---|---|---|
 | `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16): `200 OK`, no `Authorization`, schema captured (§ Shape of the Solar API v1 response); **absent from the bundle** |
-| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client; basis for `FRONIUS_POLL_INTERVAL` |
+| `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **called** by the application as a **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13). Shape still `[HYPOTHESIS]`: served by `cmd/fronius-sim`, not yet captured on hardware |
 | `/status/version` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 183050 (`yTJA` route, without a header — **this path is not in the `aYRN` registry**); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`). Provides `serialNumber`, `numberOfPhases`, `devicegroup`, `swrevisions` |
 | `/status/activeEvents` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76030 (10,000 ms interval); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, root array). Fields read listed in `docs/ENDPOINTS.md` |
 | `/components/PowerMeter/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76035 (envelope `Cgi`); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no meter**). Presence deduced from `Body.Data` |
@@ -246,10 +247,11 @@ captures):
 
 - Real schema of the Solar API → **captured**: `200 OK`, no `Authorization`, exact
   key list (§ Shape of the Solar API v1 response).
-- Authentication on firmware **1.19.7-1** → **none required**: all five allowlisted
-  paths answered `200` with no `Authorization` header and no `401`, so the Digest
+- Authentication on firmware **1.19.7-1** → **none required**: all five paths
+  allowlisted at that time answered `200` with no `Authorization` header and no `401`, so the Digest
   "after 401" machinery is never exercised by this device (`docs/UNKNOWNS.md` #2
-  resolved).
+  resolved). The sixth path, `/status/powerflow`, was added later and is not
+  captured yet.
 - Real names of the **model** and the **firmware** in `/status/version` → **captured**:
   `swrevisions.GEN24` = `1.19.7-1` (the key read by the application), `numberOfPhases`
   = `1`, `devicegroup` = `P6RW`; **no model key exists**, so `Model` stays empty and
@@ -356,6 +358,13 @@ redacted by `fronius-probe --save`):
 | `internalapi/status_activeevents.json` | **no** — the body is a root array, which cannot carry a sibling key, so **its provenance is recorded here** | `/status/activeEvents` |
 | `internalapi/components_powermeter_readable.json` | yes | `/components/PowerMeter/readable` (empty `Body.Data`) |
 | `internalapi/components_batterymanagementsystem_readable.json` | yes | `/components/BatteryManagementSystem/readable` (empty `Body.Data`) |
+
+The internal fixture `internalapi/status_powerflow.json` (`synthetic: true`,
+`confidence: HYPOTHESIS`) is **hand-written from the bundle extraction**
+(`docs/ENDPOINTS.md`, l. 129034 and l. 129043-129063): its values are
+illustrative, not captured. It is to be **promoted by a probe run** on
+`/status/powerflow` (`docs/PROBE-READONLY.md` § 8), after which the `[HYPOTHESIS]`
+shape can be dropped.
 
 Unit-level hardware identifiers (`hardwareId`, `commonName`, `hwrevisions`) were
 **masked by hand** before versioning; the shape and the key names are untouched,
