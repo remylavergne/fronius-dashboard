@@ -45,15 +45,15 @@
 
 ## 3 — Backend acquisition
 
-- [ ] Implémenter client HTTP Go configurable avec timeout/context
-- [ ] Implémenter adaptateur Solar API en lecture seule
+- [x] Implémenter client HTTP Go configurable avec timeout/context
+- [x] Implémenter adaptateur Solar API en lecture seule
 - [x] Définir DTO bruts versionnés et normalisation en modèle domaine
 - [x] Normaliser unités W/kW/Wh/kWh, timestamps UTC, qualité des données
 - [x] Gérer valeurs absentes/nulles et champs optionnels
 - [x] Gérer 404/401/5xx, JSON invalide, timeout et déconnexion
-- [ ] Mettre en place polling configurable avec jitter raisonnable
-- [ ] Garantir qu’aucun retry automatique ne déclenche une écriture
-- [ ] Ajouter métriques collecteur et logs structurés expurgés
+- [x] Mettre en place polling configurable avec jitter raisonnable
+- [x] Garantir qu’aucun retry automatique ne déclenche une écriture
+- [x] Ajouter métriques collecteur et logs structurés expurgés
 - [x] Implémenter mock/simulateur Fronius et fixtures anonymisées
 - [ ] Ajouter tests de contrat à partir des réponses réelles expurgées
 - [ ] Préparer client Digest optionnel isolé, sans l’utiliser si inutile au MVP
@@ -184,3 +184,10 @@
   avant retrait des commentaires (un `;` dans un commentaire cassait la
   migration), double mise à l'échelle du début de bucket, et deux fixtures de
   test qui ne franchissaient pas réellement minuit local.
+- 2026-10-16 — Étape 8 : `internal/collector`. `Sink` inclut `InsertEvent`, absent de la
+  définition du plan mais nécessaire au comportement demandé (événement warning anti-dupliqué
+  à l'échec, événement de reprise). Décisions : `last_success_utc` porte l'horloge du
+  **collecteur** (instant du cycle réussi), pas l'horodatage de l'appareil, qui reste dans
+  `Sample.TS` ; un échec de persistance (`InsertSample`) n'écrit ni cycle ni événement de
+  panne, car ce n'est pas une panne de l'appareil. « Logs expurgés » est satisfait par
+  construction en phase 1 : le backend ne détient aucun identifiant Fronius.

@@ -55,3 +55,12 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   déclare lui-même `go 1.26.0`, la directive `go 1.24` prévue au plan n'est donc
   pas réalisable avec ce pilote épinglé. Le toolchain Go 1.26.0 est utilisé
   (détection automatique).
+
+### Added
+
+- 2026-10-16 — Collecteur (`internal/collector`) : boucle de polling avec jitter
+  (`Interval ± Jitter`) en cas de succès et backoff exponentiel 1 s → 60 s en cas
+  d'échec, horloge et source aléatoire injectables, traçage de chaque cycle
+  (`collector_runs`), état du collecteur (`last_success_utc`, `last_error`),
+  événements `collector_error` (anti-duplication par message) et
+  `collector_recovered`. Aucun échantillon n'est inséré sur un cycle en échec.
