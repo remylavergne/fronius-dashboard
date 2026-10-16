@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go — vet, tests, build statique
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # La version de Go suit go.mod : une seule source de vérité.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Analyse statique
+        run: go vet ./...
+
+      - name: Tests (détecteur de courses)
+        run: go test ./... -race
+
+      - name: Build sans CGO (binaires statiques)
+        run: CGO_ENABLED=0 go build ./...
+
+  web:
+    name: Frontend — lint, tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Installation figée
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Tests
+        run: pnpm test --run
+
+      - name: Build (typecheck strict inclus)
+        run: pnpm build

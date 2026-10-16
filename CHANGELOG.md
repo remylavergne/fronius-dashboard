@@ -70,6 +70,16 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   ou plage personnalisée avec trous réellement visibles, tableau des capacités,
   navigation clavier et résumé textuel accessible du graphique. 56 tests vitest.
 
+- 2026-10-16 — Documentation d'exploitation : `docs/ARCHITECTURE.md` (flux,
+  paquets, six invariants, points de fragilité), `docs/DEVELOPMENT.md`
+  (prérequis, commandes, variables, stratégie de tests, pièges rencontrés),
+  `docs/RUNBOOK.md` (démarrage, diagnostic par symptôme, sauvegarde et
+  restauration SQLite, rétention, maintenance) et `docs/UNKNOWNS.md` (registre
+  des dix inconnues avec décision provisoire et condition de levée).
+- 2026-10-16 — Intégration continue : `.github/workflows/ci.yml` avec deux tâches,
+  `go` (`go vet`, `go test ./... -race`, `CGO_ENABLED=0 go build ./...`) et
+  `web` (`pnpm install --frozen-lockfile`, `lint`, `test --run`, `build`).
+
 
 ### Changed
 

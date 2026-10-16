@@ -11,7 +11,7 @@
 - [ ] Confirmer absence de Smart Meter et batterie ; détecter dynamiquement leur présence future
 - [x] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
 - [x] Choisir licence, stratégie branches, conventions de commit
-- [ ] Consigner toutes les inconnues dans un registre de décisions
+- [x] Consigner toutes les inconnues dans un registre de décisions
 
 ## 1 — Recherche API et sécurité
 
@@ -39,8 +39,8 @@
 - [x] Initialiser module Go et structure internal/
 - [x] Initialiser Vite React TypeScript strict et shadcn/ui
 - [x] Installer Tailwind, TanStack Query, React Router, Recharts, Zod si nécessaire
-- [ ] Mettre en place lint/format/tests Go + frontend
-- [ ] Ajouter CI GitHub Actions ou équivalent
+- [x] Mettre en place lint/format/tests Go + frontend
+- [x] Ajouter CI GitHub Actions ou équivalent
 - [x] Ajouter exemples `.env.example` sans secrets
 
 ## 3 — Backend acquisition
@@ -66,7 +66,7 @@
 - [x] Implémenter upsert idempotent et déduplication
 - [ ] Agréger minutes/heures/jours avec règles explicites
 - [x] Gérer fuseaux et changement d’heure Europe/Brussels
-- [ ] Définir rétention et purge programmée
+- [x] Définir rétention et purge programmée
 - [ ] Implémenter sauvegarde/restauration testée
 - [x] Implémenter `/api/v1/health` et `/api/v1/system`
 - [x] Implémenter `/api/v1/live` et `/api/v1/timeseries`
@@ -103,10 +103,10 @@
 ## 6 — Qualité, déploiement, exploitation
 
 - [ ] Tests unitaires parseurs, conversions et agrégations
-- [ ] Tests DST, trous temporels, doublons, reboot et données aberrantes
-- [ ] Tests API sur erreurs réseau, authentification et corruption JSON
+- [x] Tests DST, trous temporels, doublons, reboot et données aberrantes
+- [x] Tests API sur erreurs réseau, authentification et corruption JSON
 - [ ] Tests composants React et tests E2E sur simulateur
-- [ ] Vérifier absence de secrets dans bundle, logs, localStorage, dépôt
+- [x] Vérifier absence de secrets dans bundle, logs, localStorage, dépôt
 - [ ] Sécuriser CORS, cookies, CSP et authentification si accès distant
 - [ ] Configurer bind localhost/LAN et HTTPS proxy selon ADR
 - [ ] Compiler binaire Go avec assets React intégrés
@@ -114,7 +114,7 @@
 - [ ] Ajouter volumes, healthcheck, restart policy et gestion de secrets
 - [ ] Tester installation NAS/local, démarrage et mises à jour
 - [ ] Tester backup et restauration de la base
-- [ ] Documenter installation, configuration, maintenance et dépannage
+- [x] Documenter installation, configuration, maintenance et dépannage
 - [ ] Créer captures d’écran et guide utilisateur
 - [ ] Vérifier consommation ressources et charge réseau de l’onduleur
 
@@ -233,3 +233,10 @@
   Non livré à cette étape, laissé ouvert : test de connectivité depuis la page Paramètres,
   sélecteur de thème clair/sombre, fil d'Ariane, export CSV, tests E2E, vérification
   responsive multi-appareils.
+- 2026-10-16 — Étape 13 : `docs/ARCHITECTURE.md`, `DEVELOPMENT.md`, `RUNBOOK.md`,
+  `UNKNOWNS.md` et `.github/workflows/ci.yml`. Le README racine reçoit une section « Logiciel
+  livré » pointant vers `docs/`. Aucun secret dans le bundle produit : les seules occurrences de
+  `password`/`nonce` proviennent de React DOM (table des types d'entrée, nonce CSP), `src/` n'en
+  contient aucune, `localStorage` n'est jamais utilisé et aucun fichier de secrets n'est versionné
+  hors `.env.example`. Décisions consignées : aucune purge périodique (redémarrage seul
+  déclencheur), aucun filtrage des valeurs aberrantes tant qu'aucun cas réel n'est observé.
