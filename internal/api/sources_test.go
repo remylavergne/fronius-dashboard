@@ -7,12 +7,15 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/fronius/solarapi"
+	"fronius-supervisor/internal/storage"
 )
 
 type sourceField struct {
@@ -230,5 +233,128 @@ func TestSourcesRefusesOtherMethods(t *testing.T) {
 	}
 	if allow := header.Get("Allow"); allow != http.MethodGet {
 		t.Errorf("Allow = %q, want GET", allow)
+	}
+}
+
+func TestSourcesMergesTheRecordedSurvey(t *testing.T) {
+	_, srv, store := newTestServer(t, nil)
+	ctx := context.Background()
+
+	// Nothing surveyed yet: the counters stay at zero and no source carries a
+	// probe — an interface must not read zeros as a result.
+	_, _, body := doRequest(t, srv, http.MethodGet, "/api/v1/sources")
+	var before struct {
+		Data struct {
+			Survey struct {
+				Probed       int     `json:"probed"`
+				LastProbedAt *string `json:"last_probed_at"`
+				Firmware     string  `json:"firmware"`
+			} `json:"survey"`
+			Sources []struct {
+				ID    string          `json:"id"`
+				Probe json.RawMessage `json:"probe"`
+			} `json:"sources"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &before); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	if before.Data.Survey.Probed != 0 || before.Data.Survey.LastProbedAt != nil {
+		t.Errorf("a database without a survey announces %+v", before.Data.Survey)
+	}
+	for _, s := range before.Data.Sources {
+		if len(s.Probe) > 0 && string(s.Probe) != "null" {
+			t.Errorf("%s carries a probe without a survey", s.ID)
+		}
+	}
+
+	// A survey recorded on three paths of three different outcomes.
+	at := time.Date(2026, 10, 16, 18, 0, 0, 0, time.UTC)
+	if err := store.SaveSourceProbes(ctx, []storage.SourceProbe{
+		{
+			Path: "/solar_api/v1/GetInverterRealtimeData.cgi", Query: solarapi.CumulationQuery,
+			Class: storage.ProbeOK, HTTPStatus: 200, Bytes: 883, Firmware: "1.19.7-1", ProbedAt: at,
+			Fields: []storage.ProbeField{{Path: "Body.Data.DeviceStatus.InverterState", Type: "string"}},
+		},
+		{Path: "/status/emrs", Class: storage.ProbeNotFound, HTTPStatus: 404, ProbedAt: at},
+		{Path: "/status/common", Class: storage.ProbeAuthRequired, HTTPStatus: 401, DigestRequired: true, ProbedAt: at},
+	}); err != nil {
+		t.Fatalf("SaveSourceProbes: %v", err)
+	}
+
+	_, _, body = doRequest(t, srv, http.MethodGet, "/api/v1/sources")
+	var after struct {
+		Data struct {
+			Survey struct {
+				Probed       int     `json:"probed"`
+				OK           int     `json:"ok"`
+				AuthRequired int     `json:"auth_required"`
+				NotFound     int     `json:"not_found"`
+				LastProbedAt *string `json:"last_probed_at"`
+				Firmware     string  `json:"firmware"`
+			} `json:"survey"`
+			Sources []struct {
+				ID    string `json:"id"`
+				Probe *struct {
+					Class          string `json:"class"`
+					HTTPStatus     int    `json:"http_status"`
+					DigestRequired bool   `json:"digest_required"`
+					Firmware       string `json:"firmware"`
+					ProbedAt       string `json:"probed_at"`
+					Fields         []struct {
+						Path string `json:"path"`
+						Type string `json:"type"`
+					} `json:"fields"`
+				} `json:"probe"`
+			} `json:"sources"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &after); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+
+	switch {
+	case after.Data.Survey.Probed != 3:
+		t.Errorf("probed = %d, want 3", after.Data.Survey.Probed)
+	case after.Data.Survey.OK != 1 || after.Data.Survey.NotFound != 1 || after.Data.Survey.AuthRequired != 1:
+		t.Errorf("classes = %+v, want one of each", after.Data.Survey)
+	case after.Data.Survey.Firmware != "1.19.7-1":
+		t.Errorf("firmware = %q", after.Data.Survey.Firmware)
+	case after.Data.Survey.LastProbedAt == nil || *after.Data.Survey.LastProbedAt != formatTime(at):
+		t.Errorf("last_probed_at = %v, want %s", after.Data.Survey.LastProbedAt, formatTime(at))
+	}
+
+	byID := map[string]*struct {
+		Class          string `json:"class"`
+		HTTPStatus     int    `json:"http_status"`
+		DigestRequired bool   `json:"digest_required"`
+		Firmware       string `json:"firmware"`
+		ProbedAt       string `json:"probed_at"`
+		Fields         []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"fields"`
+	}{}
+	for _, s := range after.Data.Sources {
+		byID[s.ID] = s.Probe
+	}
+
+	// The accumulation was identified by path AND query: a survey row of the
+	// same path under another DataCollection would not be merged by mistake.
+	cumulation := byID["solarapi.inverter.cumulation"]
+	if cumulation == nil || cumulation.Class != "ok" || len(cumulation.Fields) != 1 {
+		t.Fatalf("the captured accumulation did not receive its survey: %+v", cumulation)
+	}
+	if cumulation.ProbedAt != formatTime(at) || cumulation.Firmware != "1.19.7-1" {
+		t.Errorf("survey stamp: %+v", cumulation)
+	}
+	if auth := byID["internalapi.common"]; auth == nil || auth.Class != "auth_required" || !auth.DigestRequired {
+		t.Errorf("internalapi.common: %+v", auth)
+	}
+	if absent := byID["internalapi.emrs"]; absent == nil || absent.Class != "not_found" {
+		t.Errorf("internalapi.emrs: %+v", absent)
+	}
+	if called := byID["solarapi.powerflow"]; called != nil {
+		t.Errorf("a source without a survey row carries a probe: %+v", called)
 	}
 }

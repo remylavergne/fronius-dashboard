@@ -36,6 +36,7 @@ flowchart LR
   SEC -.-> DG
   PROBE -.-> SIM
   PROBE -.-> INV
+  PROBE -.-> DB
   DB --> API --> WEB
 
   classDef futur stroke-dasharray: 4 4
@@ -55,7 +56,7 @@ diagnostic tool, never started by the service or by CI.
 |---|---|---|
 | `cmd/fronius-sim` | Deterministic simulator of the Solar API (curve, failures, `/sim/health`) | — |
 | `cmd/froniusd` | Service: config, collector, API, clean shutdown | everything |
-| `cmd/fronius-probe` | Read-only probe, allowlist, endpoint selection and redaction | `config`, `fronius`, `digest`, `internalapi`, `secret` |
+| `cmd/fronius-probe` | Read-only probe: single-path diagnosis or whole-catalogue survey, allowlist derived from the catalogue, endpoint selection and redaction | `config`, `fronius`, `digest`, `internalapi`, `sources`, `storage`, `secret` |
 | `cmd/fronius-backup` | Save, verify and restore the whole database — the one operation the service never performs | `config`, `storage` |
 | `internal/config` | Configuration via environment variables, listen guard | `secret` |
 | `internal/secret` | `secret.String`: masked for `fmt`, `slog` and JSON; `Reveal()` is the only way out | — |
@@ -65,7 +66,7 @@ diagnostic tool, never started by the service or by CI.
 | `internal/fronius/solarapi` | Solar API client and the **only** encoding of the JSON shape | `fronius`, `froniuserr` |
 | `internal/fronius/internalapi` | Internal paths: **executable allowlist** and tolerant extraction | `fronius`, `froniuserr` |
 | `internal/model` | Normalized model, units, three-state detection, capabilities, events | `solarapi` |
-| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
+| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, the recorded survey (`source_probe`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
 | `internal/collector` | Collection loop, backoff, events | `solarapi`, `model`, `storage` |
 | `internal/detect` | Detection loop: identity, presence, events, states and reasons | `internalapi`, `model`, `storage` |
@@ -154,7 +155,15 @@ Node process, nor a bundle, nor an HTTP response.
    introduced by the catalogue, every declared fixture exists, and the catalogue
    holds exactly the Solar API paths of the candidate table of `docs/SOURCES.md`
    and every internal path of `docs/ENDPOINTS.md`. A path cannot be added to one
-   without the other.
+   without the other. The catalogue is the static half; the **survey**
+   (`cmd/fronius-probe --survey`) is the observation half, recorded in the
+   `source_probe` table (one row per `(path, query)`, carrying the class, the
+   status, `digest_required`, the bytes, the error, the firmware, the instant and
+   the shape — never a value). `GET /api/v1/sources` **merges** the two: the
+   payload carries a `survey` block (`probed`, one counter per class,
+   `last_probed_at`, `firmware`) and a `probe` object on each source that has a
+   recorded row — a source never surveyed has **no** `probe` key, so the
+   interface can say "never surveyed" instead of showing zeros as a result.
 
 ## Structuring decisions
 

@@ -96,8 +96,27 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := first.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("counting the migrations: %v", err)
 	}
-	if version != 6 || rows != 6 {
-		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (6, 6)", version, rows)
+	// The expected count is read from the embedded migrations rather than
+	// written down here: a hard-coded number goes stale on every migration and
+	// teaches nothing (it did, for 0007).
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("reading the migrations: %v", err)
+	}
+	want := 0
+	for _, e := range entries {
+		if n, err := migrationVersion(e.Name()); err == nil {
+			want++
+			if n > version {
+				t.Fatalf("migration %s is not recorded: max version = %d", e.Name(), version)
+			}
+		}
+	}
+	if rows != want || version != want {
+		t.Fatalf("schema_migrations = (version=%d, rows=%d), wanted (%d, %d)", version, rows, want, want)
+	}
+	if want == 0 {
+		t.Fatal("no migration is embedded: the check above proves nothing")
 	}
 	// The WAL mode must be active (proof that the DSN was actually applied).
 	var journalMode string
@@ -121,8 +140,8 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("counting after second Open: %v", err)
 	}
-	if rows != 6 {
-		t.Fatalf("migrations replayed: %d rows", rows)
+	if rows != want {
+		t.Fatalf("migrations replayed: %d rows, want the %d already applied", rows, want)
 	}
 	// The tables remain usable.
 	if _, err := second.SampleCount(context.Background()); err != nil {

@@ -131,6 +131,69 @@ absent or invalid" — then check the user, the password, and the realm announce
 by the device (`fronius-probe --endpoint /status/version`). Never "fix" this by
 broadening the application: no device-modifying command exists in this binary.
 
+## Surveying every catalogued path
+
+`cmd/fronius-probe --survey` walks the **whole catalogued allowlist** (27 paths
+today), one read-only `GET` per path, and records what each one answers. It is
+the tool that tells, for the firmware actually installed, which paths exist,
+what they return and what sits behind authentication — without a single value
+ever leaving the device. The guarantees of `docs/PROBE-READONLY.md` hold: `GET`
+only, the loopback refusal without `--allow-non-loopback`, and no password on the
+command line.
+
+```bash
+# against the simulator (no risk)
+go run ./cmd/fronius-sim --api-user sim --api-password simpass
+# terminal 2
+go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081 --survey
+
+# against the inverter, after the consent of docs/PROBE-READONLY.md
+export FRONIUS_DEVICE_USER=installer
+read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
+go run ./cmd/fronius-probe \
+  --base-url http://192.0.2.10 \
+  --allow-non-loopback \
+  --survey --delay 2s \
+  --db ./data/fronius.db            # default: $FRONIUS_DB_PATH
+```
+
+Flags: `--survey` walks the whole catalogue; `--delay` pauses between two paths
+(default `1s`, so an inverter is not asked to serve 27 requests in a burst);
+`--db` names the database that records the survey (empty writes the report file
+only); `--save <dir>` also writes a `survey_<UTC instant>.json` report. `--survey`
+refuses `--endpoint`, and the allowlist is **derived from the source catalogue**
+(a path cannot be probed without being catalogued).
+
+Then read the result on the **"Data sources" page** (`GET /api/v1/sources`): each
+source carries a `probe` object with its class, HTTP status, whether it needed
+authentication (`digest_required`), the bytes, the `firmware` and the instant,
+and the **shape** of the answer (fields and types) — never a value. The page's
+survey strip counts the classes and gives `last_probed_at` and the firmware. A
+source never surveyed has **no** `probe` key: the page shows no class rather than
+zeros.
+
+Reading a class:
+
+| Class           | Meaning                                                                                        | What to do                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `ok`            | answered with content; its shape is recorded                                                   | read the field inventory to see what this firmware actually returns        |
+| `empty`         | answered `{}`, `[]` or an empty `Body.Data`: the endpoint exists, the component is not installed | none — an absent component is a fact, not a failure                       |
+| `not_json`      | answered, but not with JSON (e.g. an HTML error page)                                          | compare with the Solar API capture; the path or the host may be wrong      |
+| `auth_required` | `401`/`403`: the path exists, behind authentication                                            | set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` and survey again     |
+| `not_found`     | `404`: this firmware does not serve the path                                                   | the path is absent here; check the firmware or the path spelling           |
+| `error`         | `5xx`, timeout or refusal, with the message                                                    | network or device problem; the run continues and records the other paths   |
+
+A `404` or a `401` is a **result**, never an aborted run: the survey keeps
+walking and records each class as its own fact.
+
+Recording and retention: the rows land in the application's database, table
+`source_probe`, keyed by `(path, query)` — a new survey **replaces** its previous
+row (a survey says what the firmware answers *now*). They are carried by
+`backup`/`restore` like the other tables, and when `FRONIUS_RETENTION_DAYS > 0`
+they are **purged with the measurements under the same bound**. A shape is only
+true for the firmware that produced it (`docs/SOURCES.md`), so re-survey after a
+firmware update.
+
 ## Backup and restore
 
 `cmd/fronius-backup` is the tool for the one operation the running application

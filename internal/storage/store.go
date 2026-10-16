@@ -625,6 +625,12 @@ func (s *Store) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM device_events_seen WHERE seen_at_utc < ?`, limit); err != nil {
 		return 0, fmt.Errorf("purging hardware event marks: %w", err)
 	}
+	// The survey outcomes follow the same bound too: a survey describes what a
+	// firmware answered, and one older than the retained history describes a
+	// past state of the installation. Re-running the survey rebuilds it.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM source_probe WHERE probed_at_utc < ?`, limit); err != nil {
+		return 0, fmt.Errorf("purging the survey: %w", err)
+	}
 	// The aggregates follow exactly the same bound as the measurements: a
 	// aggregate row that overlaps the purged part describes measurements that
 	// no longer exist, and the read would believe it complete. The purge bound

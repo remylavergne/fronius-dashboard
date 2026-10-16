@@ -74,6 +74,7 @@
 - [x] Implement `/api/v1/energy/daily` and `/api/v1/events`
 - [x] Implement `/api/v1/capabilities` and non-sensitive settings
 - [x] Publish the source catalogue: machine-readable register of every endpoint and field, served by /api/v1/sources
+- [x] Run a read-only survey of every catalogued path and record its outcome (class, shape, firmware) in `source_probe`, merged into `/api/v1/sources`
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
@@ -467,3 +468,45 @@
   "Data sources page" (phase 5). No deviation from the plan; the catalogue is
   data — it touches neither the network nor the database, and it adds nothing to
   the allowlist or the simulator.
+- 2026-10-16 — Step 20 (phase 4/5): read-only survey of the whole catalogue.
+  Delivered: `cmd/fronius-probe --survey` walks the whole catalogued allowlist
+  (27 paths), **one `GET` per path**, sequentially with `--delay` between paths
+  (default `1s`), and records the outcome of each — class (`ok`, `empty`,
+  `not_json`, `auth_required`, `not_found`, `error`), HTTP status,
+  `digest_required`, bytes, error, firmware and the **shape** of the answer
+  (JSON paths and types, arrays by length with element paths suffixed `[]`,
+  bounded to 500 entries and 8 levels with an explicit `(truncated)` marker) —
+  **never a value**. New flags `--delay` and `--db` (default
+  `$FRONIUS_DB_PATH`; empty writes the report only); `--survey` refuses to
+  combine with `--endpoint`. Each path is read **bare** first — reachable
+  without a header is a fact — and a `401`/`403` **with** credentials triggers
+  one second, authenticated read; a `404` or a `401` is a **result** and never
+  aborts the run. The probe's allowlist is now **derived from
+  `internal/sources`** (default: the `called`/`captured` sources, six entries;
+  `--survey`: the whole catalogue; `--endpoint`: any catalogued path), so a path
+  cannot be probed without being catalogued and the registers cannot drift.
+  Output: one line per path, a summary per class, the firmware discovered on the
+  identity path, and with `--save` a `survey_<UTC instant>.json` report written
+  `0600`. Storage: migration `0007_probe.sql`, table `source_probe` keyed by
+  `(path, query)` (the query is part of the identity of a path; a survey replaces
+  its previous row) with `SaveSourceProbes` / `SourceProbes`, carried by
+  `Store.Restore` (added to `backupTables`) and purged by `PurgeBefore` under the
+  same bound as the measurements. `GET /api/v1/sources` merges the catalogue with
+  the last survey: a `survey` block (`probed`, one counter per class,
+  `last_probed_at`, `firmware`) and a `probe` object per surveyed source (class,
+  `http_status`, `digest_required`, `bytes`, `error`, `firmware`, `probed_at`,
+  `fields`) — a source never surveyed has **no** `probe` key, so the interface
+  says "never surveyed" rather than showing zeros. Tests:
+  `cmd/fronius-probe/survey_test.go` (the classes stay distinct; the inventory
+  carries no value; arrays walked through their first element; the bound and its
+  marker; both observed firmware shapes; a full survey against a stub device
+  writing the report *and* the database; the authenticated second read) and
+  `internal/api/sources_test.go` (the merge, the counters, the path+query key,
+  the never-surveyed case). Documentation: `docs/PROBE-READONLY.md` (survey mode,
+  a new § 3), `docs/RUNBOOK.md` (operator procedure and class reading table),
+  `docs/SOURCES.md` (the survey as per-firmware evidence), `docs/ARCHITECTURE.md`
+  (`source_probe` in the storage row, the probe row, the survey in invariant 11),
+  `CHANGELOG.md`. Box checked at this step: "Run a read-only survey of every
+  catalogued path and record its outcome" (phase 4). No deviation from the plan;
+  the survey is a manual diagnostic — it is never started by the service or by
+  CI, and it adds nothing to the application's own executable allowlist.

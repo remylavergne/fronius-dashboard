@@ -275,12 +275,15 @@ func (s *simulator) handlePowerFlow(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// handleInverterRealtime serves the documented Solar API accumulation endpoint.
+// handleInverterRealtime serves the Solar API accumulation endpoint.
 //
-// Shape: the documented Solar API v1 answer, `Body.Data.CumulationInverterData`
-// carrying `E_Day`, `E_Year` and `E_Total` for the device. It is NOT yet a captured
-// shape (docs/SOURCES.md): the simulator answers it so that a probe rehearsal
-// exercises the whole path, including its query, before the device is asked.
+// Shape: the **captured** answer of firmware 1.19.7-1 (2026-10-16, 883 bytes),
+// not the documented guess: `Body.Data.CumulationInverterData` carries
+// `DAY_ENERGY`, `YEAR_ENERGY` and `TOTAL_ENERGY` — NOT the `E_Day`/`E_Year`
+// keys of the flow endpoint — and the same Body carries `DeviceStatus`
+// (`InverterState`, `StatusCode`, `ErrorCode`), the documented source of the
+// inverter state. A rehearsal that answered the guess would teach a shape the
+// device does not have (docs/UNKNOWNS.md #13).
 func (s *simulator) handleInverterRealtime(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, http.MethodGet)
@@ -297,9 +300,17 @@ func (s *simulator) handleInverterRealtime(w http.ResponseWriter, r *http.Reques
 		"Body": map[string]any{
 			"Data": map[string]any{
 				"CumulationInverterData": map[string]any{
-					"E_Day":   snap.EDayWh,
-					"E_Year":  snap.EYearWh,
-					"E_Total": snap.ETotalWh,
+					"DAY_ENERGY":   snap.EDayWh,
+					"YEAR_ENERGY":  snap.EYearWh,
+					"TOTAL_ENERGY": snap.ETotalWh,
+				},
+				// The inverter state travels beside the energies, as captured.
+				// The simulator is producing, so it reports a running state; the
+				// reference device answered "Sleeping" with status code 13.
+				"DeviceStatus": map[string]any{
+					"InverterState": "Running",
+					"StatusCode":    7,
+					"ErrorCode":     0,
 				},
 			},
 		},

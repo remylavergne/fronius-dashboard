@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sourcesEnvelopeSchema } from '@/lib/schema'
-import type { Capability, Source, SourceSummary } from '@/lib/schema'
+import type { Capability, Source, SourceCatalogue, SourceSummary, SourceSurvey } from '@/lib/schema'
 import { SourcesPage } from './Sources'
 
 // `vi.mock` is hoisted above the imports: the two query results must live in a
@@ -19,6 +19,8 @@ vi.mock('@/lib/queries', () => ({
 
 const META = { generated_at: '2026-10-16T18:00:00Z' }
 
+const PROBED_AT = '2026-10-16T18:00:00Z'
+
 /** Distinct numbers: a counter can then be asserted without ambiguity. */
 const summary: SourceSummary = {
   sources: 27,
@@ -33,6 +35,28 @@ const summary: SourceSummary = {
   fields_ignored: 22,
   fields_unverified: 15,
 }
+
+/**
+ * Two of the three sources below carry a probe, both `ok`: `probed` matches the
+ * number of surveyed rows, since that is the invariant the backend keeps.
+ */
+const surveyCounters = {
+  probed: 2,
+  ok: 2,
+  empty: 0,
+  not_json: 0,
+  auth_required: 0,
+  not_found: 0,
+  error: 0,
+}
+
+const survey: SourceSurvey = { ...surveyCounters, last_probed_at: PROBED_AT, firmware: '1.19.7-1' }
+
+/** A survey that ran, on a device that announced no version. */
+const surveyNoFirmware: SourceSurvey = { ...surveyCounters, last_probed_at: PROBED_AT }
+
+/** Counters of a survey that never ran: no instant, so nothing to display. */
+const surveyBare: SourceSurvey = { ...surveyCounters }
 
 const capabilityRows: Capability[] = [
   {
@@ -85,6 +109,15 @@ const calledSource: Source = {
   ],
   docs: ['docs/SOURCES.md § Shape of the Solar API v1 response'],
   note: '',
+  // Surveyed and read: the probe is a fact about the device, not a reason to
+  // read it, and it is not a candidate for anything either.
+  probe: {
+    class: 'ok',
+    http_status: 200,
+    digest_required: false,
+    bytes: 883,
+    probed_at: PROBED_AT,
+  },
 }
 
 /** A captured shape with no inventory yet: every optional collection is absent. */
@@ -112,11 +145,25 @@ const candidateSource: Source = {
   fields: [{ path: 'Body.Data.DeviceState', type: 'string', status: 'validated' }],
   proofs: [{ tag: '[SOURCE-JS]', detail: 'read by the manufacturer interface, never observed on this firmware' }],
   note: 'Kept as a candidate until a capture proves the shape.',
+  // The case the survey exists for: the device answers the path with content,
+  // and nothing in this project reads it. No probe firmware here, so the tests
+  // of the proof's own missing firmware stay unambiguous.
+  probe: {
+    class: 'ok',
+    http_status: 200,
+    digest_required: false,
+    bytes: 512,
+    probed_at: PROBED_AT,
+    fields: [
+      { path: 'Body.Data.DeviceState', type: 'string' },
+      { path: 'Body.Data.ServiceState', type: 'string', array_len: 2 },
+    ],
+  },
 }
 
-const catalogue = { summary, sources: [calledSource, bareSource, candidateSource] }
+const catalogue: SourceCatalogue = { summary, survey, sources: [calledSource, bareSource, candidateSource] }
 
-function mockPage(payload: { summary: SourceSummary; sources: Source[] } = catalogue, rows: Capability[] = capabilityRows) {
+function mockPage(payload: SourceCatalogue = catalogue, rows: Capability[] = capabilityRows) {
   sourcesMock.mockReturnValue({
     data: { data: payload, meta: META },
     isLoading: false,
@@ -179,6 +226,343 @@ describe('SourcesPage summary', () => {
 
     expect(screen.getByText('Sources shown: 3 / 3')).toBeInTheDocument()
     expect(screen.getAllByRole('article')).toHaveLength(3)
+  })
+})
+
+describe('SourcesPage survey summary', () => {
+  beforeEach(() => {
+    mockPage()
+  })
+
+  it('renders the survey counters, the firmware and the instant of the survey', () => {
+    render(<SourcesPage />)
+
+    const region = screen.getByRole('region', { name: 'Last survey' })
+
+    // `probed` of the catalogued sources, from the payload's own counters.
+    expect(within(region).getByText('Paths surveyed')).toBeInTheDocument()
+    expect(within(region).getByText('2 / 27')).toBeInTheDocument()
+    expect(within(region).getByText('Firmware at survey time')).toBeInTheDocument()
+    expect(within(region).getByText('1.19.7-1')).toBeInTheDocument()
+    expect(within(region).getByText('Surveyed at')).toBeInTheDocument()
+    expect(within(region).getByText(/\/2026,/)).toBeInTheDocument()
+
+    // The six class counters, each under the word of its class.
+    for (const cls of ['ok', 'empty', 'not_json', 'auth_required', 'not_found', 'error']) {
+      expect(within(region).getByText(cls)).toBeInTheDocument()
+    }
+    expect(within(region).getByText('2')).toBeInTheDocument()
+    expect(within(region).getAllByText('0')).toHaveLength(5)
+  })
+
+  it('renders an unknown firmware as a dash, never as a fabricated version', () => {
+    mockPage({ summary, survey: surveyNoFirmware, sources: [calledSource] })
+    render(<SourcesPage />)
+
+    const region = screen.getByRole('region', { name: 'Last survey' })
+
+    expect(within(region).getByText('—')).toBeInTheDocument()
+    expect(within(region).queryByText('1.19.7-1')).not.toBeInTheDocument()
+  })
+
+  it('says plainly that nothing was surveyed instead of showing zeros as results', () => {
+    // No survey block at all: a backend that never ran one, or ran it on an
+    // empty catalogue.
+    mockPage({ summary, sources: [bareSource] })
+    render(<SourcesPage />)
+
+    const region = screen.getByRole('region', { name: 'Last survey' })
+
+    expect(within(region).getByText(/No survey has been recorded yet/)).toBeInTheDocument()
+    expect(within(region).queryByText('Paths surveyed')).not.toBeInTheDocument()
+    expect(within(region).queryByText('0')).not.toBeInTheDocument()
+    expect(within(region).queryByText('Surveyed at')).not.toBeInTheDocument()
+  })
+
+  it('reads a survey whose counters never ran as never surveyed', () => {
+    // The contract's marker is `last_probed_at`; without it, the counters are a
+    // row of zeros that would be a lie to display.
+    mockPage({ summary, survey: surveyBare, sources: [bareSource] })
+    render(<SourcesPage />)
+
+    const region = screen.getByRole('region', { name: 'Last survey' })
+
+    expect(within(region).getByText(/No survey has been recorded yet/)).toBeInTheDocument()
+    expect(within(region).queryByText('ok')).not.toBeInTheDocument()
+  })
+})
+
+describe('SourcesPage probe badge', () => {
+  beforeEach(() => {
+    mockPage()
+  })
+
+  it('shows the class, the HTTP status, the byte count and the instant of a surveyed source', () => {
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/solar_api/v1/GetPowerFlowRealtimeData.fcgi')
+
+    expect(within(block).getByText('ok')).toHaveClass('bg-primary')
+    expect(within(block).getByText('HTTP:')).toBeInTheDocument()
+    expect(within(block).getByText('200')).toBeInTheDocument()
+    expect(within(block).getByText('Bytes:')).toBeInTheDocument()
+    expect(within(block).getByText('883')).toBeInTheDocument()
+    expect(within(block).getByText('Probed at:')).toBeInTheDocument()
+    // The instant, not the proof detail that also carries the word 2026.
+    expect(within(block).getByText(/\/2026,/)).toBeInTheDocument()
+    // The state badge is still there, beside it: two axes, two badges.
+    expect(within(block).getByText('called')).toBeInTheDocument()
+    expect(within(block).getByText('read by this project')).toBeInTheDocument()
+  })
+
+  it('names the firmware observed on the path when the survey recorded one', () => {
+    mockPage({
+      summary,
+      survey,
+      sources: [
+        {
+          ...bareSource,
+          probe: {
+            class: 'empty',
+            http_status: 200,
+            digest_required: false,
+            bytes: 42,
+            firmware: '1.19.7-1',
+            probed_at: PROBED_AT,
+          },
+        },
+      ],
+    })
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/status/common')
+
+    expect(within(block).getByText('empty')).toBeInTheDocument()
+    expect(within(block).getByText('Firmware:')).toBeInTheDocument()
+    expect(within(block).getByText('1.19.7-1')).toBeInTheDocument()
+    expect(within(block).getByText('42')).toBeInTheDocument()
+  })
+
+  it('marks a path that answered without a credential as needing authentication', () => {
+    mockPage({
+      summary,
+      survey,
+      sources: [
+        {
+          ...bareSource,
+          path: '/status/version',
+          probe: {
+            class: 'auth_required',
+            http_status: 401,
+            digest_required: true,
+            bytes: 0,
+            probed_at: PROBED_AT,
+          },
+        },
+      ],
+    })
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/status/version')
+
+    expect(within(block).getByText('auth_required')).toHaveClass('border-dashed')
+    expect(within(block).getByText('needs authentication')).toBeInTheDocument()
+    expect(within(block).getByText('401')).toBeInTheDocument()
+  })
+
+  it('carries the message of a path that answered an error', () => {
+    mockPage({
+      summary,
+      survey,
+      sources: [
+        {
+          ...bareSource,
+          path: '/status/emrs',
+          probe: {
+            class: 'error',
+            http_status: 0,
+            digest_required: false,
+            bytes: 0,
+            error: 'connection refused',
+            probed_at: PROBED_AT,
+          },
+        },
+      ],
+    })
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/status/emrs')
+
+    expect(within(block).getByText('error')).toHaveClass('bg-destructive/10')
+    expect(within(block).getByText('Error:')).toBeInTheDocument()
+    expect(within(block).getByText('connection refused')).toBeInTheDocument()
+    // An error never needs a credential marker: nothing answered 401.
+    expect(within(block).queryByText('needs authentication')).not.toBeInTheDocument()
+  })
+
+  it('gives each class its own colour, the badge carrying the word anyway', () => {
+    const classes = ['ok', 'empty', 'not_json', 'auth_required', 'not_found', 'error']
+    mockPage({
+      summary,
+      survey,
+      sources: classes.map((cls, index) => ({
+        ...bareSource,
+        id: `probe.${cls}`,
+        path: `/probe/${cls}`,
+        probe: {
+          class: cls,
+          http_status: 200,
+          digest_required: false,
+          bytes: index,
+          probed_at: PROBED_AT,
+        },
+      })),
+    })
+    render(<SourcesPage />)
+
+    const badges = classes.map((cls) => within(sourceBlock(`/probe/${cls}`)).getByText(cls))
+
+    expect(new Set(badges.map((badge) => badge.className)).size).toBe(classes.length)
+  })
+
+  it('renders a class it does not know as the token it arrived with', () => {
+    mockPage({
+      summary,
+      survey,
+      sources: [
+        {
+          ...bareSource,
+          probe: {
+            class: 'throttled',
+            http_status: 429,
+            digest_required: false,
+            bytes: 12,
+            probed_at: PROBED_AT,
+          },
+        },
+      ],
+    })
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/status/common')
+
+    expect(within(block).getByText('throttled')).toBeInTheDocument()
+    expect(within(block).getByText('429')).toBeInTheDocument()
+  })
+
+  it('renders a source the survey never looked at as never surveyed', () => {
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/status/common')
+
+    expect(within(block).getByText('never surveyed')).toHaveClass('border-dashed')
+    // Never surveyed and observed nothing are not the same thing: no detail row
+    // is rendered at all here.
+    expect(within(block).queryByText('HTTP:')).not.toBeInTheDocument()
+    expect(within(block).queryByText('Bytes:')).not.toBeInTheDocument()
+    expect(within(block).queryByText('Probed at:')).not.toBeInTheDocument()
+  })
+})
+
+describe('SourcesPage observed shape', () => {
+  beforeEach(() => {
+    mockPage()
+  })
+
+  it('renders the shape of the answer as a second table, with types and array lengths', () => {
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/commands/GetServiceState?serviceId=<id>')
+    const table = within(block).getByRole('table', {
+      name: 'Observed shape — /commands/GetServiceState?serviceId=<id>',
+    })
+
+    expect(within(table).getByRole('columnheader', { name: 'Path' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Type' })).toBeInTheDocument()
+    expect(within(table).getByText('Body.Data.DeviceState')).toBeInTheDocument()
+    expect(within(table).getByText('string')).toBeInTheDocument()
+    // The array length is rendered as [N], and only where the survey saw one.
+    expect(within(table).getByText('string [2]')).toBeInTheDocument()
+    expect(within(block).getByText('The survey records the shape of the answer — never its values.')).toBeInTheDocument()
+  })
+
+  it('leaves the catalogue inventory a table of its own, not merged with the shape', async () => {
+    const user = userEvent.setup()
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/commands/GetServiceState?serviceId=<id>')
+    // The shape is always readable; the catalogue inventory stays disclosed.
+    expect(within(block).getAllByRole('table')).toHaveLength(1)
+
+    await user.click(within(block).getByRole('button', { name: 'Field inventory (1)' }))
+
+    expect(within(block).getAllByRole('table')).toHaveLength(2)
+    const inventory = within(block).getByRole('table', {
+      name: 'Field inventory — /commands/GetServiceState?serviceId=<id>',
+    })
+    expect(within(inventory).getByRole('columnheader', { name: 'Status' })).toBeInTheDocument()
+    expect(within(inventory).getByText('validated')).toBeInTheDocument()
+  })
+
+  it('renders no shape table when the survey carried no field', () => {
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/solar_api/v1/GetPowerFlowRealtimeData.fcgi')
+
+    expect(within(block).queryByText('Observed shape')).not.toBeInTheDocument()
+    expect(within(block).queryByRole('table')).not.toBeInTheDocument()
+  })
+})
+
+describe('SourcesPage available and unmapped', () => {
+  beforeEach(() => {
+    mockPage()
+  })
+
+  it('marks a path the device serves and nothing here reads', () => {
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/commands/GetServiceState?serviceId=<id>')
+
+    expect(within(block).getByText('available and unmapped')).toBeInTheDocument()
+    expect(within(block).getByText(/the survey just proved it is a candidate/)).toBeInTheDocument()
+  })
+
+  it('does not mark a path the device serves and this project reads', () => {
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/solar_api/v1/GetPowerFlowRealtimeData.fcgi')
+
+    expect(within(block).getByText('ok')).toBeInTheDocument()
+    expect(within(block).queryByText('available and unmapped')).not.toBeInTheDocument()
+  })
+
+  it('does not mark a path this firmware does not serve', () => {
+    mockPage({
+      summary,
+      survey,
+      sources: [
+        {
+          ...candidateSource,
+          fields: [],
+          proofs: [],
+          note: '',
+          probe: {
+            class: 'not_found',
+            http_status: 404,
+            digest_required: false,
+            bytes: 0,
+            probed_at: PROBED_AT,
+          },
+        },
+      ],
+    })
+    render(<SourcesPage />)
+
+    const block = sourceBlock('/commands/GetServiceState?serviceId=<id>')
+
+    expect(within(block).getByText('not_found')).toBeInTheDocument()
+    expect(within(block).queryByText('available and unmapped')).not.toBeInTheDocument()
   })
 })
 
@@ -391,6 +775,43 @@ describe('SourcesPage filters', () => {
     expect(screen.getByText('Sources shown: 0 / 3')).toBeInTheDocument()
     expect(screen.getByText('No source matches these filters')).toBeInTheDocument()
   })
+
+  it('narrows the list by survey outcome, keeping the visible count honest', async () => {
+    const user = userEvent.setup()
+    render(<SourcesPage />)
+
+    const filter = screen.getByLabelText('Survey')
+
+    // Two of the three sources carry an `ok` probe.
+    await user.selectOptions(filter, 'ok')
+    expect(screen.getByText('Sources shown: 2 / 3')).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: '/status/common' })).not.toBeInTheDocument()
+
+    await user.selectOptions(filter, 'not_found')
+    expect(screen.getByText('Sources shown: 0 / 3')).toBeInTheDocument()
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
+
+    await user.selectOptions(filter, 'not_surveyed')
+    expect(screen.getByText('Sources shown: 1 / 3')).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: '/status/common' })).toBeInTheDocument()
+
+    await user.selectOptions(filter, 'surveyed')
+    expect(screen.getByText('Sources shown: 2 / 3')).toBeInTheDocument()
+
+    await user.selectOptions(filter, 'all')
+    expect(screen.getByText('Sources shown: 3 / 3')).toBeInTheDocument()
+  })
+
+  it('combines the survey filter with the transport one', async () => {
+    const user = userEvent.setup()
+    render(<SourcesPage />)
+
+    await user.selectOptions(screen.getByLabelText('Survey'), 'ok')
+    await user.selectOptions(screen.getByLabelText('Transport'), 'internal_api')
+
+    expect(screen.getByText('Sources shown: 1 / 3')).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: '/commands/GetServiceState?serviceId=<id>' })).toBeInTheDocument()
+  })
 })
 
 describe('SourcesPage legend', () => {
@@ -416,6 +837,31 @@ describe('SourcesPage legend', () => {
     expect(within(legend).getByText('never observed carrying a value on the reference installation')).toBeInTheDocument()
     expect(within(legend).getByText('ignored')).toHaveClass('bg-muted')
     expect(within(legend).getByText('unverified')).toHaveClass('border-dashed')
+  })
+
+  it('defines the six survey outcomes and the never-surveyed case', () => {
+    render(<SourcesPage />)
+
+    const legend = screen.getByRole('region', { name: 'Legend' })
+
+    for (const cls of ['ok', 'empty', 'not_json', 'auth_required', 'not_found', 'error']) {
+      expect(within(legend).getByText(cls)).toBeInTheDocument()
+    }
+    // The seventh line is not a class: it is the absence of the question.
+    expect(within(legend).getByText('never surveyed')).toHaveClass('border-dashed')
+    expect(
+      within(legend).getByText('not surveyed on this firmware — different from every outcome above, including not_found'),
+    ).toBeInTheDocument()
+
+    // Each class carries its meaning, and its own colour.
+    expect(within(legend).getByText('ok')).toHaveClass('bg-primary')
+    expect(within(legend).getByText('error')).toHaveClass('bg-destructive/10')
+    expect(
+      within(legend).getByText('answered with nothing: the endpoint exists and the component is not installed — a fact, not a failure'),
+    ).toBeInTheDocument()
+    expect(
+      within(legend).getByText('answered 401 or 403 without credentials: the path exists behind authentication'),
+    ).toBeInTheDocument()
   })
 })
 
@@ -456,5 +902,95 @@ describe('sourcesEnvelopeSchema', () => {
       called: false,
     }
     expect(sourcesEnvelopeSchema.safeParse({ data: { summary, sources: [withoutState] }, meta: META }).success).toBe(false)
+  })
+
+  it('accepts a probe with its shape, its array lengths and its firmware', () => {
+    const result = sourcesEnvelopeSchema.safeParse({
+      data: {
+        summary,
+        survey,
+        sources: [
+          {
+            ...bareSource,
+            probe: {
+              class: 'ok',
+              http_status: 200,
+              digest_required: true,
+              bytes: 883,
+              error: '',
+              firmware: '1.19.7-1',
+              probed_at: PROBED_AT,
+              fields: [
+                { path: 'Body.Data.DeviceStatus.InverterState', type: 'string', array_len: 0 },
+                { path: 'Body.Data.Relay', type: 'object', array_len: 2 },
+              ],
+            },
+          },
+        ],
+      },
+      meta: META,
+    })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.data.sources[0]?.probe?.fields?.[1]?.array_len).toBe(2)
+    }
+  })
+
+  it('tolerates a probe without fields, without firmware and with an unknown class', () => {
+    const result = sourcesEnvelopeSchema.safeParse({
+      data: {
+        summary,
+        survey: { ...survey, last_probed_at: undefined, firmware: undefined },
+        sources: [
+          {
+            ...bareSource,
+            probe: {
+              class: 'throttled',
+              http_status: 429,
+              digest_required: false,
+              bytes: 12,
+              probed_at: PROBED_AT,
+            },
+          },
+        ],
+      },
+      meta: META,
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it('tolerates an envelope with no survey at all, probe by probe', () => {
+    const result = sourcesEnvelopeSchema.safeParse({ data: { summary, sources: [bareSource] }, meta: META })
+
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.data.survey).toBeUndefined()
+      expect(result.data.data.sources[0]?.probe).toBeUndefined()
+    }
+  })
+
+  it('rejects a probe whose instant is not a timestamp', () => {
+    const result = sourcesEnvelopeSchema.safeParse({
+      data: {
+        summary,
+        sources: [
+          {
+            ...bareSource,
+            probe: {
+              class: 'ok',
+              http_status: 200,
+              digest_required: false,
+              bytes: 1,
+              probed_at: 'yesterday',
+            },
+          },
+        ],
+      },
+      meta: META,
+    })
+
+    expect(result.success).toBe(false)
   })
 })

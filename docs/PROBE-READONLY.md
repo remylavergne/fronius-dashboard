@@ -31,8 +31,9 @@ responsibility.
 
 ## 2. Exact requests emitted
 
-The probe can only emit the requests of its allowlist, frozen in the binary
-(six entries, all `READ` and all `GET`):
+The probe can only emit the requests of its allowlist, **derived from the source
+catalogue** `internal/sources` (§ 3): its default run reaches the six catalogued
+sources whose state is `called` or `captured`, all `READ` and all `GET`:
 
 | Path                                           | Digest    | What it provides                                                        |
 | ---------------------------------------------- | --------- | ----------------------------------------------------------------------- |
@@ -79,7 +80,7 @@ echoed in `Head.RequestArguments`). The probe's file name for this path is
 `solar_api_v1_getinverterrealtimedata.json` (derived from the path, query
 excluded); the redacted capture is kept at
 `/tmp/probe-real/probe_solar_api_v1_getinverterrealtimedata_20261016T170038Z.json`
-(§ 5).
+(§ 6).
 
 ### What the capture must confirm, path by path
 
@@ -101,9 +102,9 @@ endpoint. The table is kept as the record of what each capture had to settle:
 | `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the **documented** Solar API v1 shape, `Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — documented, **not extracted** (the bundle has no Solar API path, `docs/SOURCES.md`); the probe expects it as-is | whether this firmware exposes the day/year counters **at all** — **settled (captured 2026-10-16)**: `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so the counters are not reported by any local source; the same answer carries `DeviceStatus` (`InverterState`, `StatusCode`), a **candidate** metric, not implemented. (The first attempt used the `.fcgi` suffix and answered `404` with the webserver's XHTML page, which is what a wrong path looks like here.) |
 
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
-in § 8), the freeze is broader: a later run captured `/status/powerflow` (the
+in § 9), the freeze is broader: a later run captured `/status/powerflow` (the
 fallback for the day and year energies the Solar API returns as `null`, #13) and
-it is promoted in § 8 — the capture is decisive, the internal path returns those
+it is promoted in § 9 — the capture is decisive, the internal path returns those
 energies as **null too**, so the fallback filled nothing on this installation and
 the entry was **removed**. The same day, the documented Solar API accumulation
 endpoint (see above) was **captured** as well: it nulls the same counters while
@@ -162,7 +163,84 @@ To display the allowlist without emitting any request:
 go run ./cmd/fronius-probe --list
 ```
 
-## 3. Device credentials
+## 3. Survey mode — the whole catalogued allowlist in one run
+
+`--survey` turns the probe into a **survey**: it walks the whole catalogued
+allowlist (27 paths today), **one `GET` per path**, sequentially, with `--delay`
+between two paths (default `1s`) — an inverter's web interface is not asked to
+serve 27 requests in a burst. Nothing else changes: the read-only guard, the
+loopback refusal (without `--allow-non-loopback`, § 5) and the credential rules
+(§ 4) apply exactly as in the single-path mode.
+
+| Flag | Meaning |
+| ---- | ------- |
+| `--survey` | walks the whole catalogue, one `GET` per path |
+| `--delay` | pause between two paths (default `1s`; `0` disables it) |
+| `--db` | database that records the survey (default `$FRONIUS_DB_PATH`; empty = report file only) |
+
+`--survey` refuses to be combined with `--endpoint`: "the whole catalogue" and
+"this one path" are two different runs. `--endpoint <path>` accepts **any**
+catalogued path (see the derived allowlist below).
+
+### The allowlist is derived from the catalogue
+
+The probe's allowlist is no longer a literal of the binary: it is **derived from
+`internal/sources`** (the source catalogue, `docs/SOURCES.md`). The default set
+is the catalogued sources whose state is `called` or `captured` (six entries, as
+before); `--survey` walks the whole catalogue; `--endpoint <path>` accepts any
+catalogued path. The reason: **a path cannot be probed without being
+catalogued** — the catalogue is the register, and the project's tests bind it to
+`docs/SOURCES.md`, `docs/ENDPOINTS.md` and the code allowlist, so the probe and
+the registers cannot drift apart.
+
+### One path, one bare read, then at most one authenticated read
+
+For each path the survey emits a **bare GET first** — with no credentials, even
+when they are configured, because "is this path reachable without a header" is
+itself a fact. Only if that answers `401`/`403` **and** credentials are given
+does it read once more through the Digest transport, to obtain the shape. The
+transport never authenticates preemptively, so a protected path costs two bare
+requests and one authenticated one; a path that answers without a header costs
+exactly one request.
+
+### The classes — a 404 and a 401 are results, not errors
+
+Each path is recorded under one class:
+
+| Class           | What the device did                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------ |
+| `ok`            | answered with content, and its shape is recorded                                                              |
+| `empty`         | answered `{}`, `[]` or an empty `Body.Data`: the endpoint exists and the component is not installed           |
+| `not_json`      | answered, but not with JSON                                                                                   |
+| `auth_required` | `401`/`403`: the path exists, behind authentication                                                           |
+| `not_found`     | `404`: this firmware does not serve the path                                                                  |
+| `error`         | `5xx`, timeout or refusal, with the message                                                                   |
+
+A `404` or a `401` **never aborts the survey**: they are results. Collapsing "the
+path is absent", "we were not allowed in" and "it answered nothing" into a single
+"failed" would lose exactly the information the survey was run to obtain.
+
+### The inventory is the shape, never a value
+
+For a path that answered content, the survey records the **shape** of the answer:
+JSON paths and types — with the length of arrays, and array element paths
+suffixed `[]` — and **never a value**. A survey of an identity endpoint must not
+become a second copy of the device's serial numbers. The inventory is bounded to
+**500 entries** and **8 levels of depth**, with an explicit `(truncated)` marker
+when the bound is reached: a silently cut inventory would read as a complete one.
+
+### Output and recording
+
+The run prints one line per path (class, HTTP status, bytes, number of fields,
+path), a summary (`12 ok, 3 empty, 5 auth_required, 7 not_found`) and the
+firmware version discovered on the identity path. With `--save <dir>` it also
+writes a `survey_<UTC instant>.json` report, mode `0600`, carrying paths and
+types only. With `--db <path>` — or the default `$FRONIUS_DB_PATH` — it records
+one row per path in the application's database (table `source_probe`), which is
+where the "Data sources" page reads it; `--db ""` writes the report only
+(`docs/RUNBOOK.md`).
+
+## 4. Device credentials
 
 Credentials **never** go through a command-line argument: a password in an
 argument appears in the shell history and in the process table.
@@ -192,7 +270,7 @@ go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081 --password-stdin
 **path**; a frozen query belongs to the entry, not to the selector); any other
 path is refused.
 
-## 4. Local-address guard
+## 5. Local-address guard
 
 By default, the probe **refuses** any address that is not the loopback
 (`127.0.0.1`, `::1`, `localhost`):
@@ -208,7 +286,7 @@ The refusal happens **before** any name resolution and any connection: no
 packet leaves towards the device. Lifting the guard is a deliberate act:
 `--allow-non-loopback`.
 
-## 5. Command to run
+## 6. Command to run
 
 Towards the local simulator (no risk, no hardware):
 
@@ -255,7 +333,7 @@ The password is then entered on standard input, never as an argument. At most
 one resend per path, and only after a `401`. If the device answers with an
 error, the probe reports it and stops.
 
-## 6. Expected output
+## 7. Expected output
 
 ```
 Request
@@ -283,13 +361,13 @@ Interpretation:
 
 | Observation                                   | Consequence                                                                                                                                                                                                                       |
 | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `200 OK` and `Body.Data.Site` populated       | The assumed shape of `dto.go` is confirmed: promote the fixture (§ 8).                                                                                                                                                            |
-| `401` or `403` with `x-www-authenticate`      | The device requires authentication on this path: set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ 3) and re-run. A persistent `401` **after** re-authentication signals a wrong user or password, or an unexpected realm. |
+| `200 OK` and `Body.Data.Site` populated       | The assumed shape of `dto.go` is confirmed: promote the fixture (§ 9).                                                                                                                                                            |
+| `401` or `403` with `x-www-authenticate`      | The device requires authentication on this path: set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ 4) and re-run. A persistent `401` **after** re-authentication signals a wrong user or password, or an unexpected realm. |
 | `404`                                         | The path differs on this firmware: fix `internal/fronius/solarapi/dto.go` and this document.                                                                                                                                      |
 | Fields or units different from those expected | Fix `dto.go`, the fixtures and `docs/SOURCES.md`. The SQLite columns do not change (base SI units).                                                                                                                               |
 | Absence of `P_Grid`, `P_Load`, `rel_*`        | Expected behaviour without a Smart Meter; confirms the invariant "no invented zero".                                                                                                                                              |
 
-## 7. Redaction rules
+## 8. Redaction rules
 
 Redaction applies **before** any display and **before** any write to disk. It is
 implemented in `cmd/fronius-probe/redact.go` and tested in `probe_test.go`.
@@ -314,7 +392,7 @@ The JSON is rewritten with stable indentation, which may **reorder the keys** of
 an object. The result remains valid JSON; that is the price of reliable
 structural redaction.
 
-## 8. Promotion of a redacted fixture
+## 9. Promotion of a redacted fixture
 
 **First promotion: 2026-10-16, firmware 1.19.7-1** — the six captures were
 promoted (`powerflow_produce_only.json` and the five internal fixtures); see
@@ -364,7 +442,7 @@ does not call the endpoint, and its facts live in `docs/SOURCES.md` and
 A promoted fixture becomes the contractual reference of the project. Any later
 capture must be compared to it before being adopted.
 
-## 9. No-write rule
+## 10. No-write rule
 
 **No `POST`, `PUT`, `PATCH` or `DELETE` command must be emitted towards the
 inverter until a dedicated security review has authorized a named endpoint.**

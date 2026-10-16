@@ -77,7 +77,7 @@ func TestSaveThenVerifyThenRestore(t *testing.T) {
 		t.Fatalf("save exited with %d: %s", code, errOut.String())
 	}
 	summary := out.String()
-	for _, want := range []string{backupFile, "3 samples", "2026-10-16T10:00:00Z", "6 migrations"} {
+	for _, want := range []string{backupFile, "3 samples", "2026-10-16T10:00:00Z", "7 migrations"} {
 		if !strings.Contains(summary, want) {
 			t.Errorf("the save summary does not mention %q:\n%s", want, summary)
 		}

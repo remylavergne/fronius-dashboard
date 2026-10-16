@@ -276,6 +276,48 @@ export const sourceProofSchema = z.object({
 export type SourceProof = z.infer<typeof sourceProofSchema>
 
 /**
+ * One value the last read-only survey observed in an answer: its JSON path, its
+ * type, and — when the value was an array — how many items it carried.
+ *
+ * `array_len` is absent when the Go field is zero (`omitempty`): it is the count
+ * of a non-empty array, never a claim about an empty one. No value of the answer
+ * is ever carried here: the survey records the shape, never the values.
+ */
+export const probeFieldSchema = z.object({
+  path: z.string(),
+  type: z.string(),
+  array_len: z.number().optional(),
+})
+export type ProbeField = z.infer<typeof probeFieldSchema>
+
+/**
+ * What the last read-only survey observed on one path.
+ *
+ * `class` is the outcome — `ok`, `empty`, `not_json`, `auth_required`,
+ * `not_found`, `error` — and, like the field statuses of the catalogue, it is
+ * read as a plain string: a class this build does not know yet must render as
+ * its raw token rather than take the whole catalogue down.
+ *
+ * `digest_required` says the path answered 401 without a `Digest` header, which
+ * is how the interface can say "reachable, authentication needed" without ever
+ * holding a credential. `error` is set for the `error` class only, `firmware`
+ * is absent when unknown, and `fields` is absent when the answer carried no
+ * shape (`empty`, `not_json`, an error) — an absent `fields` and an empty one
+ * mean the same absence here.
+ */
+export const sourceProbeSchema = z.object({
+  class: z.string(),
+  http_status: z.number(),
+  digest_required: z.boolean(),
+  bytes: z.number(),
+  error: z.string().optional(),
+  firmware: z.string().optional(),
+  probed_at: timestamp,
+  fields: z.array(probeFieldSchema).nullish(),
+})
+export type SourceProbe = z.infer<typeof sourceProbeSchema>
+
+/**
  * One endpoint, or one query variant of an endpoint.
  *
  * `transport` is `solar_api` (documented Solar API v1) or `internal_api` (the
@@ -311,8 +353,39 @@ export const sourceSchema = z.object({
   proofs: z.array(sourceProofSchema).nullish(),
   docs: z.array(z.string()).nullish(),
   note: z.string().optional(),
+  /**
+   * Absent when this path was never surveyed on this firmware. That absence is
+   * a fact of its own — "never observed" is not `not_found`, and neither is
+   * `empty`: the first says nobody looked, the second that the firmware does not
+   * serve the path, the third that it served it and the component is not there.
+   */
+  probe: sourceProbeSchema.optional(),
 })
 export type Source = z.infer<typeof sourceSchema>
+
+/**
+ * Counters of the last recorded survey.
+ *
+ * All zero and no `last_probed_at` until a survey has been run: `last_probed_at`
+ * is the marker of a survey having happened at all, so the interface can say
+ * "never surveyed" instead of showing zeros as if they were results.
+ *
+ * `firmware` is absent when the survey met no device (every path answered an
+ * error), and `last_probed_at` is the *latest* instant of the survey: the client
+ * stamps each attempt, so the survey is as fresh as its last path.
+ */
+export const sourceSurveySchema = z.object({
+  probed: z.number(),
+  ok: z.number(),
+  empty: z.number(),
+  not_json: z.number(),
+  auth_required: z.number(),
+  not_found: z.number(),
+  error: z.number(),
+  last_probed_at: timestamp.optional(),
+  firmware: z.string().optional(),
+})
+export type SourceSurvey = z.infer<typeof sourceSurveySchema>
 
 /**
  * Counters computed by the backend over exactly the list it returns, so the
@@ -335,8 +408,12 @@ export const sourceSummarySchema = z.object({
 export type SourceSummary = z.infer<typeof sourceSummarySchema>
 
 /**
- * Catalogue payload: what the device answers, and what this project does with
- * each field of each answer.
+ * Catalogue payload: what the device answers, what this project does with each
+ * field of each answer, and what the last read-only survey observed on each
+ * path.
+ *
+ * The survey is what tells `available and unmapped` (the device serves the path,
+ * nothing here reads it) from `documented but never observed` (no probe at all).
  *
  * Static data (it changes only with a deployment), so the answer carries no
  * measurement, only the envelope's `generated_at`. The runtime half — is the
@@ -346,6 +423,12 @@ export type SourceSummary = z.infer<typeof sourceSummarySchema>
  */
 export const sourcesSchema = z.object({
   summary: sourceSummarySchema,
+  /**
+   * Optional: a backend that predates the survey simply does not send it, and
+   * the page then says "never surveyed" — which is exactly what its absence
+   * means on a current one.
+   */
+  survey: sourceSurveySchema.optional(),
   sources: z.array(sourceSchema),
 })
 export type SourceCatalogue = z.infer<typeof sourcesSchema>

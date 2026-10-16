@@ -12,9 +12,19 @@
 // Nothing in this package touches the network or the database: it is data. The
 // catalogue is checked against the registers by catalog_test.go, so a path
 // cannot be added to one without the other.
+//
+// It is also the single definition of the paths: cmd/fronius-probe builds its
+// allowlist from it (the sources the project uses, plus the ones already
+// captured, for its default run; the whole catalogue for --survey), so a path
+// cannot be probed without appearing here, and the two cannot drift.
 package sources
 
-import "sort"
+import (
+	"sort"
+
+	"fronius-supervisor/internal/fronius/internalapi"
+	"fronius-supervisor/internal/fronius/solarapi"
+)
 
 // Transport identifies the HTTP surface a source belongs to.
 type Transport string
@@ -230,7 +240,7 @@ var solarAPISources = []Source{
 	{
 		ID:         "solarapi.powerflow",
 		Transport:  SolarAPI,
-		Path:       "/solar_api/v1/GetPowerFlowRealtimeData.fcgi",
+		Path:       solarapi.PowerFlowPath,
 		Method:     "GET",
 		Provides:   "Site power flow and the total energy: the only source the collector reads",
 		State:      StateCalled,
@@ -488,7 +498,7 @@ var internalAPISources = []Source{
 	{
 		ID:         "internalapi.version",
 		Transport:  InternalAPI,
-		Path:       "/status/version",
+		Path:       internalapi.VersionPath,
 		Method:     "GET",
 		Provides:   "Device identity: serial number, article number, device name, firmware",
 		State:      StateCalled,
@@ -530,7 +540,7 @@ var internalAPISources = []Source{
 	{
 		ID:         "internalapi.active_events",
 		Transport:  InternalAPI,
-		Path:       "/status/activeEvents",
+		Path:       internalapi.ActiveEventsPath,
 		Method:     "GET",
 		Provides:   "Active hardware events, republished in full on every poll",
 		State:      StateCalled,
@@ -566,7 +576,7 @@ var internalAPISources = []Source{
 	{
 		ID:         "internalapi.powermeter",
 		Transport:  InternalAPI,
-		Path:       "/components/PowerMeter/readable",
+		Path:       internalapi.PowerMeterPath,
 		Method:     "GET",
 		Provides:   "Presence and channels of the Fronius Smart Meter",
 		State:      StateCalled,
@@ -591,7 +601,7 @@ var internalAPISources = []Source{
 	{
 		ID:         "internalapi.battery",
 		Transport:  InternalAPI,
-		Path:       "/components/BatteryManagementSystem/readable",
+		Path:       internalapi.BatteryPath,
 		Method:     "GET",
 		Provides:   "Presence and channels of the battery management system",
 		State:      StateCalled,

@@ -30,6 +30,7 @@ var backupTables = []string{
 	"device",
 	"device_events_seen",
 	"agg_hour",
+	"source_probe",
 }
 
 // Backup writes a consistent snapshot of the database to dest.

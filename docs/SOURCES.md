@@ -37,6 +37,35 @@ fixture exists on disk, and the catalogue holds exactly the Solar API paths of
 the candidate table below and every internal path of `docs/ENDPOINTS.md`. A path
 cannot be added to one without the other.
 
+## The recorded survey — per-firmware evidence
+
+The catalogue states what the device can expose; it says nothing about what a
+given firmware **does** answer. That observation is the **survey**:
+`cmd/fronius-probe --survey` walks every catalogued path, one read-only `GET`
+each, and records one outcome per path — its **class**, the HTTP status, the
+bytes, whether a Digest header was needed (`digest_required`), and the **shape**
+of the answer (JSON paths and types, never a value). The outcome is written to
+the application's database, table `source_probe`, keyed by `(path, query)`, and
+read back by `GET /api/v1/sources` (the "Data sources" page); it is the
+per-firmware evidence behind the catalogue's states.
+
+Classes (`ok`, `empty`, `not_json`, `auth_required`, `not_found`, `error`) keep
+distinct facts distinct: `not_found` means this firmware does not serve the path,
+`auth_required` means the path exists behind authentication, `empty` means it
+exists and the component is not installed. A `404` or a `401` is a **result**,
+not a failed run.
+
+Two provenance rules:
+
+- **A class is an observation of one firmware.** Each row carries the `firmware`
+  version observed on the identity path and the instant (`probed_at_utc`). A
+  `not_found` is true for the firmware that answered `404`, not for the model in
+  general, and **a shape is only true for the firmware it was observed on**;
+  re-survey after a firmware update (`docs/RUNBOOK.md`).
+- **A shape is not a value.** The recorded inventory is paths and types only — a
+  survey of an identity endpoint never becomes a second copy of the device's
+  serial numbers. This is the same rule that governs a capture, minus the body.
+
 ## Vendor artefact
 
 `references/fronius-original.js` — 184,378 lines, ≈ 8.6 MB. This is the

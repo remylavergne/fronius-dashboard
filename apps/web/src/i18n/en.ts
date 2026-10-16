@@ -80,7 +80,7 @@ export const en = {
   'nav.sources': 'Data sources',
   'sources.title': 'Data sources',
   'sources.intro':
-    'The whole catalogue of what this inverter answers, what this project does with each field of each answer, and what is still unmapped. A source is one endpoint or one query variant of an endpoint; a field is one value inside its answer. Counters come from the same list the backend returns. The legend at the end of the page defines both vocabularies: a field counted as ignored is a decision, a field counted as unverified is an absence of evidence.',
+    'The whole catalogue of what this inverter answers, what this project does with each field of each answer, and what the last read-only survey observed on each path. A source is one endpoint or one query variant of an endpoint; a field is one value inside its answer. Counters come from the same list the backend returns. Each source carries two badges: its state, which says what this project does with it, and its survey outcome, which says what the device answered when it was asked — a path with no survey outcome was simply never surveyed. The legend at the end of the page defines the three vocabularies: a field counted as ignored is a decision, a field counted as unverified is an absence of evidence.',
 
   'sources.summary.title': 'Catalogue summary',
   'sources.summary.sources': 'Sources',
@@ -115,15 +115,62 @@ export const en = {
   'sources.transport.solarApi': 'Solar API v1',
   'sources.transport.internalApi': 'Internal API',
 
+  'sources.probe.ok': 'ok',
+  'sources.probe.okDescription':
+    'answered, with content: the survey carries its shape, never its values',
+  'sources.probe.empty': 'empty',
+  'sources.probe.emptyDescription':
+    'answered with nothing: the endpoint exists and the component is not installed — a fact, not a failure',
+  'sources.probe.notJson': 'not_json',
+  'sources.probe.notJsonDescription': 'answered, but not with JSON',
+  'sources.probe.authRequired': 'auth_required',
+  'sources.probe.authRequiredDescription':
+    'answered 401 or 403 without credentials: the path exists behind authentication',
+  'sources.probe.notFound': 'not_found',
+  'sources.probe.notFoundDescription': '404: this firmware does not serve the path',
+  'sources.probe.error': 'error',
+  'sources.probe.errorDescription': '5xx, timeout or connection refused: the path could not be observed',
+  'sources.probe.never': 'never surveyed',
+  'sources.probe.neverDescription':
+    'not surveyed on this firmware — different from every outcome above, including not_found',
+  'sources.probe.http': 'HTTP',
+  'sources.probe.bytes': 'Bytes',
+  'sources.probe.probedAt': 'Probed at',
+  'sources.probe.firmware': 'Firmware',
+  'sources.probe.digestRequired': 'needs authentication',
+  'sources.probe.errorDetail': 'Error',
+  'sources.probe.servedUnmapped': 'available and unmapped',
+  'sources.probe.servedUnmappedHint':
+    'The device answers this path and nothing in this project reads it: the survey just proved it is a candidate.',
+  'sources.probe.shape': 'Observed shape',
+  'sources.probe.shapeNote': 'The survey records the shape of the answer — never its values.',
+  'sources.probe.fieldsPath': 'Path',
+  'sources.probe.fieldsType': 'Type',
+
+  'sources.survey.title': 'Last survey',
+  'sources.survey.never':
+    'No survey has been recorded yet: no path has been observed on this device, so nothing can be said about what the device answers beyond this catalogue.',
+  'sources.survey.probed': 'Paths surveyed',
+  'sources.survey.probedHint': 'of the catalogued sources, in the last recorded survey',
+  'sources.survey.firmware': 'Firmware at survey time',
+  'sources.survey.firmwareHint': 'software version the device announced during the survey',
+  'sources.survey.takenAt': 'Surveyed at',
+  'sources.survey.takenAtHint': 'instant of the last path probed',
+  'sources.survey.classes': 'Outcomes of the survey',
+
   'sources.filter.transport': 'Transport',
   'sources.filter.state': 'State',
+  'sources.filter.probe': 'Survey',
   'sources.filter.search': 'Search',
   'sources.filter.searchPlaceholder': 'Path, what it provides, or a field path',
   'sources.filter.allTransports': 'All transports',
   'sources.filter.allStates': 'All states',
+  'sources.filter.allProbes': 'All paths',
+  'sources.filter.surveyed': 'Surveyed',
+  'sources.filter.notSurveyed': 'Not surveyed',
   'sources.filter.visible': 'Sources shown',
   'sources.filter.none': 'No source matches these filters',
-  'sources.filter.noneHint': 'Clear the search, or widen the transport and state filters.',
+  'sources.filter.noneHint': 'Clear the search, or widen the transport, state and survey filters.',
 
   'sources.called': 'read by this project',
   'sources.id': 'Source id',
@@ -147,9 +194,10 @@ export const en = {
 
   'sources.legend.title': 'Legend',
   'sources.legend.intro':
-    'Two vocabularies, deliberately distinct: the state says what this project does with a source, the field status what it does with one value inside the answer.',
+    'Three vocabularies, deliberately distinct: the state says what this project does with a source, the field status what it does with one value inside the answer, and the survey outcome what the device itself answered when the read-only survey asked it.',
   'sources.legend.states': 'Source states',
   'sources.legend.statuses': 'Field statuses',
+  'sources.legend.probes': 'Survey outcomes',
 
   'system.title': 'System',
   'system.application': 'Monitoring application',

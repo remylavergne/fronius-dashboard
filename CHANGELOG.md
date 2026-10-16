@@ -9,6 +9,49 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Read-only survey of the whole catalogue.** `cmd/fronius-probe
+  --survey` walks every catalogued path, **one `GET` per path**, sequentially
+  with `--delay` between paths (default `1s`), and records the outcome of each:
+  its **class** (`ok`, `empty`, `not_json`, `auth_required`, `not_found`,
+  `error`), the HTTP status, `digest_required`, the bytes, the error, the
+  firmware and the **shape** of the answer — JSON paths and types, arrays by
+  length with element paths suffixed `[]`, bounded to 500 entries and 8 levels
+  with an explicit `(truncated)` marker — and **never a value**, so a survey of
+  an identity endpoint cannot become a second copy of the serial numbers. New
+  flags `--delay` and `--db` (default `$FRONIUS_DB_PATH`; empty writes the report
+  only); `--survey` refuses to combine with `--endpoint`. For each path a
+  **bare** GET comes first — whether a path is reachable without a header is
+  itself a fact — and only a `401`/`403` **with** credentials triggers one more
+  read through the Digest transport (never preemptive). A `404` or a `401` is a
+  **result** and never aborts the survey. The probe's allowlist is now
+  **derived from `internal/sources`**: the default run is the catalogued sources
+  whose state is `called` or `captured` (six entries), `--survey` walks the whole
+  catalogue, `--endpoint <path>` accepts any catalogued path — a path cannot be
+  probed without being catalogued, and the catalogue test keeps the two
+  registers bound. Output: one line per path (class, status, bytes, fields,
+  path), a summary per class, the firmware discovered on the identity path, and,
+  with `--save`, a `survey_<UTC instant>.json` report written `0600`. Storage:
+  migration `0007_probe.sql`, table `source_probe` keyed by `(path, query)` (the
+  query is part of the identity of a path, since two DataCollections of one
+  endpoint answer different things; a survey replaces its previous row) with the
+  columns `class`, `http_status`, `digest_required`, `body_bytes`, `error`,
+  `firmware`, `probed_at_utc`, `fields_json`, plus `SaveSourceProbes` /
+  `SourceProbes`; the table is carried by `Store.Restore` (added to
+  `backupTables`) and purged by `PurgeBefore` under the same bound as the
+  measurements. `GET /api/v1/sources` gains a `survey` block (`probed`, one
+  counter per class, `last_probed_at`, `firmware`) and a `probe` object on each
+  source that has a recorded row (`class`, `http_status`, `digest_required`,
+  `bytes`, `error`, `firmware`, `probed_at`, `fields`); a source never surveyed
+  has **no** `probe` key, so the interface can say "never surveyed" rather than
+  show zeros. Tests: `cmd/fronius-probe/survey_test.go` (the classes stay
+  distinct; the inventory carries no value; arrays walked through their first
+  element; the bound and its marker; both observed firmware shapes; a full survey
+  against a stub device writing the report *and* the database; the authenticated
+  second read) and `internal/api/sources_test.go` (the merge, the counters, the
+  path+query key, the never-surveyed case). Documentation updated
+  (`docs/PROBE-READONLY.md`, `docs/RUNBOOK.md`, `docs/SOURCES.md`,
+  `docs/ARCHITECTURE.md`).
+
 - 2026-10-16 — **Source catalogue.** `internal/sources/catalog.go` is the
   machine-readable register of every source the device exposes and of what this
   application does with it: `type Transport` (`solar_api` | `internal_api`),
@@ -369,6 +412,17 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   with a capability reason (`docs/UNKNOWNS.md` #13).
 
 ### Fixed
+
+- 2026-10-16 — **The simulator answered a shape the device does not have**
+  (`cmd/fronius-sim`). Its `Body.Data.CumulationInverterData` carried the
+  documented guess (`E_Day`, `E_Year`, `E_Total`); the capture of firmware
+  `1.19.7-1` proves the device answers `DAY_ENERGY`, `YEAR_ENERGY`,
+  `TOTAL_ENERGY` **and** a `DeviceStatus` object there (`InverterState`,
+  `StatusCode`, `ErrorCode` — the documented source of the inverter state that
+  the flow endpoints do not carry; `docs/UNKNOWNS.md` #13). A probe rehearsal
+  against the simulator would have taught those wrong keys. It now mirrors the
+  capture, and the survey mode — which found the divergence on its first run — is
+  what makes such a drift visible instead of silent.
 
 - 2026-10-16 — **Wrong endpoint suffix for the accumulation capture**
   (`internal/fronius/solarapi`). The documented Solar API v1 realtime-data family is

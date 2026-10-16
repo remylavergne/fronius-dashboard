@@ -168,8 +168,8 @@ func TestBackupReportsWhatItHolds(t *testing.T) {
 		t.Errorf("events = %d, want 1", info.Events)
 	case info.Hours != 3:
 		t.Errorf("hours = %d, want 3", info.Hours)
-	case info.Migrations != 6:
-		t.Errorf("migrations = %d, want the six migrations of this schema", info.Migrations)
+	case info.Migrations != 7:
+		t.Errorf("migrations = %d, want the seven migrations of this schema", info.Migrations)
 	case !info.HasFirst || !info.FirstSample.Equal(base):
 		t.Errorf("first sample = %v (present=%v), want %v", info.FirstSample, info.HasFirst, base)
 	case !info.HasLast || !info.LastSample.Equal(base.Add(2*time.Hour)):

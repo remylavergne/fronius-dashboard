@@ -37,9 +37,8 @@ import (
 	"fronius-supervisor/internal/config"
 	"fronius-supervisor/internal/fronius"
 	"fronius-supervisor/internal/fronius/digest"
-	"fronius-supervisor/internal/fronius/internalapi"
-	"fronius-supervisor/internal/fronius/solarapi"
 	"fronius-supervisor/internal/secret"
+	"fronius-supervisor/internal/sources"
 )
 
 // errNotWhitelisted: the probe cannot target an arbitrary URL.
@@ -65,53 +64,44 @@ type endpoint struct {
 	digest bool
 }
 
-// whitelist is the phase 2 allowlist: the four internal paths (identity,
-// presence of a meter and a battery, events), the Solar API endpoint of phase 1,
-// and the documented accumulation collection kept as the last candidate source
-// for the day and year counters. Every addition to this list is a decision that
-// is documented, tested and reviewed (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
-var whitelist = []endpoint{
-	{
-		method:         http.MethodGet,
-		path:           solarapi.PowerFlowPath,
-		classification: "READ",
-		note:           "Site production measurement (Body.Data.Site) and inverter measurement (Body.Data.Inverters)",
-	},
-	{
-		method:         http.MethodGet,
-		path:           internalapi.VersionPath,
-		classification: "READ",
-		digest:         true,
-		note:           "Device identity: serial number (established key), number of phases, device group",
-	},
-	{
-		method:         http.MethodGet,
-		path:           internalapi.ActiveEventsPath,
-		classification: "READ",
-		digest:         true,
-		note:           "Active events: body shape NOT established, this is the expected capture",
-	},
-	{
-		method:         http.MethodGet,
-		path:           internalapi.PowerMeterPath,
-		classification: "READ",
-		digest:         true,
-		note:           "Presence of a Fronius Smart Meter (Body.Data indexed by component id)",
-	},
-	{
-		method:         http.MethodGet,
-		path:           internalapi.BatteryPath,
-		classification: "READ",
-		digest:         true,
-		note:           "Presence of a battery (Body.Data indexed by component id)",
-	},
-	{
-		method:         http.MethodGet,
-		path:           solarapi.InverterRealtimePath,
-		query:          solarapi.CumulationQuery,
-		classification: "READ",
-		note:           "Documented Solar API accumulation data. Captured 2026-10-16: DAY_ENERGY and YEAR_ENERGY come back null while TOTAL_ENERGY is live, and the same answer carries DeviceStatus (InverterState, StatusCode) — so this endpoint is not a source for the day and year energies (docs/UNKNOWNS.md #13), but it is the documented source for the inverter state",
-	},
+// whitelist is the set the probe reads by default: the sources this project
+// actually uses (called) plus the ones already captured on the reference
+// hardware. It is DERIVED from internal/sources, the register of every known
+// source, so a path cannot be probed without being catalogued — and the
+// catalogue test forbids a catalogued path from being absent from the registers.
+//
+// The full catalogue is reached with --survey (see survey.go); --endpoint
+// accepts any catalogued path. Every addition to that register is a documented,
+// tested and reviewed decision (docs/PROBE-READONLY.md, docs/ENDPOINTS.md).
+var whitelist = buildWhitelist(func(s sources.Source) bool {
+	return s.State == sources.StateCalled || s.State == sources.StateCaptured
+})
+
+// surveyWhitelist is the whole catalogue: what a survey walks.
+var surveyWhitelist = buildWhitelist(func(sources.Source) bool { return true })
+
+// buildWhitelist turns the catalogue into probe entries.
+//
+// A source reached by the manufacturer's own interface is marked digest: the
+// transport still sends the bare request first and authenticates only in
+// response to a 401 (internal/fronius/digest), so this flag describes what the
+// official client does, not what the device demands.
+func buildWhitelist(keep func(sources.Source) bool) []endpoint {
+	out := make([]endpoint, 0, len(sources.Catalog()))
+	for _, src := range sources.Catalog() {
+		if !keep(src) {
+			continue
+		}
+		out = append(out, endpoint{
+			method:         http.MethodGet,
+			path:           src.Path,
+			query:          src.Query,
+			classification: "READ",
+			digest:         src.Transport == sources.InternalAPI,
+			note:           src.Provides,
+		})
+	}
+	return out
 }
 
 // allowAllEndpoints is the value of --endpoint that selects the whole list.
@@ -125,7 +115,18 @@ type options struct {
 	list          bool
 	endpoint      string
 	passwordStdin bool
-	out           io.Writer
+	// survey walks the whole catalogued allowlist instead of one path.
+	survey bool
+	// delay separates two paths of a survey: a survey is 27 requests, and an
+	// inverter's web interface is not asked to serve them in a burst.
+	delay time.Duration
+	// dbPath records the survey where the application reads it. Empty disables
+	// the recording (the report file remains the operator's copy).
+	dbPath string
+	// endpointSet records that --endpoint was given explicitly: the flag has a
+	// default value ("all"), which must not be mistaken for a choice.
+	endpointSet bool
+	out         io.Writer
 	// stdin feeds --password-stdin (injectable in tests).
 	stdin io.Reader
 }
@@ -139,7 +140,15 @@ func main() {
 	flag.BoolVar(&opt.list, "list", false, "prints the allowlist of endpoints and exits")
 	flag.StringVar(&opt.endpoint, "endpoint", allowAllEndpoints, "path to probe ("+allowAllEndpoints+" or a path from the allowlist)")
 	flag.BoolVar(&opt.passwordStdin, "password-stdin", false, "reads the password on the first line of standard input")
+	flag.BoolVar(&opt.survey, "survey", false, "walks the whole catalogued allowlist, one GET per path, and records what each one answers")
+	flag.DurationVar(&opt.delay, "delay", time.Second, "delay between two paths of a survey")
+	flag.StringVar(&opt.dbPath, "db", os.Getenv("FRONIUS_DB_PATH"), "database that records the survey (empty = write the report only)")
 	flag.Parse()
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "endpoint" {
+			opt.endpointSet = true
+		}
+	})
 	opt.out = os.Stdout
 	opt.stdin = os.Stdin
 
@@ -155,9 +164,16 @@ func run(opt options) error {
 		return nil
 	}
 
-	selected, err := selectEndpoints(opt.endpoint)
-	if err != nil {
-		return err
+	if opt.survey && opt.endpointSet {
+		return errors.New("--survey walks the whole catalogue: do not combine it with --endpoint")
+	}
+	selected := []endpoint(nil)
+	if !opt.survey {
+		var err error
+		selected, err = selectEndpoints(opt.endpoint)
+		if err != nil {
+			return err
+		}
 	}
 	if opt.stdin == nil {
 		opt.stdin = os.Stdin
@@ -188,6 +204,13 @@ func run(opt options) error {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	if opt.survey {
+		if opt.delay < 0 {
+			return errors.New("--delay cannot be negative")
+		}
+		return runSurvey(context.Background(), opt, base, cred, logger)
+	}
 
 	// The read-only guard is interposed in front of the transport: a non-GET
 	// request cannot reach the network, even by programming mistake.
@@ -229,7 +252,7 @@ func selectEndpoints(name string) ([]endpoint, error) {
 	case "", allowAllEndpoints:
 		return slices.Clone(whitelist), nil
 	}
-	for _, ep := range whitelist {
+	for _, ep := range surveyWhitelist {
 		if ep.path == trimmed {
 			return []endpoint{ep}, nil
 		}
@@ -241,6 +264,12 @@ func selectEndpoints(name string) ([]endpoint, error) {
 type credentials struct {
 	user     string
 	password secret.String
+}
+
+// complete reports whether a full pair is available: a user without a password
+// cannot answer a Digest challenge, so it counts as no credentials at all.
+func (c credentials) complete() bool {
+	return c.user != "" && !c.password.IsZero()
 }
 
 // readCredentials reads the environment, and the password on standard input
