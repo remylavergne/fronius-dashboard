@@ -173,6 +173,13 @@ func (s *fakeSink) SetState(_ context.Context, k, v string) error {
 	return nil
 }
 
+// savedDetails returns the detail families recorded so far.
+func (s *fakeSink) savedDetails() []storage.Detail {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]storage.Detail(nil), s.details...)
+}
+
 func (s *fakeSink) snapshot() ([]storage.DeviceRecord, []model.Event, map[string]string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -188,23 +188,29 @@ func TestSourcesPublishesTheCalledSetAndThePaths(t *testing.T) {
 	if !called[solarapi.PowerFlowPath] {
 		t.Errorf("%s is not published as called", solarapi.PowerFlowPath)
 	}
-	// The Solar API side: the two paths the code names — the flow endpoint and
-	// the common collection the collector reads for the device detail. Counted
-	// from the code, not written down.
+	// The Solar API side: every path published as called must be one the client
+	// can actually reach — a constant of internal/fronius/solarapi, not a string
+	// that happens to look right.
+	reachable := map[string]bool{
+		solarapi.PowerFlowPath:        true,
+		solarapi.InverterRealtimePath: true,
+		solarapi.InverterInfoPath:     true,
+		solarapi.ActiveDeviceInfoPath: true,
+		solarapi.APIVersionPath:       true,
+	}
 	solarCalled := map[string]bool{}
 	for _, entry := range got.Data.Sources {
 		if entry.Called && entry.Transport == "solar_api" {
 			solarCalled[entry.Path] = true
 		}
 	}
-	if !solarCalled[solarapi.PowerFlowPath] {
-		t.Errorf("%s is not published as called", solarapi.PowerFlowPath)
+	if len(solarCalled) != len(reachable) {
+		t.Errorf("%d Solar API paths published as called, want %d: %v", len(solarCalled), len(reachable), solarCalled)
 	}
-	if !solarCalled[solarapi.InverterRealtimePath] {
-		t.Errorf("%s is not published as called", solarapi.InverterRealtimePath)
-	}
-	if len(solarCalled) != 2 {
-		t.Errorf("%d Solar API paths published as called, want 2: %v", len(solarCalled), solarCalled)
+	for path := range solarCalled {
+		if !reachable[path] {
+			t.Errorf("%s is published as called but is not a path the client knows", path)
+		}
 	}
 
 	// The filtered fields explain the two carried-over findings of the session.

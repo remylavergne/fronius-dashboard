@@ -25,15 +25,18 @@ document: every internal path it holds must appear here.
 
 ## Executable allowlist
 
-Eleven entries, and no others: this is the table frozen in
+Fourteen entries, and no others: this is the table frozen in
 `internal/fronius/internalapi/allowlist.go` (nine internal paths) and in the
-Solar API client (two paths). `cmd/fronius-probe` accepts nothing beyond its own
+Solar API client (five paths). `cmd/fronius-probe` accepts nothing beyond its own
 list, **derived from the source catalogue** (`--list`, `--endpoint`).
 
 | Path | Method | Classification | Envelope | Evidence |
 |---|---|---|---|---|
 | `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVED-CONVERSATION]` "responds"; **absent from the bundle**; GET method imposed by `internal/fronius/readonly.go`; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. `[DOC]` `42,0410,2012,EN 02115052025` §4.11.3: this is the **only** Solar API request served as `.fcgi`; §4.11.1: available on GEN24/Tauro/Verto |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | GET | READ | — (flat `Body.Data`) | **absent from the bundle**; query is a binary constant (`solarapi.CommonQuery`); read **every collector cycle** by `internal/collector`; **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `1680` bytes, `36` fields — the thirteen measurements and `DeviceStatus` sit **flat** under `Body.Data` (the documented wrapper object does **not** appear). `[DOC]` `42,0410,2012,EN 02115052025` §4.1.3: the realtime-data family is `.cgi`; §4.1.2: `CommonInverterData` supported on GEN24/Tauro/Verto; §4.1.5: the day and year counters "will always report null" and `TOTAL_ENERGY` is updated every 5 min |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | GET | READ | — (flat `Body.Data`) | **absent from the bundle**; query is a binary constant (`solarapi.CommonQuery`); read **every other collector cycle** by `internal/collector` (`detailEveryNCycles = 2`); **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `1680` bytes, `36` fields — the thirteen measurements and `DeviceStatus` sit **flat** under `Body.Data` (the documented wrapper object does **not** appear). `[DOC]` `42,0410,2012,EN 02115052025` §4.1.3: the realtime-data family is `.cgi`; §4.1.2: `CommonInverterData` supported on GEN24/Tauro/Verto; §4.1.5: the day and year counters "will always report null" and `TOTAL_ENERGY` is updated every 5 min |
+| `/solar_api/v1/GetInverterInfo.cgi` | GET | READ | `Body.Data` (Solar API envelope) | **absent from the bundle**; read by `internal/detect` on the detection cycle and **used** as the **identity fallback** — it **never overwrites** an identity the authenticated path established (it fills `SerialNumber` from `UniqueID` and `DeviceName` from `CustomName` only when `/status/version` left no serial number) and **never invents** the model or the firmware (the Solar API does not report them); published as the `inverter_info` family; **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `537` bytes, `12` fields. `[DOC]` `42,0410,2012,EN 02115052025` §4.6.2: `.cgi` (NOT `.fcgi`); §4.6.1: ALWAYS on GEN24/Tauro/Verto |
+| `/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System` | GET | READ | `Body.Data` (Solar API envelope) | **absent from the bundle**; query is a binary constant (`solarapi.SystemDeviceClass`, §4.7.5); read by `internal/detect` on the detection cycle and **used** as the **presence fallback** — a class reported with at least one device is `present`, a class reported empty or not mentioned is `absent`, applied **only** when the internal meter/battery readable path left the state `unknown`; published as the `active_devices` family; **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `494` bytes, `7` fields. `[DOC]` `42,0410,2012,EN 02115052025` §4.7.2: `.cgi`; §4.7.1: ALWAYS; §4.7.3: takes a `DeviceClass` |
+| `/solar_api/GetAPIVersion.cgi` | GET | READ | — (bare object, **not** enveloped) | **absent from the bundle**; read by `internal/detect` on the detection cycle and published as the `api_version` family — recorded, not used to reconfigure anything (the client's paths are constants of the binary); **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `92` bytes, `3` fields (`APIVersion`, `BaseURL`, `CompatibilityRange`). `[DOC]` `42,0410,2012,EN 02115052025` §2.4.1: the path is `/solar_api/GetAPIVersion.cgi` (the `.cgi` belongs to the path, no version segment) |
 | `/status/version` | GET | READ | `Default` | `[SOURCE-JS]` l. 183050 (path **without** header, module `yTJA`); **absent from the `aYRN` registry** (see the note below); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
 | `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (registry, interval 10 000 ms) + l. 183060 (variant `?sync=true`, without header); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. Fields read: see the extraction table |
 | `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76035 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
@@ -50,7 +53,7 @@ service) — but they do not overlap: `/components/PowerMeter/readable` and
 `/components/BatteryManagementSystem/readable` only appear in `aYRN`,
 while `/status/version` only appears in `yTJA` (verified by searching the
 literal in the bundle). The `READ` classification is about the effect, not
-the authentication: none of the ten has an observed persistent effect.
+the authentication: none of them has an observed persistent effect.
 On the reference device, however, **neither route challenges**: on firmware
 1.19.7-1 (captured 2026-10-16) all five paths of the allowlist at that time
 answered `200` without an
@@ -65,7 +68,7 @@ counters** while its total stays live — so **no local source exposes them** an
 entry is **no longer called**: it was removed and `/status/powerflow` is now
 documented here as **extracted but not called** (unknown #13).
 
-The application then gained **six readings**. The four internal **diagnostic
+The application then gained **nine readings**. The four internal **diagnostic
 families** — `/status/common`, `/status/network`, `/status/devices`,
 `/status/emrs` — took the internal allowlist from four to **eight paths**; they
 are read by `internal/detect` on the detection cycle (`FRONIUS_DETECT_INTERVAL`).
@@ -74,7 +77,14 @@ The internal **cache** (`/components/cache/readable`) took it from eight to
 register dump per `5 s` collection cycle would be waste), published as the sixth
 family of `GET /api/v1/detail` and rendered by the Device detail page's Cache
 block. The Solar API **common** inverter collection is read by
-`internal/collector` on the collection cycle. All six come from the first survey
+`internal/collector` on the collection cycle. The **Solar API-first route** then
+made three more Solar API requests **used** rather than mere candidates:
+`/solar_api/v1/GetInverterInfo.cgi`, `/solar_api/v1/GetActiveDeviceInfo.cgi` and
+`/solar_api/GetAPIVersion.cgi`, read by `internal/detect` on the detection cycle
+(see the three rows above) — the first two as the identity and presence
+**fallbacks** that need no credential, the third recorded as the `api_version`
+family. The internal allowlist is unchanged: these are Solar API paths, not
+internal ones. All nine come from the surveys
 of the reference installation (2026-10-16, firmware `1.19.7-1`), which is their
 evidence; each addition is a documented decision (see the rows above). On the
 cache the device names 44 of its 81 registers and leaves 37 bare, and **no unit
@@ -82,8 +92,8 @@ is derived from a name**: the device states a name and a type suffix, not a unit
 
 ### The Solar API URL list (specification)
 
-The two allowlist rows above are the only Solar API paths the application reads,
-and both are `[DOC]`-proven. The full URL list comes from the manufacturer's
+The five allowlist rows above are the only Solar API paths the application reads,
+and all are `[DOC]`-proven. The full URL list comes from the manufacturer's
 specification **`42,0410,2012,EN 02115052025`** (`references/42,0410,2012.pdf`,
 91 pages, Solar API V1), not from `references/fronius-original.js` (which contains
 no Solar API path):
@@ -477,7 +487,10 @@ replayed on the hardware.
 | `/status/activeEvents` | `GET` (imposed by the guard) | none | same | same | none: event read |
 | `/components/PowerMeter/readable` | `GET` (imposed by the guard) | none | same | same | none: state read |
 | `/components/BatteryManagementSystem/readable` | `GET` (imposed by the guard) | none | same | same | none: state read |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | `GET` (imposed by the guard) | `Scope`, `DeviceId`, `DataCollection` (the frozen `solarapi.CommonQuery`) | none (no known authentication) | **simulator**: 200 without header; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: read; the thirteen measurements and `DeviceStatus` (state and codes), read every collector cycle |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | `GET` (imposed by the guard) | `Scope`, `DeviceId`, `DataCollection` (the frozen `solarapi.CommonQuery`) | none (no known authentication) | **simulator**: 200 without header; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: read; the thirteen measurements and `DeviceStatus` (state and codes), read every other collector cycle |
+| `/solar_api/v1/GetInverterInfo.cgi` | `GET` (imposed by the guard) | none | none (no known authentication) | **simulator**: 200 without header; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: read; read by the detector on the detection cycle, the **identity fallback** when `/status/version` established nothing (`device.identity` without a credential) |
+| `/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System` | `GET` (imposed by the guard) | `DeviceClass` (the frozen `solarapi.SystemDeviceClass`) | none (no known authentication) | **simulator**: 200 without header; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: read; read by the detector on the detection cycle, the **presence fallback** that settles the meter/battery state the internal readable path left `unknown` |
+| `/solar_api/GetAPIVersion.cgi` | `GET` (imposed by the guard) | none | none (no known authentication) | **simulator**: 200 without header; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: read; read by the detector on the detection cycle, published as the `api_version` family |
 | `/status/common` | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: 200 (or 401 without credentials), then 200 after Digest; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: device-wide state (device detail) |
 | `/status/network` | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: 401 without credentials, then 200 after Digest; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: network interfaces (device detail) |
 | `/status/devices` | `GET` (imposed by the guard) | none | same | same | none: device inventory (device detail) |
@@ -491,10 +504,15 @@ replayed on the hardware.
 | `/commands/License`, `LicenseExchangeData`, `ServiceFile` | `GET`/`POST` observed (`?status=`, `?acknowledgement=`, `?serviceFile=`) | variable | unknown | **none** | undetermined ⇒ treated as a write |
 | `/update/start` | `POST` observed (XHR, l. 90677) | body = file | unknown | **none** | device firmware update |
 
-What this matrix establishes: **eleven paths are called** — the **nine** internal
-paths of the allowlist, the Solar API flow endpoint and the Solar API common
-inverter collection — all in `GET`, without observed side effect, and without any
-`MUTATION` or `DANGEROUS` entry in the executable allowlist. `/status/powerflow`
+What this matrix establishes: **fourteen paths are called** — the **nine**
+internal paths of the allowlist and the **five** Solar API paths of the Solar
+API-first route (the flow endpoint, the common inverter collection, and the
+`GetInverterInfo.cgi` / `GetActiveDeviceInfo.cgi` / `GetAPIVersion.cgi` reads) —
+all in `GET`, without observed side effect, and without any
+`MUTATION` or `DANGEROUS` entry in the executable allowlist. The three Solar API
+identity/inventory reads need **no credential**: they are what makes the identity
+and the presence work without one, while the internal paths (device events
+included) remain the precise, credentialed source. `/status/powerflow`
 appears in the matrix only as a retired fallback: it is **extracted but not
 called**. The 79 other paths listed in
 this document remain inventoried to be explicitly avoided. The "unknown"

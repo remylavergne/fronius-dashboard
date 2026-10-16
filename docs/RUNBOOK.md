@@ -78,7 +78,7 @@ old.
 |---|---|---|
 | `status: degraded`, `last_error` contains `transport` | inverter or simulator unreachable | check the address, the network, that the simulator is running |
 | `last_error` contains `HTTP 401`/`403` | the device requires authentication on the Solar API path of this firmware | set the credentials (§ "Device credentials") and restart; do not attempt improvised credentials |
-| `detection.meter.state: "unknown"` and reason "credentials not configured" | `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` absent: the device requires authentication on this path | set both variables in the environment of `froniusd`, then restart the service |
+| `detection.meter.state: "unknown"` and reason "credentials not configured" | `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` absent on the internal readable path — but the Solar API inventory (`GetActiveDeviceInfo.cgi`, no credential) normally settles this state to `present` or `absent`, so a lasting `unknown` means the Solar API read failed too | check `last_error` for the Solar API path; set both variables in the environment of `froniusd` only if the internal path is the one that must answer, then restart the service |
 | `device.identity.available: false` with reason "access denied (401)" | credentials present but refused: user, password or realm different from the expected one | check the user (role "customer" or "technician" in the manufacturer interface); compare the realm announced by `fronius-probe` |
 | `last_error` contains `HTTP 404` | the path differs on this firmware, **or** the request never reached the inverter, **or** the Solar API is **disabled** in the device's WebUI (Communication → Solar API) | compare `solarapi_url` from `/api/v1/system` with the device address, then check both paths by hand: `curl -s -o /dev/null -w '%{http_code}\n' http://<device>/status/version` and the same on `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`. A bare `404` on both means the host is not the inverter; a `401` means authentication is now required; **all Solar API paths `404` while the internal `/status/*` paths answer** means the Solar API is **disabled** — the answer then carries "Solar API disabled by customer config" (§3 of the specification `42,0410,2012,EN 02115052025`), so re-enable it in the WebUI instead of changing the suffix |
 | detection reason `challenged, then refused` | the device answered `401` with a challenge, then refused the **authenticated** request (often with `404` or `403`) | the path exists — a bare `404` challenges nobody — so the credentials or the role they carry are the problem: check `FRONIUS_DEVICE_USER`/`FRONIUS_DEVICE_PASSWORD`, then run `fronius-probe --endpoint /status/version`, which prints the raw status and whether a challenge was issued |
@@ -95,13 +95,32 @@ normal, and it avoids hammering a device that is restarting.
 
 ## Device credentials
 
-Some device paths exist only behind Digest authentication: identity
-(`/status/version`), events (`/status/activeEvents`), component presence
-(`/components/…`) and, since the device detail, the four diagnostic families
-(`/status/common`, `/status/network`, `/status/devices`, `/status/emrs`). It is
-`froniusd` that queries them, periodically, and the
-`Authorization` header is emitted **only in response to a `401`** — never
-preemptively, never to another host, never to the frontend.
+Some device paths exist only behind Digest authentication: events
+(`/status/activeEvents`), component presence (`/components/…`) and, since the
+device detail, the four diagnostic families (`/status/common`, `/status/network`,
+`/status/devices`, `/status/emrs`). It is `froniusd` that queries them,
+periodically, and the `Authorization` header is emitted **only in response to a
+`401`** — never preemptively, never to another host, never to the frontend.
+
+**What you gain without any credential.** Since the Solar API-first route, the
+detector also reads three Solar API requests that need no credential and
+**fills** what the authenticated path could not establish:
+`/solar_api/v1/GetInverterInfo.cgi` for the identity (when `/status/version`
+established no serial number, it fills `SerialNumber`/`DeviceName`; the model and
+the firmware stay empty — the Solar API does not report them) and
+`/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System` for the meter/battery
+presence (when the internal readable path left the state `unknown`). So
+`device.identity`, `detection.meter.state` and `detection.battery.state` are
+**settled without credentials**. The precedence is one-directional: the Solar API
+**never overwrites** an identity or a presence the internal API already
+established.
+
+**What still needs a credential.** The device **events**
+(`/status/activeEvents`) and the two `/commands/*` read paths
+(`/commands/GetUTCTime`, `/commands/GetServiceState`) have no Solar API
+counterpart: they answer nothing without a Digest session, and the corresponding
+capability or panel stays unavailable with its reason until the credentials
+below are set.
 
 Where to set them: in the environment of the **service**, not in a versioned
 file, not in the interface.
@@ -133,8 +152,8 @@ curl -s localhost:8080/api/v1/capabilities | jq -r '.data[]|select(.id|startswit
 |---|---|
 | `detection.meter.state: "present"` | the device responded, a Smart Meter is installed: `grid.import_export`, `load.consumption` and `autoconsumption.ratio` become available |
 | `detection.meter.state: "absent"` | the device responded, no Smart Meter: consumption stays unavailable, with its reason |
-| `detection.meter.state: "unknown"` + reason "credentials not configured" | no credentials set: the service stops querying this path until the next restart (no useless `401` every minute) |
-| `device.identity.available: false` | the identity was not read: see `detection.internal_api.state` and `last_error` |
+| `detection.meter.state: "unknown"` + reason "credentials not configured" | no credentials set *and* the Solar API inventory did not settle the state: the internal readable path stops being queried until the next restart (no useless `401` every minute), but `GetActiveDeviceInfo.cgi` normally resolves it to `present` or `absent` without a credential |
+| `device.identity.available: false` | the identity was not read from **either** source: the internal `/status/version` failed (see `detection.internal_api.state`) **and** the Solar API `/solar_api/v1/GetInverterInfo.cgi` failed too — check `last_error` |
 | `battery.soc` unavailable even with a battery detected | normal: presence detection does not prove that a state-of-charge measurement exists on the API side (later phase) |
 
 On `401`: the service retries **once** per path after the challenge. If the
@@ -148,17 +167,23 @@ broadening the application: no device-modifying command exists in this binary.
 The **Device detail** page (`/detail`, served by `GET /api/v1/detail`) shows what
 the device says about **itself**, beyond its production: the **inverter** family
 (its state and its thirteen electrical measurements) plus the **system**,
-**network**, **devices** and **emrs** families. The **Overview** page also
-carries an **inverter state chip**, fed by the same inverter family.
+**network**, **devices** and **emrs** families, and the three Solar API families
+**`inverter_info`**, **`active_devices`** and **`api_version`**. The **Overview**
+page also carries an **inverter state chip**, fed by the same inverter family.
 
 The readings come on **two cadences**, because they answer two different needs:
 
-- the **inverter** family is read by the collector **once per collection cycle**
-  (`FRONIUS_POLL_INTERVAL`), right after the measurements — this is **one extra
-  `GET` per cycle**, the cost of a fresh electrical detail the flow endpoint does
-  not carry;
+- the **inverter** family is read by the collector **every other collection
+  cycle** (`FRONIUS_POLL_INTERVAL`, `detailEveryNCycles = 2`), right after the
+  measurements — an extra `GET` every other cycle, the cost of a fresh electrical
+  detail the flow endpoint does not carry, paced so two consecutive Solar API
+  requests stay `5 s` apart (§2.6 of the specification);
 - the **system**, **network**, **devices** and **emrs** families are read by the
   detector on its own cycle (`FRONIUS_DETECT_INTERVAL`): they change rarely;
+- the three Solar API families — `inverter_info` (`/solar_api/v1/GetInverterInfo.cgi`),
+  `active_devices` (`/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System`)
+  and `api_version` (`/solar_api/GetAPIVersion.cgi`) — are read by the detector on
+  the same cycle, and need **no credential**;
 - the **cache** family (`/components/cache/readable`) is read by the same
   detector, on the same cycle: `4 897` bytes and `99` values on the reference
   device, so it is not read on every `5 s` collection cycle. The page renders it
@@ -194,7 +219,8 @@ restart:
 
 ```bash
 curl -s localhost:8080/api/v1/system | jq -r .data.solarapi_url
-# the inverter itself: no credential is needed for the six detail paths
+# the inverter itself: no credential is needed for the nine detail families
+# (the six internal/collector paths, plus inverter_info, active_devices, api_version)
 FRONIUS_SOLARAPI_URL=http://192.0.2.10 ./bin/froniusd
 # or, from the repository, the packaged form of the same thing:
 make dev-device DEVICE=http://192.0.2.10
@@ -205,7 +231,7 @@ Device detail page is the signature of a daemon pointed at the development
 simulator, and the target runs `froniusd` against `DEVICE` instead of the
 simulator.
 
-These six paths answered `200` **without** a header on the reference
+These paths answered `200` **without** a header on the reference
 installation (§ Surveying every catalogued path): a `404` on all of them is a
 wrong source, never missing authentication — that would be a `401`.
 

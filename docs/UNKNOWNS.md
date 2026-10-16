@@ -9,7 +9,7 @@ it remains visible in the interface (`/api/v1/capabilities`) and in
 |---|---|---|---|
 | 1 | Shape of the `GetPowerFlowRealtimeData` JSON | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: the shape is confirmed and `test/fixtures/solarapi/powerflow_produce_only.json` is promoted from the real capture. Two divergences from the retired `[HYPOTHESIS]` were settled: `Meter_Location` is a **string** (`"unknown"`), not `Meter_Location_Current`, an **integer** (field renamed and retyped); and `E_Day`/`E_Year` are **null** on this firmware, on `Site` and on the inverter (residual unknown #13). `BackupMode`, `BatteryStandby`, `Smartloads`, `Version` are present and tolerated. `dto.go`, the simulator, the tests and the fixtures are aligned | a later capture (another point in the day or after midnight) or, for the residual null energies, the resolution tracked under #13 (no local source delivered the counters; the `/status/powerflow` fallback was removed) |
 | 2 | Authentication **of the Solar API** on firmware 1.19.7-1 | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: **no authentication required** on this installation. All five paths allowlisted at that time (the Solar API path and the four internal paths) answered `200 OK` with no `Authorization` header ever constructed (`digest_required: false` for each); no `401` was issued, so the Digest path was never exercised. `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` are therefore not needed here; the `internal/fronius/digest` machinery stays implemented and tested but unused by this device. A sixth path, `/status/powerflow`, briefly joined the allowlist later (fallback, #13), was **captured** (2026-10-16, `200`, no challenge) and has since been **removed**; the captures nonetheless established that this firmware answers every path without a challenge | a capture on another firmware or installation that does return a `401`/`403` |
-| 3 | **Partial source** of the inverter identity | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/status/version` confirms the key the application reads — `swrevisions.GEN24` = `1.19.7-1` (used by `firmwareOf`) — and `numberOfPhases` = **1** (the installation is **single-phase**). **No model key exists** in the payload ⇒ `Model` stays empty (the device group `devicegroup` = `"P6RW"` is not a model name and is no longer used as a fallback). `devicename` = `"Primo GEN24 3.6 Plus"` and `articleNumber` = `"4,210,141,002"` are captured and **available but not surfaced** by the application — wiring them costs 14 files including a dedicated SQL migration, decision deferred for lack of a consumer (ADR 0008). The first survey (2026-10-16) answered `404` on `/solar_api/v1/GetInverterInfo.fcgi` and `/solar_api/v1/GetLoggerInfo.fcgi`, but that was the probe's own wrong `.fcgi` suffix: with the specification's `.cgi`, the **second survey** the same day answered `GetInverterInfo.cgi` **`ok`** (537 bytes, 12 fields) **without credentials** ⇒ the Solar API now provides the identity too, as a **second source** beside `/status/version`, not a replacement (`docs/SOURCES.md`) | only a decision remains: surface `devicename`/`articleNumber` to the screen, or not (no capture is needed, the payload is known) |
+| 3 | **Partial source** of the inverter identity | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/status/version` confirms the key the application reads — `swrevisions.GEN24` = `1.19.7-1` (used by `firmwareOf`) — and `numberOfPhases` = **1** (the installation is **single-phase**). **No model key exists** in the payload ⇒ `Model` stays empty (the device group `devicegroup` = `"P6RW"` is not a model name and is no longer used as a fallback). `devicename` = `"Primo GEN24 3.6 Plus"` and `articleNumber` = `"4,210,141,002"` are captured and **available but not surfaced** by the application — wiring them costs 14 files including a dedicated SQL migration, decision deferred for lack of a consumer (ADR 0008). The first survey (2026-10-16) answered `404` on `/solar_api/v1/GetInverterInfo.fcgi` and `/solar_api/v1/GetLoggerInfo.fcgi`, but that was the probe's own wrong `.fcgi` suffix: with the specification's `.cgi`, the **second survey** the same day answered `GetInverterInfo.cgi` **`ok`** (537 bytes, 12 fields) **without credentials** ⇒ the Solar API now provides the identity too, as a **second source** beside `/status/version`, not a replacement (`docs/SOURCES.md`); it is **implemented** as the identity fallback (Step 25, see § 3 below) | only a decision remains: surface `devicename`/`articleNumber` to the screen, or not (no capture is needed, the payload is known) |
 | 4 | Presence of a Fronius Smart Meter | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/components/PowerMeter/readable` answered `200` with `Body.Data` an **empty object** ⇒ **no Smart Meter installed**. The detection rule is confirmed (`Cgi` envelope: non-empty `Body.Data` ⇒ present, empty ⇒ absent, unreadable ⇒ **not determined**, never "absent"); the fields usable afterwards remain those of `docs/ENDPOINTS.md` (`channels`: 23 `SMARTMETER_*` signals, `attributes.addr`, `attributes["[ENABLE]"]`) | none on this installation; the presence rule stays available for another installation |
 | 5 | Presence of a battery and state of charge | **Resolved for presence by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/components/BatteryManagementSystem/readable` answered `200` with `Body.Data` an **empty object** ⇒ **no battery installed**. `battery.soc` stays **unavailable** in the application — scope decision unchanged. The official client does read a relative state of charge, `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`, in the `channels` of this path (l. 128986), and `inverters[<id>].SOC` in `/status/powerflow` (l. 129053): the measurement exists on the internal API side, but its use by this application remains a separate decision | for `battery.soc`: an explicit decision (a metric the Solar API does not provide) and a capture on an installation fitted with a battery |
 | 6 | Permission matrix per endpoint and per role | the extraction (see `docs/ENDPOINTS.md`) establishes the **role declared by the client** — a display condition, never an authorization: `_isUserAllowed` (l. 75972-75984) grants `customer` to `customer \| technician \| support`, and `technician`/`support` to `technician \| support`; **a single** registry entry declares `user: "customer"` (`/commands/GetUTCTime`, l. 76039). It also establishes the **account sent** (`_getUserAndPass`, l. 46807-46813: request-group account, except `Login` as `passwordUser`) — **no server permission is provable from a bundle**. **Route guard audited** (2026-10-16): the guard behind `canActivate: [oi.a]` on 37 routes is the bundle's only `CanActivate` (`canActivate(t, e)`, l. 81341, module `euqz` l. 81184-81388 — the `oi` → `euqz` binding is an `[INFERENCE]`, three concurring clues in `docs/ENDPOINTS.md`) and it is **not a role gate**: four middlewares (`_updateMiddleware` l. 81311, `_defaultMiddleware` l. 81325) yield `true`, `false` or a redirect `UrlTree` (`/update`, `/exchange`, `/dashboard`, `/startPage`), while the role branch runs through `_mapLoggedInUser` (l. 81366-81374) → `isUserPermittedForUrl` (l. 43732) → the three-valued `Wfm5` enum (l. 70078, `Permitted = 0` / `NotPermitted = 1` / `ProfiRequired = 2`), a refusal **cancelling the navigation** (the observable never emits) instead of answering 403. The per-route minima are a client table (`H8nL`, l. 43533-43535 `technician`, l. 43542 `customer`) and the flags are expanded from the login string (map `D`, l. 77898-77905). The only authorization-like value the client reads **from the device** is `writePermission` (l. 69202), compared field by field: its value per firmware and per account is unknown, and a payload boolean is not a matrix. The device's own account booleans — `/status/common` answers `passwordState.customer`, `passwordState.technician` and `supportEnabled` (observed 2026-10-16, the `system` family of the device detail) — are the **device's declaration**, never a permission granted to this application. Decision unchanged: the **code allowlist** (`internal/fronius/internalapi/allowlist.go`) is the only executable authorization: eight internal paths, `READ`, GET; the other 79 are inventoried to be avoided | a test account and HTTP captures per role (401 / 403 / 200); see `docs/ENDPOINTS.md` |
@@ -137,13 +137,20 @@ copied, it describes an instant, not a measurement.
 **What remains open.** Nothing to capture: the payload is known and the two fields
 are in use. Only the model name stays undetermined, and only a future firmware
 that reports a model key — or an explicit decision to display `devicename` *as*
-the model — would change that. **A second source, not a replacement.** The first survey (2026-10-16) answered
+the model — would change that. **A second source, now implemented.** The first survey (2026-10-16) answered
 `404` on `/solar_api/v1/GetInverterInfo.fcgi`, but the second the same day, with
 the specification's `.cgi`, answered `/solar_api/v1/GetInverterInfo.cgi` **`ok`**
 (537 bytes, 12 fields) **without credentials** (`docs/SOURCES.md`). The Solar API
-therefore **also** carries the identity; the application keeps reading it from
-`/status/version`, and the Solar API route stays an **open opportunity**, not a
-closed door (`TODO.md`, ADR 0003/0008).
+therefore **also** carries the identity, and this is no longer an open
+opportunity: `internal/detect` reads it on the detection cycle and **uses** it as
+the identity fallback (`internal/detect/solar.go`, ADR 0003/0008). The precedence
+is one-directional — it fills `SerialNumber` from `UniqueID` and `DeviceName`
+from `CustomName` **only when `/status/version` established no serial number**,
+sets `Source = GetInverterInfo.cgi` and the identity state `present`, and
+**never overwrites** an identity the authenticated path established. What the
+route does **not** carry, and does not invent: the **model** and the **firmware**
+stay empty (the Solar API reports neither), so this remains the only part of the
+identity that a firmware reporting a model key could still change.
 
 ## 4 and 5. Smart Meter and battery
 
@@ -163,6 +170,18 @@ Any computation of consumption, import/export and self-consumption remains
 forbidden without a detected meter, and `battery.soc` remains unavailable even
 with a battery detected. No corresponding card is hard-coded in the interface:
 they derive from `/api/v1/capabilities`.
+
+**Corroborated by the Solar API inventory (implemented).** Since the Solar
+API-first route, `internal/detect` also reads
+`/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System` — **without any
+credential** — and settles the meter/battery state the internal readable path
+left `unknown`: a class reported with at least one device is `present`, a class
+reported empty or not mentioned is `absent`, with `Source =
+GetActiveDeviceInfo.cgi` (`internal/detect/solar.go`). The precedence is the same
+one-directional rule as the identity: it **never overwrites** a state the
+internal `Cgi` path already established. So the two absence findings of this
+unknown are now corroborated by a second, credential-free source rather than
+resting on the internal read alone.
 
 **What remains open (state of charge).** The official client does read
 `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` (`%`) in the `channels` of the battery
@@ -200,8 +219,9 @@ what the server would accept from a given request, and it changes nothing about
 what this application may call. **Unknown #6 stays open**: no arithmetic over
 payload booleans produces a permission matrix.
 
-**Decision.** The code allowlist is the only executable authorization: eight
-internal paths plus the Solar API paths the collector reads, all `READ`, all in
+**Decision.** The code allowlist is the only executable authorization: nine
+internal paths plus the Solar API paths the collector and the detector read, all
+`READ`, all in
 GET. Everything else is
 inventoried to be avoided, never to be authorized. An "unknown" cell is not an
 implicit permission — and a method now **observed** (for example the official

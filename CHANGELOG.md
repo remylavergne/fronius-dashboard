@@ -9,6 +9,42 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **The Solar API-first route, implemented: identity and presence
+  without credentials.** Three Solar API requests need no credential and now
+  answer what the Digest-protected internal API could not: `internal/fronius/solarapi`
+  gains three readers — `InverterInfo()` (`/solar_api/v1/GetInverterInfo.cgi`),
+  `ActiveDevices(ctx, class)` (`/solar_api/v1/GetActiveDeviceInfo.cgi`, frozen
+  query `DeviceClass=System`) and `APIVersion()` (`/solar_api/GetAPIVersion.cgi`,
+  the one answer that is **not** enveloped). `internal/detect` gains a `Solar
+  SolarReader` field (optional: a detector without it reads the internal paths
+  only) and a `readSolar` step on its own slow cycle. The three requests are
+  **used, never merely recorded**: they publish three new device-detail families
+  — `inverter_info`, `active_devices`, `api_version` — and fill what the internal
+  API left undetermined. The precedence is one-directional: identity falls back
+  to `GetInverterInfo.cgi` **only** when the record holds no serial number
+  (filling `SerialNumber` from `UniqueID`, `DeviceName` from `CustomName`,
+  `record.Source = GetInverterInfo.cgi`, identity state `present`), never
+  overwriting an identity the authenticated path established, and **never
+  inventing** the model or the firmware (the Solar API does not report them);
+  presence falls back to the active-device inventory **only** when the internal
+  meter/battery state is `unknown` (a class reported with at least one device is
+  `present`, a class reported empty or not mentioned is `absent`, `Source =
+  GetActiveDeviceInfo.cgi`). The collector paces its two Solar API reads: the
+  common inverter detail is read **every other collection cycle**
+  (`detailEveryNCycles = 2`, §2.6 — at most two realtime requests in parallel and
+  four seconds between two consecutive calls; at the default `5 s` interval,
+  alternating keeps them `5 s` apart). `cmd/fronius-sim` serves the three paths
+  in the observed shapes and answers a class without a device **empty**, which
+  the fallback reads as an established absence. Verified running against the
+  simulator **without any credential**: identity `available: true` (serial
+  `SIMULATED-0001`, `source = /solar_api/v1/GetInverterInfo.cgi`, `model` stays
+  `null`), meter and battery `absent` with `source = /solar_api/v1/GetActiveDeviceInfo.cgi`,
+  and `/api/v1/detail` carrying the three families. One bug found and fixed
+  during that verification: the fallback updated the in-memory detection but not
+  the **record**, so the capability still said "identity not determined" — a test
+  now asserts the recorded state. Documentation only in this entry's scope: no
+  code beyond the readers, the detector step and the simulator.
+
 - 2026-10-16 — **Two Solar API endpoints the specification has and the catalogue
   lacked.** Reading the manufacturer's specification
   **`42,0410,2012,EN 02115052025`** (`references/42,0410,2012.pdf`, 91 pages,

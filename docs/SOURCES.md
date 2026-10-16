@@ -472,13 +472,13 @@ answered; the availability column is what the specification states.
 
 | Endpoint | What it provides | Availability in the specification | Second survey (2026-10-16, firmware 1.19.7-1) |
 |---|---|---|---|
-| `/solar_api/GetAPIVersion.cgi` | API version exposed by the device | §2.4.1: the path is `/solar_api/GetAPIVersion.cgi` (the `.cgi` belongs to the path, no version segment) | **`ok`**, 92 bytes, 3 fields (`APIVersion`, `BaseURL`, `CompatibilityRange`) — the earlier `404` was the probe's missing suffix, not an absent endpoint |
-| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`) | §4.1.3 `.cgi`; §4.1.2 `CommonInverterData` and `CumulationInverterData` supported on GEN24, `3PInverterData` "Only on 3 phase inverters"; §4.1.5 the day and year counters always null, the total updated every 5 min | **`ok`**: `CommonInverterData` 1682 bytes / 36 fields (read by the collector every cycle), `CumulationInverterData` 883 / 18 (probe-only); `3PInverterData` **`empty`** (436 — the Primo is single-phase) |
-| `/solar_api/v1/GetInverterInfo.cgi` | Identity: model, serial number, firmware per inverter | §4.6.2 `.cgi`; §4.6.1 ALWAYS on GEN24/Tauro/Verto; §4.6.5 the `StatusCode` table | **`ok`**, 537 bytes, 12 fields — **identity from the Solar API, with no credentials** (`docs/UNKNOWNS.md` #3) |
+| `/solar_api/GetAPIVersion.cgi` | API version exposed by the device | §2.4.1: the path is `/solar_api/GetAPIVersion.cgi` (the `.cgi` belongs to the path, no version segment) | **`ok`**, 92 bytes, 3 fields (`APIVersion`, `BaseURL`, `CompatibilityRange`) — **`called`** now: read by `internal/detect` on the detection cycle and published as the `api_version` family (it is the one answer that is **not** enveloped); the earlier `404` was the probe's missing suffix, not an absent endpoint. Provenance: the specification §2.4.1 + the second survey of 2026-10-16 (firmware `1.19.7-1`) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`) | §4.1.3 `.cgi`; §4.1.2 `CommonInverterData` and `CumulationInverterData` supported on GEN24, `3PInverterData` "Only on 3 phase inverters"; §4.1.5 the day and year counters always null, the total updated every 5 min | **`ok`**: `CommonInverterData` 1682 bytes / 36 fields (read by the collector every other cycle, `detailEveryNCycles = 2`), `CumulationInverterData` 883 / 18 (probe-only); `3PInverterData` **`empty`** (436 — the Primo is single-phase) |
+| `/solar_api/v1/GetInverterInfo.cgi` | Identity: model, serial number, firmware per inverter | §4.6.2 `.cgi`; §4.6.1 ALWAYS on GEN24/Tauro/Verto; §4.6.5 the `StatusCode` table | **`ok`**, 537 bytes, 12 fields — **`called`** now: read by `internal/detect` on the detection cycle and **used** as the **identity fallback** (`docs/UNKNOWNS.md` #3). With no credential it fills `SerialNumber` from `UniqueID` and `DeviceName` from `CustomName` when `/status/version` established nothing, `Source = GetInverterInfo.cgi`; it never overwrites an authenticated identity and never invents the model or the firmware (published as the `inverter_info` family). Provenance: the specification §4.6 + the second survey of 2026-10-16 (firmware `1.19.7-1`) |
 | `/solar_api/v1/GetLoggerInfo.cgi` | Identity of the datalogger / the interface | §4.4.2 `.cgi`; §4.4.1 ALWAYS but "available but returns an error" on GEN24/Tauro/Verto | **`empty`**, 288 bytes — consistent with the specification's own note |
 | `/solar_api/v1/GetMeterRealtimeData.cgi` | Measurements of the Fronius Smart Meter, if present | §4.8.2 `.cgi`; §4.8.1 GEN24/Tauro/Verto "planned in 1.13"; §4.8 takes `Scope`/`DeviceId` | **`empty`**, 276 bytes — and no meter is installed (`Body.Data` empty on `/components/PowerMeter/readable`, § Hardware captures) |
 | `/solar_api/v1/GetStorageRealtimeData.cgi` | State of charge and power of the battery, if present | §4.9.4 `.cgi`; §4.9.1 GEN24/Tauro/Verto since 1.13; §4.9 takes `Scope`/`DeviceId` | **`empty`**, 276 bytes — and no battery is installed (`docs/UNKNOWNS.md` #5) |
-| `/solar_api/v1/GetActiveDeviceInfo.cgi` | Inventory of the active devices of the system (with serials) | §4.7.2 `.cgi`; §4.7.1 ALWAYS; §4.7.3 takes a `DeviceClass` | **`ok`**, 494 bytes, 7 fields |
+| `/solar_api/v1/GetActiveDeviceInfo.cgi` | Inventory of the active devices of the system (with serials) | §4.7.2 `.cgi`; §4.7.1 ALWAYS; §4.7.3 takes a `DeviceClass` | **`ok`**, 494 bytes, 7 fields — **`called`** now: read by `internal/detect` on the detection cycle with the frozen query `DeviceClass=System` and **used** as the **presence fallback** (`docs/UNKNOWNS.md` #4/#5). When the internal meter/battery readable path left the state `unknown`, a class reported with at least one device is `present`, a class reported empty or not mentioned is `absent`, `Source = GetActiveDeviceInfo.cgi` (published as the `active_devices` family). Provenance: the specification §4.7 + the second survey of 2026-10-16 (firmware `1.19.7-1`) |
 | `/solar_api/v1/GetStringRealtimeData.cgi` | Per-string DC measurements (voltage, current, power) | §4.3.2 `.cgi`; §4.3.1 ALWAYS but "String Control does not exist for GEN24/Tauro/Verto" | **`empty`**, 296 bytes |
 | `/solar_api/v1/GetSensorRealtimeData.cgi` | External sensor channels (irradiance, temperature) when a sensor card is fitted | §4.2.2 `.cgi`; §4.2.1 ALWAYS but "available but returns an error" | **`empty`**, 296 bytes — no sensor card |
 | `/solar_api/v1/GetLoggerLEDInfo.cgi` | LED state and colour of the serving device | §4.5.2 `.cgi`; §4.5.1 ALWAYS but "available but returns an error" | **`empty`**, 291 bytes — added to the catalogue when the specification was read (the earlier list lacked it) |
@@ -494,8 +494,12 @@ entry is left saying "this firmware does not serve it"**: eight of the ten earli
 archive is `404` by the specification's own rule, not by a firmware shortfall.
 
 Consequence for phase 1: detecting the presence of a Smart Meter or a battery is
-**feasible without any write**, through simple GETs, and it is the internal
-`/components/*/readable` paths that serve the detection today. The Solar API
+**feasible without any write**, through simple GETs. The internal
+`/components/*/readable` paths are the precise source (they need credentials and
+state the cause); since the Solar API-first route is implemented, they are
+**corroborated** by the `GetActiveDeviceInfo.cgi` inventory, which needs no
+credential and settles the presence when the authenticated read left it
+`unknown` (`docs/UNKNOWNS.md` #4/#5). The Solar API
 `empty` answers above confirm the same hardware fact (no meter, no battery, no
 Ohmpilot / sensor card / StringControl on GEN24) rather than a firmware
 limitation. The 2026-10-16 capture settled the question for the reference
@@ -646,7 +650,7 @@ Field-level facts observed in the report:
 - **`CommonInverterData`** (36 fields) carries the Solar API `Unit`/`Value`
   measurement pairs **plus** `ErrorCode`, `InverterState`, `StatusCode`: the
   electrical detail and the device status — now **read by the application**
-  every collector cycle and published on the device detail page.
+  every other collector cycle and published on the device detail page.
 - **`/status/version`** (29) carries `apiversions` (commandsApi, configApi,
   setupAppApi, statusApi, updateApi), eleven `swrevisions` components (of which
   only `GEN24` is read), three `hwrevisions` keys, `minAppVersions`
@@ -697,7 +701,9 @@ points 2 and 5 are **retired**):
    bytes, 12 fields) and `GetLoggerInfo.cgi` answers `empty` (288 bytes): the
    identity **is** available from the Solar API, without credentials — as a
    **second source** beside `/status/version`, not a replacement
-   (`docs/UNKNOWNS.md` #3).
+   (`docs/UNKNOWNS.md` #3). It is now **implemented**: `internal/detect` reads
+   `GetInverterInfo.cgi` and uses it as the identity fallback (Step 25,
+   `docs/adr/0003`, `docs/ARCHITECTURE.md`).
 3. **`CommonInverterData` and `CumulationInverterData` are served**: the
    electrical detail and the inverter `DeviceStatus`
    (`InverterState`/`StatusCode`/`ErrorCode`) are available on this device. The
@@ -746,7 +752,10 @@ for the first run).
 The three Solar API paths that were `not_found` and now answer `ok` — identity
 (`GetInverterInfo.cgi`), live device inventory (`GetActiveDeviceInfo.cgi`) and API
 version (`GetAPIVersion.cgi`) — all answered to the **bare** request: no
-credentials are needed (`docs/UNKNOWNS.md` #3). The five that now answer `empty`
+credentials are needed (`docs/UNKNOWNS.md` #3), and they are now **called** by
+`internal/detect` (the Solar API-first route, Step 25): the first two fill the
+identity and the presence the internal API left undetermined, the third is
+published as the `api_version` family. The five that now answer `empty`
 are each consistent with the specification's availability note and with the
 hardware (no meter, no battery, no sensor card, no Ohmpilot, no StringControl on
 GEN24). The internal paths are unchanged: all answer `ok` except the two component

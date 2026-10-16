@@ -77,6 +77,8 @@
 - [x] Run a read-only survey of every catalogued path and record its outcome (class, shape, firmware) in `source_probe`, merged into `/api/v1/sources`
 - [x] Read and publish the device detail families (inverter, system, network, devices, emrs) served by `GET /api/v1/detail` — a snapshot per family in `device_detail` (migration `0008_detail.sql`), the inverter family with the collector, the four diagnostics with the detector, so each family carries its own read instant; the five new readings documented in `docs/ENDPOINTS.md` § Executable allowlist and `docs/SOURCES.md` § Endpoint inventory
 - [x] Read and publish the cache family (`/components/cache/readable`) served by `GET /api/v1/detail` as the sixth family — read by `internal/detect` on the detection cycle (a `4 897`-byte register dump per `5 s` cycle would be waste), stored in `device_detail` and rendered by the Device detail page's **Cache block**; the allowlist grows from eight to nine internal paths (`Cgi` envelope, `Digest: true` per the registry while the device answers `200` without a header), the device's own 44 named registers and 37 bare `<id>` are kept verbatim, and **no unit is derived from a name** (`docs/UNKNOWNS.md` #14 keeps the bare ids open)
+- [x] Read the inverter identity from the Solar API, with no credential — `internal/detect` reads `/solar_api/v1/GetInverterInfo.cgi` on the detection cycle and **fills** `SerialNumber`/`DeviceName` only when `/status/version` established no serial number (never overwriting an authenticated identity, never inventing the model or the firmware, which stay empty); published as the `inverter_info` family and the second source of `docs/UNKNOWNS.md` #3
+- [x] Source the meter/battery presence from the Solar API inventory — `internal/detect` reads `/solar_api/v1/GetActiveDeviceInfo.cgi?DeviceClass=System` on the detection cycle and settles a state the internal readable path left `unknown` (a class with at least one device is `present`, a class empty or not mentioned is `absent`); published as the `active_devices` family and corroborating `docs/UNKNOWNS.md` #4/#5
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
@@ -680,4 +682,57 @@
   beside `/status/version` (`docs/UNKNOWNS.md` #3); and
   `/solar_api/v1/GetActiveDeviceInfo.cgi` (494 bytes, 7 fields, the live device
   inventory with serials) could source presence detection. Both are `[DOC]`-proven
-  and observed; neither is wired.
+  and observed; **at the date of this step** neither was wired — both were wired
+  at Step 25 below.
+
+- 2026-10-16 — Step 25 (phase 1/3/4): the **Solar API-first route, implemented**.
+  The three Solar API identity/inventory requests the survey of Step 24 observed
+  are no longer `captured` and unread: `internal/fronius/solarapi/info.go` gains
+  three readers with no credential — `InverterInfo()`
+  (`/solar_api/v1/GetInverterInfo.cgi`), `ActiveDevices(ctx, class)`
+  (`/solar_api/v1/GetActiveDeviceInfo.cgi`, frozen query `DeviceClass=System`, the
+  class checked against the six the specification lists + `System`) and
+  `APIVersion()` (`/solar_api/GetAPIVersion.cgi`, the one answer that is **not**
+  enveloped) — and factors the request path shared with the realtime reader
+  (`Client.get`: timeout, 1 MiB bound, error classification, debug line).
+  `internal/detect` gains an optional `Solar SolarReader` field (a detector
+  without it reads the internal paths only) and a `readSolar` step on the same
+  cycle: it publishes three new detail families — `inverter_info`,
+  `active_devices`, `api_version` — in the flat `entries: [{path, value}]` shape
+  the interface already renders for the EMRS pins (no frontend change), and it
+  **uses** the first two. **Identity fallback**: when the record holds no serial
+  number it fills `SerialNumber` from `UniqueID`, `DeviceName` from `CustomName`,
+  sets `record.Source = GetInverterInfo.cgi` and the detection + **record**
+  identity state to `present`; it never overwrites an identity the authenticated
+  path established, and never invents the model or the firmware (they stay
+  empty). **Presence fallback**: when the internal meter/battery state is
+  `unknown`, the active-device inventory settles it — a class with at least one
+  device is `present`, a class empty or not mentioned is `absent`, `Source =
+  GetActiveDeviceInfo.cgi`. The collector paces its two reads: the common inverter
+  detail is read **every other collection cycle** (`detailEveryNCycles = 2`, §2.6:
+  at most two realtime requests in parallel, four seconds between two consecutive
+  calls — at the default `5 s` interval, alternating keeps them `5 s` apart).
+  `cmd/fronius-sim` serves the three paths in the observed shapes (`--with-meter`/
+  `--with-battery` reflected in the inventory; a class without a device answered
+  **empty**, which the fallback reads as an established absence). Tests: the three
+  readers (`internal/fronius/solarapi/info_test.go`), the two precedence rules,
+  the three families, a detector without a Solar reader, the collector cadence.
+  **Verified running** against the simulator (requiring Digest) with `froniusd`
+  and NO credentials: before, identity `unknown` ("credentials not configured")
+  and meter/battery `unknown`; after, `device.identity` **available: true** (serial
+  `SIMULATED-0001`, device name `simulated-inverter`, `source =
+  /solar_api/v1/GetInverterInfo.cgi`, `model` stays `null`), meter and battery
+  `absent` with `source = /solar_api/v1/GetActiveDeviceInfo.cgi`, and
+  `/api/v1/detail` carrying the three families. One bug found and fixed during
+  that verification: the fallback updated the in-memory detection but not the
+  **record**, so the capability still said "identity not determined" — the test
+  now asserts the recorded state. Registers updated: `docs/ARCHITECTURE.md` (the
+  Solar API-first route, the read budget, the three families, `SA → DET`),
+  `docs/adr/0003` (the route, implemented) and `docs/adr/0008` (the Solar API
+  first, now implemented), `docs/SOURCES.md` (the three paths `called`, what they
+  feed, provenance), `docs/ENDPOINTS.md` (three allowlist rows, the matrix, the
+  counts), `docs/RUNBOOK.md` (what an operator gains without credentials; what
+  still needs one — events, `GetUTCTime`, `GetServiceState`; the cadence),
+  `docs/UNKNOWNS.md` (#3 implemented, #4/#5 corroborated), `CHANGELOG.md`. Boxes
+  ticked: "Read the inverter identity from the Solar API, with no credential" and
+  "Source the meter/battery presence from the Solar API inventory" (phase 4).

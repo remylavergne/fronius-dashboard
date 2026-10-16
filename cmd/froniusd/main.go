@@ -141,7 +141,11 @@ func run(backfillDays int, forceBackfill bool) error {
 	// way to know that the device requires authentication, and the bundle
 	// proves that some internal paths respond without it (module yTJA).
 	det := &detect.Detector{
-		Source:                internalClient,
+		Source: internalClient,
+		// The same Solar API client the collector uses: the three requests of
+		// the Solar API-first route need no credential and fill what the
+		// Digest-protected internal API cannot establish without one.
+		Solar:                 client,
 		Sink:                  store,
 		Log:                   logger,
 		Interval:              cfg.DetectInterval,

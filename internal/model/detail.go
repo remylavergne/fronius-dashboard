@@ -27,6 +27,11 @@ const (
 	FamilyDevices  = "devices"
 	FamilyEmrs     = "emrs"
 	FamilyCache    = "cache"
+	// The Solar API families: the same questions as the internal API, answered
+	// without a credential (ADR 0003/0008, Solar API first).
+	FamilyInverterInfo  = "inverter_info"
+	FamilyActiveDevices = "active_devices"
+	FamilyAPIVersion    = "api_version"
 )
 
 // MeasurementDetail is one measurement of the realtime-data family: a unit and
@@ -114,19 +119,19 @@ type DevicesDetail struct {
 	Devices []DeviceDetailEntry `json:"devices"`
 }
 
-// EmrsEntry is one flattened value of the EMRS pins.
+// EntryDetail is one flattened value of the EMRS pins.
 //
 // The family is published as a flat path/value list because its shape is a set
 // of device-defined pins: modelling keys nobody observed would be inventing
 // them.
-type EmrsEntry struct {
+type EntryDetail struct {
 	Path  string `json:"path"`
 	Value any    `json:"value"`
 }
 
-// EmrsDetail is the published snapshot of the EMRS family.
-type EmrsDetail struct {
-	Entries []EmrsEntry `json:"entries"`
+// EntriesDetail is the published snapshot of the EMRS family.
+type EntriesDetail struct {
+	Entries []EntryDetail `json:"entries"`
 }
 
 // measurementOrder is the display order of the realtime-data measurements: the

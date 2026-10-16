@@ -23,12 +23,13 @@ type result struct {
 }
 
 type fakeSource struct {
-	mu        sync.Mutex
-	results   []result
-	idx       int
-	calls     int
-	realtime  solarapi.InverterRealtime
-	detailErr error
+	mu          sync.Mutex
+	results     []result
+	idx         int
+	calls       int
+	realtime    solarapi.InverterRealtime
+	detailErr   error
+	detailCalls int
 }
 
 // InverterRealtime answers the second read of a cycle: the inverter's state and
@@ -37,6 +38,7 @@ type fakeSource struct {
 func (f *fakeSource) InverterRealtime(context.Context, string) (solarapi.InverterRealtime, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.detailCalls++
 	if f.detailErr != nil {
 		return solarapi.InverterRealtime{}, f.detailErr
 	}
@@ -467,5 +469,34 @@ func TestNowIsInjectable(t *testing.T) {
 	}
 	if sink.samples[0].TSSource != model.TSSourceCollector || sink.samples[0].Quality != model.QualityEstimated {
 		t.Fatalf("origin = %q quality = %q", sink.samples[0].TSSource, sink.samples[0].Quality)
+	}
+}
+
+// TestTheInverterDetailIsReadOnEveryOtherCycle: the Solar API specification
+// (§2.6) allows at most two realtime requests in parallel and prescribes four
+// seconds between two consecutive calls. One collection cycle already asks for
+// the flow; asking for the detail in the same breath would put two requests back
+// to back, so it is read on every other cycle — which, at the default
+// five-second interval, keeps consecutive requests five seconds apart.
+func TestTheInverterDetailIsReadOnEveryOtherCycle(t *testing.T) {
+	env := okEnvelope("2026-10-16T09:17:43+02:00", 100)
+	src := &fakeSource{results: []result{{env: env}, {env: env}, {env: env}, {env: env}}}
+	sink := newFakeSink()
+	c := newCollector(src, sink)
+
+	for i := range 4 {
+		if _, err := c.CollectOnce(context.Background()); err != nil {
+			t.Fatalf("cycle %d: %v", i+1, err)
+		}
+	}
+
+	src.mu.Lock()
+	got := src.detailCalls
+	src.mu.Unlock()
+	if got != 2 {
+		t.Errorf("detail reads over four cycles = %d, want 2 (every other cycle)", got)
+	}
+	if n := len(sink.details); n != 2 {
+		t.Errorf("recorded families = %d, want one per read", n)
 	}
 }

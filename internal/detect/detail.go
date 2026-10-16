@@ -16,7 +16,7 @@ import (
 // three are still read: the paths are independent, and a refused path must not
 // hide the rest. Nothing is recorded as an empty value — an unavailable family
 // carries its reason, and a family never read is simply absent.
-func (d *Detector) readDetail(ctx context.Context, now time.Time) {
+func (d *Detector) readDetail(ctx context.Context, now time.Time) []storage.Detail {
 	details := make([]storage.Detail, 0, 5)
 
 	if v, err := d.Source.System(ctx); err != nil {
@@ -80,21 +80,19 @@ func (d *Detector) readDetail(ctx context.Context, now time.Time) {
 		// The pins are published as a flat path/value list: their shape is
 		// device-defined, and inventing a schema for keys nobody observed would
 		// be exactly the guess this project refuses.
-		entries := make([]model.EmrsEntry, 0, 2*len(v))
+		entries := make([]model.EntryDetail, 0, 2*len(v))
 		for _, pin := range v {
 			if pin.State != nil {
-				entries = append(entries, model.EmrsEntry{Path: pin.Name + ".state", Value: *pin.State})
+				entries = append(entries, model.EntryDetail{Path: pin.Name + ".state", Value: *pin.State})
 			}
 			if pin.Reason != nil {
-				entries = append(entries, model.EmrsEntry{Path: pin.Name + ".reason", Value: *pin.Reason})
+				entries = append(entries, model.EntryDetail{Path: pin.Name + ".reason", Value: *pin.Reason})
 			}
 		}
-		details = append(details, marshalDetail(model.FamilyEmrs, now, model.EmrsDetail{Entries: entries}))
+		details = append(details, marshalDetail(model.FamilyEmrs, now, model.EntriesDetail{Entries: entries}))
 	}
 
-	if err := d.Sink.SaveDetails(ctx, details); err != nil {
-		d.log().Warn("device detail not recorded", "error", err)
-	}
+	return details
 }
 
 // unavailable describes a family the device did not answer.

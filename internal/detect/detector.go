@@ -94,6 +94,10 @@ type Detector struct {
 	// these paths at 5,000 ms; the value retained is much longer, because an
 	// identity and a presence rarely change.
 	Interval time.Duration
+	// Solar is the unauthenticated Solar API source. It is optional: a detector
+	// built without it reads the internal paths only, which is what the tests of
+	// the internal detection do.
+	Solar SolarReader
 	// CredentialsConfigured indicates that credentials are available. It
 	// is only used to distinguish "the device requires authentication"
 	// from "no credential has been provided".
@@ -156,7 +160,7 @@ func (d *Detector) DetectOnce(ctx context.Context) (model.Detection, error) {
 	// device's own description of itself all change rarely. They are read after
 	// the state above so that a slow or failing detail path never delays the
 	// detection the interface depends on.
-	d.readDetail(ctx, now)
+	details := d.readDetail(ctx, now)
 
 	record := storage.DeviceRecord{
 		ReadAtUTC:          now,
@@ -180,10 +184,22 @@ func (d *Detector) DetectOnce(ctx context.Context) (model.Detection, error) {
 		record.ArticleNumber = deref(version.ArticleNumber)
 	}
 
+	// The Solar API answers the same questions without a credential, and fills
+	// what the internal API could not establish — never the other way round. It
+	// runs on the record built above, so its fallbacks land in the saved state.
+	if d.Solar != nil {
+		details = append(details, d.readSolar(ctx, now, &detection, &record)...)
+	}
+
 	var errs []error
 	if eventsErr != nil {
 		errs = append(errs, eventsErr)
 	}
+	if err := d.Sink.SaveDetails(ctx, details); err != nil {
+		d.log().Warn("device detail not recorded", "error", err)
+	}
+	// After the Solar API fallbacks: the record is the identity the interface
+	// shows, and it must carry whatever source established it.
 	if err := d.Sink.SaveDevice(ctx, record); err != nil {
 		errs = append(errs, err)
 	}

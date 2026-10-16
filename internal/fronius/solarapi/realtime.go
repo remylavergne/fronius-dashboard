@@ -5,12 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
-
-	"fronius-supervisor/internal/fronius"
-	"fronius-supervisor/internal/fronius/froniuserr"
 )
 
 // CommonQuery selects the common inverter collection: the electrical detail
@@ -70,43 +65,9 @@ func (c *Client) InverterRealtime(ctx context.Context, query string) (InverterRe
 		return out, fmt.Errorf("%w: collection %q", errNotAllowedQuery, query)
 	}
 
-	endpoint := *c.base
-	endpoint.Path = InverterRealtimePath
-	endpoint.RawQuery = query
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	body, err := c.get(ctx, InverterRealtimePath, query)
 	if err != nil {
-		return out, &froniuserr.Error{Kind: froniuserr.KindTransport, Endpoint: InverterRealtimePath, Err: err}
-	}
-	req.Header.Set("Accept", "application/json")
-
-	start := time.Now()
-	resp, err := c.doer.Do(req)
-	if err != nil {
-		return out, fronius.ClassifyTransport(ctx, InverterRealtimePath, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
-	if err != nil {
-		return out, fronius.ClassifyTransport(ctx, InverterRealtimePath, err)
-	}
-	c.log.Debug("solar api",
-		"solar_api_path", InverterRealtimePath,
-		"solar_api_query", query,
-		"status", resp.StatusCode,
-		"bytes", len(body),
-		"duration_ms", time.Since(start).Milliseconds())
-
-	if resp.StatusCode != http.StatusOK {
-		return out, fronius.ClassifyStatus(InverterRealtimePath, resp.StatusCode)
-	}
-	if len(body) > maxBodyBytes {
-		return out, &froniuserr.Error{
-			Kind:     froniuserr.KindDecode,
-			Endpoint: InverterRealtimePath,
-			Err:      fmt.Errorf("body of %d bytes: exceeds the limit of %d MiB", len(body), maxBodyBytes>>20),
-		}
+		return out, err
 	}
 
 	// The captured answer is flat: the measurements sit directly under
@@ -118,15 +79,10 @@ func (c *Client) InverterRealtime(ctx context.Context, query string) (InverterRe
 		Head Head `json:"Head"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return out, &froniuserr.Error{
-			Kind: froniuserr.KindDecode, Endpoint: InverterRealtimePath, HTTPStatus: resp.StatusCode, Err: err,
-		}
+		return out, decodeError(InverterRealtimePath, err)
 	}
 	if raw.Body == nil {
-		return out, &froniuserr.Error{
-			Kind: froniuserr.KindDecode, Endpoint: InverterRealtimePath, HTTPStatus: resp.StatusCode,
-			Err: errors.New("Body absent from the response"),
-		}
+		return out, decodeError(InverterRealtimePath, errors.New("Body absent from the response"))
 	}
 
 	// An empty Body.Data is not an error here: the three-phase collection
@@ -137,10 +93,7 @@ func (c *Client) InverterRealtime(ctx context.Context, query string) (InverterRe
 		if key == "DeviceStatus" {
 			var status DeviceStatus
 			if err := json.Unmarshal(value, &status); err != nil {
-				return out, &froniuserr.Error{
-					Kind: froniuserr.KindDecode, Endpoint: InverterRealtimePath, HTTPStatus: resp.StatusCode,
-					Err: fmt.Errorf("DeviceStatus: %w", err),
-				}
+				return out, decodeError(InverterRealtimePath, fmt.Errorf("DeviceStatus: %w", err))
 			}
 			out.Status = status
 			continue
@@ -159,15 +112,8 @@ func (c *Client) InverterRealtime(ctx context.Context, query string) (InverterRe
 		out.Timestamp = ts.UTC()
 	}
 
-	if raw.Head.Status.Code != 0 {
-		return out, &froniuserr.Error{
-			Kind:        froniuserr.KindStatus,
-			Endpoint:    InverterRealtimePath,
-			HTTPStatus:  resp.StatusCode,
-			Code:        raw.Head.Status.Code,
-			Reason:      raw.Head.Status.Reason,
-			UserMessage: raw.Head.Status.UserMessage,
-		}
+	if err := statusError(InverterRealtimePath, raw.Head); err != nil {
+		return out, err
 	}
 	return out, nil
 }

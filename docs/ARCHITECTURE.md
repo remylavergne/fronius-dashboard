@@ -28,6 +28,7 @@ flowchart LR
   INV -.-> RO
   RO --> DG
   DG --> SA --> COL
+  SA --> DET
   DG --> IA --> DET
   DET --> DB
   COL --> MOD --> DB
@@ -64,12 +65,18 @@ production, and the API publishes them on a page of their own
 - The **inverter** family is the Solar API collection
   `GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData`
   (constant `solarapi.CommonQuery`): its `DeviceStatus` and its thirteen
-  measurements. `internal/collector` reads it **once per collection cycle**,
-  beside the measurements — that is **one extra `GET` per cycle**, the cost of a
-  fresh electrical detail the flow endpoint does not carry.
+  measurements. `internal/collector` reads it **every other collection cycle**
+  (`detailEveryNCycles = 2`, see the read budget below), beside the measurements
+  — the cost of a fresh electrical detail the flow endpoint does not carry.
 - The **system**, **network**, **devices** and **emrs** families are read by
   `internal/detect`, on the detection cycle (`FRONIUS_DETECT_INTERVAL`): they
   change rarely, and a snapshot of them belongs with the identity read.
+- The **`inverter_info`**, **`active_devices`** and **`api_version`** families
+  are the three Solar API requests the detector reads on the same detection
+  cycle (`GetInverterInfo.cgi`, `GetActiveDeviceInfo.cgi?DeviceClass=System`,
+  `GetAPIVersion.cgi`): they need no credential, and they are also **used** —
+  the identity and the presence the internal API could not establish come from
+  them (see the Solar API-first route below).
 - The **cache** family (`/components/cache/readable`) is read by the same
   detector, on the same cycle: `4 897` bytes and `99` values on the reference
   device, so a register dump on every `5 s` collection cycle would be waste. The
@@ -86,12 +93,42 @@ never read (**absent from the list**).
 **The Solar API read budget.** §2.6 of the manufacturer's specification
 (`42,0410,2012,EN 02115052025`) allows at most **two realtime requests in
 parallel** and requires **4 s between two consecutive calls**. The collector
-issues **two reads per cycle** — the flow endpoint
-(`GetPowerFlowRealtimeData.fcgi`) and the common inverter collection
-(`GetInverterRealtimeData.cgi?…DataCollection=CommonInverterData`) — which fits
-the budget; `cmd/fronius-probe --survey` paces itself at the same 4 s between
-paths, and a lower value is a deliberate, documented choice
-(`docs/RUNBOOK.md`, `docs/PROBE-READONLY.md`).
+issues **one read every cycle** — the flow endpoint
+(`GetPowerFlowRealtimeData.fcgi`) — and the common inverter collection
+(`GetInverterRealtimeData.cgi?…DataCollection=CommonInverterData`) **every other
+cycle** (`detailEveryNCycles = 2`): at the default `5 s` interval, alternating
+keeps two consecutive requests `5 s` apart instead of `≈0` within one cycle,
+which one detail read per cycle would not. `cmd/fronius-probe --survey` paces
+itself at the same 4 s between paths, and a lower value is a deliberate,
+documented choice (`docs/RUNBOOK.md`, `docs/PROBE-READONLY.md`).
+
+**The Solar API-first route.** Three Solar API requests describe the installation
+itself — `GetInverterInfo.cgi` (identity), `GetActiveDeviceInfo.cgi?DeviceClass=System`
+(the active-device inventory) and `GetAPIVersion.cgi` (the API version, the one
+answer that is not enveloped). They are read by `internal/detect` on the
+detection cycle, and, unlike the internal API, **none of them needs a
+credential** (`internal/fronius/solarapi/info.go`). They are not merely recorded:
+the detector **uses** the first two to **fill** identity and presence when the
+authenticated internal read left them undetermined. The precedence is strictly
+one-directional — the internal API first, the Solar API **never overwriting** an
+answer the device already gave:
+
+- **identity**: it fills `SerialNumber` from `UniqueID` and `DeviceName` from
+  `CustomName` **only when the record holds no serial number** (the internal
+  `/status/version` refused or was abandoned), sets `Source = GetInverterInfo.cgi`
+  and a reason naming the source. It **never invents the model or the firmware**:
+  the Solar API does not report them, so they stay empty. An identity the
+  authenticated path established is never replaced.
+- **presence**: when the internal meter/battery state is `unknown`, the inventory
+  settles it — a class reported with at least one device is `present`, a class
+  reported empty or not mentioned is `absent`, with `Source =
+  GetActiveDeviceInfo.cgi`.
+
+The consequence an operator sees: **identity and presence work with no
+credential at all**, while the device events (`/status/activeEvents`) and the two
+`/commands/*` read paths (`GetUTCTime`, `GetServiceState`) still need one
+(`docs/RUNBOOK.md`). A detector with no `SolarReader` (its `Solar` field nil)
+reads the internal paths only and keeps working.
 
 ## Go packages
 
@@ -111,8 +148,8 @@ paths, and a lower value is a deliberate, documented choice
 | `internal/model` | Normalized model, units, three-state detection, capabilities, events, and the device detail snapshots (the six families) | `solarapi` |
 | `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, the recorded survey (`source_probe`), the device detail (`device_detail`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
-| `internal/collector` | Collection loop, backoff, events, and the inverter detail snapshot (`InverterRealtime`, once per cycle) | `solarapi`, `model`, `storage` |
-| `internal/detect` | Detection loop: identity, presence, events, states and reasons, and the system/network/devices/emrs/cache detail families | `internalapi`, `model`, `storage` |
+| `internal/collector` | Collection loop, backoff, events, and the inverter detail snapshot (`InverterRealtime`, every other cycle — `detailEveryNCycles`) | `solarapi`, `model`, `storage` |
+| `internal/detect` | Detection loop: identity, presence, events, states and reasons; the system/network/devices/emrs/cache detail families; and the Solar API-first step (the `inverter_info`/`active_devices`/`api_version` families and the two fallbacks) | `internalapi`, `solarapi`, `model`, `storage` |
 | `internal/sources` | Machine-readable catalogue of every known source: transport (`solar_api` / `internal_api`), state, field-level status, proofs and capability join; served by `GET /api/v1/sources` | — |
 | `internal/api` | REST API, validation, envelope and DTO; the read routes include `/api/v1/detail` (the device detail families) | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
 
@@ -193,7 +230,8 @@ Node process, nor a bundle, nor an HTTP response.
    status (`displayed` / `stored` / `validated` / `ignored` / `unverified`) with
    its reason, proofs and capability join — and `GET /api/v1/sources` serves it.
    `internal/sources/catalog_test.go` enforces the binding: the `called` set is
-   exactly the code allowlist plus the Solar API paths the collector reads,
+   exactly the code allowlist plus the Solar API paths the collector and the
+   detector read,
    every ignored or
    unverified field carries its reason, every capability id exists or is
    introduced by the catalogue, every declared fixture exists, and the catalogue

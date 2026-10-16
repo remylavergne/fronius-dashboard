@@ -38,6 +38,12 @@ slightest device change would become a breaking interface change.
    frontend knows **no** Fronius path and receives no raw device payload.
 2. **The Solar API first.** An addition to the internal allowlist requires a
    metric that the Solar API does not provide, written in `docs/ENDPOINTS.md`.
+   The route is now implemented, not a principle only (ADR 0003): the Solar API
+   identity (`GetInverterInfo.cgi`), the active-device inventory
+   (`GetActiveDeviceInfo.cgi`) and the API version (`GetAPIVersion.cgi`) are read
+   without any credential and **fill** what the authenticated internal API left
+   undetermined — identity and presence work with no credentials, while the
+   device events and the two `/commands/*` read paths still need one.
 3. **An addition without a consumer is not an addition.** Any new entry must
    name its use — a model field, an endpoint, a screen. What is
    extracted but unused stays documented in `docs/ENDPOINTS.md`, not in the

@@ -146,6 +146,9 @@ func (s *simulator) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(powerFlowPath, s.logged(s.handlePowerFlow))
 	mux.HandleFunc(solarapi.InverterRealtimePath, s.logged(s.handleInverterRealtime))
+	mux.HandleFunc(solarapi.InverterInfoPath, s.logged(s.handleInverterInfo))
+	mux.HandleFunc(solarapi.ActiveDeviceInfoPath, s.logged(s.handleActiveDeviceInfo))
+	mux.HandleFunc(solarapi.APIVersionPath, s.logged(s.handleAPIVersion))
 	mux.HandleFunc("/sim/health", s.logged(s.handleHealth))
 	s.registerInternal(mux)
 	return mux
@@ -434,4 +437,100 @@ func nonEmpty(in []string) []string {
 		}
 	}
 	return out
+}
+
+// handleInverterInfo serves GetInverterInfo, whose shape the survey observed on
+// firmware 1.19.7-1: Body.Data keyed by inverter index, with the state as both a
+// word and a code, a serial in UniqueID and a custom name. The values are the
+// simulator's own; only the shape is the device's.
+func (s *simulator) handleInverterInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	s.requests.Add(1)
+	if s.genericFault(w, r, s.faultFor(r)) {
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"Body": map[string]any{
+			"Data": map[string]any{
+				"1": map[string]any{
+					"CustomName":    "simulated-inverter",
+					"DT":            1,
+					"ErrorCode":     0,
+					"InverterState": "Running",
+					"PVPower":       3680,
+					"Show":          1,
+					"StatusCode":    7,
+					"UniqueID":      simulatedSerial,
+				},
+			},
+		},
+		"Head": map[string]any{
+			"Status":    map[string]any{"Code": 0, "Reason": "", "UserMessage": ""},
+			"Timestamp": time.Now().In(s.gen.loc).Format(time.RFC3339),
+		},
+	})
+}
+
+// handleActiveDeviceInfo serves GetActiveDeviceInfo, grouped by device class as
+// §4.7.5 describes. A class the installation does not have is answered empty
+// rather than omitted: that is how the device states "supported, nothing online",
+// and the fallback of internal/detect distinguishes it from a class the answer
+// never mentions.
+func (s *simulator) handleActiveDeviceInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	s.requests.Add(1)
+	if s.genericFault(w, r, s.faultFor(r)) {
+		return
+	}
+
+	data := map[string]any{
+		"Inverter": map[string]any{"1": map[string]any{"DT": 1, "Serial": simulatedSerial}},
+	}
+	if s.opt.withMeter {
+		data["Meter"] = map[string]any{
+			"0": map[string]any{"DT": -1, "Serial": "SIMULATED-METER"},
+		}
+	}
+	if s.opt.withBattery {
+		data["Storage"] = map[string]any{
+			"0": map[string]any{"DT": -1, "Serial": "SIMULATED-BATTERY"},
+		}
+	}
+	if _, ok := data["Storage"]; !ok {
+		data["Storage"] = map[string]any{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"Body": map[string]any{"Data": data},
+		"Head": map[string]any{
+			"RequestArguments": map[string]any{"DeviceClass": r.URL.Query().Get("DeviceClass")},
+			"Status":           map[string]any{"Code": 0, "Reason": "", "UserMessage": ""},
+			"Timestamp":        time.Now().In(s.gen.loc).Format(time.RFC3339),
+		},
+	})
+}
+
+// handleAPIVersion serves GetAPIVersion: the one answer of the family that is not
+// enveloped (§2.4.1).
+func (s *simulator) handleAPIVersion(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	s.requests.Add(1)
+	if s.genericFault(w, r, s.faultFor(r)) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"APIVersion":         1,
+		"BaseURL":            "/solar_api/v1/",
+		"CompatibilityRange": "1.5-9",
+	})
 }

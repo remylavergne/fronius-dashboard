@@ -29,8 +29,11 @@ const (
 
 // Backoff bounds applied after a failure.
 const (
-	initialBackoff = time.Second
-	maxBackoff     = time.Minute
+	// detailEveryNCycles paces the second Solar API request of a cycle: see the
+	// comment in CollectOnce and the specification's §2.6.
+	detailEveryNCycles = 2
+	initialBackoff     = time.Second
+	maxBackoff         = time.Minute
 )
 
 // Source provides the raw measurement. The interface is deliberately reduced to
@@ -76,6 +79,9 @@ type Collector struct {
 	lastEventDetail string
 	// failing indicates that a series of failures is in progress.
 	failing bool
+	// cycles counts the collection cycles, so that the inverter detail is read
+	// on every other one (see detailEveryNCycles).
+	cycles int
 }
 
 // Run collects until the context is cancelled. Returns nil when the
@@ -149,7 +155,19 @@ func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 	// replaces the previous one and never accumulates — and a failure here is
 	// recorded as unavailable rather than failing the cycle: the sample is the
 	// primary duty of the collector.
-	c.readInverterDetail(ctx, started)
+	//
+	// It is read on every other cycle: the Solar API specification (§2.6) allows
+	// at most two realtime requests in parallel and prescribes four seconds
+	// between two consecutive calls, and the state it carries changes slowly. At
+	// the default five-second interval, alternating keeps consecutive requests
+	// five seconds apart — which one detail read per cycle would not.
+	c.mu.Lock()
+	c.cycles++
+	readDetail := c.cycles%detailEveryNCycles == 1
+	c.mu.Unlock()
+	if readDetail {
+		c.readInverterDetail(ctx, started)
+	}
 
 	c.onSuccess(ctx, started)
 	return sm, nil
