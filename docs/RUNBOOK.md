@@ -170,6 +170,24 @@ not the same fact:
 and the cause belongs with the read that produced it. A measurement the device
 reported as nothing is shown as a dash, never as `0`.
 
+**Every family unavailable at once, all `404`?** The collector is not talking to
+the inverter. The development default is the **simulator**
+(`FRONIUS_SOLARAPI_URL=http://127.0.0.1:8081`), and an older `cmd/fronius-sim`
+serves the flow endpoint while answering `404` to everything else —
+`/status/version` included, which is also why the identity panel would be empty.
+Check the source the daemon actually polls, then point it at the device and
+restart:
+
+```bash
+curl -s localhost:8080/api/v1/system | jq -r .data.solarapi_url
+# the inverter itself: no credential is needed for the five detail paths
+FRONIUS_SOLARAPI_URL=http://192.0.2.10 ./bin/froniusd
+```
+
+These five paths answered `200` **without** a header on the reference
+installation (§ Surveying every catalogued path): a `404` on all of them is a
+wrong source, never missing authentication — that would be a `401`.
+
 ## Surveying every catalogued path
 
 `cmd/fronius-probe --survey` walks the **whole catalogued allowlist** (27 paths
