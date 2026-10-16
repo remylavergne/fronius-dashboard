@@ -143,3 +143,9 @@
   nul (jamais de zéro inventé) ; `P_Akku` reste `null` même avec `--with-meter` car aucune
   batterie n'est modélisée. Vérifié en direct : `P_PV > 0` à 11:39 locale, `P_Grid = null`,
   `Head.Status.Code = 0`, deux appels `?at=` identiques octet pour octet, nuit à 0.
+- 2026-10-16 — Étape 3 : `internal/config`, environnement uniquement (aucun fichier de
+  configuration en phase 1). Garde `CheckListenAddress` : `froniusd` refusera toute écoute
+  non loopback sans `FRONIUS_ALLOW_REMOTE=1`. Les deux cases `TODO.md` mappées à cette étape
+  (« objectifs MVP vs phase 2 », « registre des inconnues ») dépendent respectivement de
+  l'ADR 0004 (étape 6) et de `docs/UNKNOWNS.md` (étape 13) : elles seront cochées à ces
+  étapes, pas ici.

@@ -17,3 +17,8 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   déterministe (seed, courbe solaire, nébulosité lissée), extension `?at=`,
   injection de pannes (`--fault` / `X-Sim-Fault`), `GET /sim/health`, logs
   `log/slog`. Tests unitaires et HTTP déterministes.
+- 2026-10-16 — Configuration (`internal/config`) : lecture exclusive par
+  variables d'environnement `FRONIUS_*`, validation exhaustive (durées, entier,
+  booléen, fuseau, URL, adresse d'écoute, niveau et format de log) avec
+  accumulation de toutes les erreurs, et garde `CheckListenAddress` qui refuse
+  une écoute non locale sans `FRONIUS_ALLOW_REMOTE=1`.
