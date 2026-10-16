@@ -143,6 +143,30 @@ Fronius Solar API v1, à confronter au firmware **1.19.7-1**. Si la sonde révè
 d'autres noms ou d'autres unités, la correction porte sur `dto.go`, les fixtures
 et ce fichier — les colonnes SQLite restent en unités de base.
 
+## Autres endpoints Solar API — candidats non vérifiés
+
+Ces noms proviennent de la **documentation publique Fronius Solar API v1**.
+Aucun n'a été relu dans `references/fronius-original.js` (qui ne contient aucun
+chemin Solar API) ni observé sur le firmware **1.19.7-1** : ils sont donc tous
+`[À-TESTER]`. Ils sont listés pour cadrer la phase 2, pas pour être appelés.
+
+| Endpoint candidat | Ce qu'il apporterait | Statut |
+|---|---|---|
+| `/solar_api/GetAPIVersion` | Version de l'API exposée par l'appareil | `[À-TESTER]` |
+| `/solar_api/v1/GetInverterRealtimeData.fcgi` | Mesures par onduleur (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`) : tension, courant, fréquence, température, état | `[À-TESTER]` (redondant avec PowerFlow pour la puissance) |
+| `/solar_api/v1/GetInverterInfo.fcgi` | **Identité** : modèle, numéro de série, firmware par onduleur | `[À-TESTER]` — candidat direct pour la capacité `device.identity` |
+| `/solar_api/v1/GetLoggerInfo.fcgi` | Identité du datalogger / de l'interface | `[À-TESTER]` |
+| `/solar_api/v1/GetMeterRealtimeData.fcgi` | Mesures du Fronius Smart Meter, si présent | `[À-TESTER]` — permettrait de **détecter** un compteur et de débloquer `grid.import_export`, `load.consumption`, `autoconsumption.ratio` |
+| `/solar_api/v1/GetStorageRealtimeData.fcgi` | État de charge et puissance de la batterie, si présente | `[À-TESTER]` — débloquerait `battery.soc` |
+| `/solar_api/v1/GetActiveDeviceInfo.fcgi` | Liste des appareils actifs du système | `[À-TESTER]` |
+| `/solar_api/v1/GetDeviceInfo.fcgi` | Inventaire d'appareils | `[À-TESTER]` |
+
+Conséquence pour la phase 1 : la détection de la présence d'un Smart Meter ou
+d'une batterie est **réalisable sans écriture**, par de simples GET sur ces
+endpoints, mais elle n'est pas implémentée faute de preuve d'existence sur le
+firmware. Tant qu'elle ne l'est pas, les capacités correspondantes restent
+indisponibles avec un motif explicite (`internal/model/capabilities.go`).
+
 ## Fixtures
 
 `test/fixtures/solarapi/*.json` portent un champ racine `_provenance` **non

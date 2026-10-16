@@ -48,6 +48,18 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   alignés sur l'epoch, énergie journalière par `MAX(E_Day)` en fuseau local avec
   gestion des journées de 23 h et 25 h, événements, cycles de collecte, état du
   collecteur et purge de rétention.
+- 2026-10-16 — Sonde lecture seule (`cmd/fronius-probe`) : liste blanche d'un seul
+  GET, refus des adresses non locales sans `--allow-non-loopback` (avant toute
+  connexion), expurgation structurelle du corps et des en-têtes sensibles avant
+  affichage et écriture, `--save` en mode `0600`, `--list`. Tests couvrant
+  l'expurgation, le refus de la garde et l'absence de méthode non-GET.
+- 2026-10-16 — `docs/PROBE-READONLY.md` (protocole d'accord préalable, requête
+  exacte, sortie attendue, règles d'expurgation, promotion d'une fixture,
+  interdiction de toute méthode non-GET) ; matrice
+  endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord dans
+  `docs/ENDPOINTS.md` ; endpoints Solar API candidats `[À-TESTER]` pour
+  l'identité de l'appareil et la détection compteur/batterie dans
+  `docs/SOURCES.md`.
 
 ### Changed
 

@@ -127,6 +127,35 @@ puissance ou aux interfaces de contrôle.
 | `/status/version` | READ | Candidat `[À-TESTER]` pour l'identité (modèle, firmware) |
 | `/update/start` | **DANGEROUS** | Déclenche une mise à jour de firmware |
 
+## Matrice endpoint / méthode / paramètres / rôle déclaré / rôle testé / effet de bord
+
+« Rôle déclaré » provient du **client** : les rôles cumulés (`RoleEverybody`,
+`RoleCustomer`, `RoleTechnician`, `RoleSupport`, `SetupAccessRole01/02`) sont
+déclarés dans le bundle et conditionnent l'affichage, pas l'autorisation
+serveur. Aucun rôle serveur n'est prouvé à ce stade : le renseigner exige
+l'API interne (phase 2) et un compte de test, ce qui est hors périmètre ici.
+« Rôle testé » vaut donc « aucun » partout sauf mention contraire : rien n'a été
+rejoué sur le matériel.
+
+| Chemin | Méthode | Paramètres | Rôle déclaré | Rôle testé | Effet de bord |
+|---|---|---|---|---|---|
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | `GET` (imposé par la garde) | aucun | aucun (pas d'authentification connue) `[À-TESTER]` | **aucun** ; la sonde est livrée mais n'a pas encore été exécutée sur le matériel | aucun : lecture seule |
+| `/status/*` (20 chemins) | inconnu `[À-TESTER]` | inconnu | rôles d'affichage Angular `[SOURCE-JS]`, non prouvés | aucun | aucun attendu (lecture d'état) |
+| `/components/*/readable` (5 chemins) | inconnu `[À-TESTER]` | inconnu | idem | aucun | aucun attendu |
+| `/config/*` en lecture (24 chemins) | `GET` observé sur 4 chemins | inconnu | Digest « Customer » `[OBSERVÉ-CONVERSATION]` | 4 chemins : `/config/common`, `/config/modbus`, `/config/meter`, `/config/iomapping` → HTTP 200 ; `/config/powerlimits`, `/config/setup/*` → 200 `{}` | aucun (lecture) |
+| `/config/*` en écriture (24 chemins) | inconnu (POST/PUT probable) | inconnu | inconnu | **aucun** | modification de configuration ; `DANGEROUS` pour `gridcode`, `pcc`, `powerlimits`, `modbus`, `setup/*` |
+| `/commands/*` en lecture (8 chemins : `ConnectedPowermeter`, `GetAutoTestReport`, `GetSDPFile`, `GetServiceState`, `GetUTCTime`, `GetUpdateStatus`, `InverterRollbackStatus`, `StandbyState`, `ListGridcodes`, `ListOhmpilots`) | `GET` probable | `user` pour certains | `passwordUser` ou compte de service `[SOURCE-JS]` | **aucun** | aucun attendu |
+| `/commands/*` en mutation (17 chemins : `ActivatePasswords`, `ConfirmEvent`, `CreateSDPFile`, `LicenseExchange`, `Login`, `Logout`, `ScanAvailableWlan`, `SetPassword`, `SetUTCTime`, `SetWPSActive`, `StandbyRequestState`, `VerifyVCode`, …) | `GET`/`POST` selon la commande `[SOURCE-JS]` | variable | variable selon la commande | **aucun** | modification d'état, de session, de fichier ou de préférence |
+| `/commands/*` dangereux (10 chemins : `DCInjectionTest`, `GridcodeSelection`, `InverterControl`, `InverterRollback`, `PasswordRecovery`, `ReInitInterface`, `RemoteAccess`, `StartSystemService`, `SupportAccount`, `factoryReset`) | inconnu | inconnu | inconnu | **aucun** | coupure de production, firmware, protection réseau électrique, accès ou effacement |
+| `/commands/License`, `LicenseExchangeData`, `ServiceFile` | inconnu | inconnu | inconnu | **aucun** | indéterminé ⇒ traité comme une écriture |
+| `/update/start` | inconnu | inconnu | inconnu | **aucun** | mise à jour de firmware de l'appareil |
+
+Ce que cette matrice établit : **un seul endpoint est appelé**, en `GET`, sans
+paramètre et sans effet de bord. Tout le reste est inventorié pour être
+explicitement évité. Les cellules « inconnu » ne sont pas des autorisations
+implicites : ce sont des inconnues à lever par la phase 2 (voir
+`docs/UNKNOWNS.md`).
+
 ## Règle applicable
 
 Aucune commande `POST`, `PUT`, `PATCH` ou `DELETE` n'est émise vers l'onduleur.

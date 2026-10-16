@@ -16,17 +16,17 @@
 ## 1 — Recherche API et sécurité
 
 - [ ] Documenter `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` et ses champs réellement disponibles
-- [ ] Relever autres endpoints Solar API documentés et utiles
+- [x] Relever autres endpoints Solar API documentés et utiles
 - [ ] Extraire méthodes/arguments/DTO des commandes internes utiles en lecture seule
 - [ ] Auditer garde Angular `oi.a` et contrôles de composants sans supposer permissions serveur
-- [ ] Construire matrice endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord
+- [x] Construire matrice endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord
 - [x] Classifier chaque endpoint READ / MUTATION / DANGEROUS
-- [ ] Analyser module `ytu1` Digest, gestion nonce et cas d’erreur
+- [x] Analyser module `ytu1` Digest, gestion nonce et cas d’erreur
 - [ ] Vérifier gestion 401/403, nonce expiré et cas d’absence d’auth
-- [ ] Documenter récupération Technician et compteur sans effectuer d’essai
+- [x] Documenter récupération Technician et compteur sans effectuer d’essai
 - [ ] Vérifier anciens profils/gestionnaire de mots de passe si récupération encore souhaitée
-- [ ] Documenter `SupportAccount`, SDP, ServiceFile comme non validés côté firmware
-- [ ] Exclure des tests actifs les réglages réseau électrique, firmware et récupération
+- [x] Documenter `SupportAccount`, SDP, ServiceFile comme non validés côté firmware
+- [x] Exclure des tests actifs les réglages réseau électrique, firmware et récupération
 
 ## 2 — Architecture et outillage
 
@@ -208,3 +208,12 @@
   contrat à partir de réponses **réelles** expurgées » reste donc ouvert jusqu'à l'exécution de
   `fronius-probe` par l'utilisateur (étape 11) et la promotion des fixtures. Le test de
   contrat couvre déjà toute la chaîne fixture → client → `model.FromPowerFlow` → `Sample`.
+- 2026-10-16 — Étape 11 : sonde `cmd/fronius-probe` (un seul GET en liste blanche, refus des
+  adresses non locales, expurgation structurelle, `--save` en 0600) et `docs/PROBE-READONLY.md`.
+  Deux bugs d'expurgation détectés par les tests et corrigés avant livraison : l'encodeur JSON de
+  Go sérialisait `<redacted>` en `\u003c…\u003e`, et le motif IPv6 permissif masquait les
+  **horodatages** (`12:00:00` passait pour une adresse) — la détection IPv6 est désormais une
+  fonction exigeant quatre groupes ou la forme `::`. Sonde vérifiée en direct contre le simulateur
+  (`--list`, exécution complète, `--save`) ; son refus a été vérifié contre `192.0.2.10`
+  **sans émettre de requête**. L'item « tests GET uniquement sur matériel » reste ouvert :
+  cette exécution appartient à l'utilisateur.
