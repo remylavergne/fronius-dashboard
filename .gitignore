@@ -9,3 +9,8 @@ apps/web/.vite/
 .env
 coverage/
 bin/
+
+# Binaires produits par `go build ./...` (chaque paquet main à la racine)
+/fronius-sim
+/froniusd
+/fronius-probe

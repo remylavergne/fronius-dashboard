@@ -4,13 +4,13 @@
 
 ## 0 — Cadrage et preuves
 
-- [ ] Créer dépôt Git monorepo et README de développement
+- [x] Créer dépôt Git monorepo et README de développement
 - [ ] Importer les MD du dossier et référencer les sources originales sans publier de secrets
 - [ ] Vérifier l’inventaire matériel/firmware contre l’export PDF
 - [ ] Identifier métriques effectivement renvoyées par la Solar API (échantillons anonymisés)
 - [ ] Confirmer absence de Smart Meter et batterie ; détecter dynamiquement leur présence future
 - [ ] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
-- [ ] Choisir licence, stratégie branches, conventions de commit
+- [x] Choisir licence, stratégie branches, conventions de commit
 - [ ] Consigner toutes les inconnues dans un registre de décisions
 
 ## 1 — Recherche API et sécurité
@@ -54,7 +54,7 @@
 - [ ] Mettre en place polling configurable avec jitter raisonnable
 - [ ] Garantir qu’aucun retry automatique ne déclenche une écriture
 - [ ] Ajouter métriques collecteur et logs structurés expurgés
-- [ ] Implémenter mock/simulateur Fronius et fixtures anonymisées
+- [x] Implémenter mock/simulateur Fronius et fixtures anonymisées
 - [ ] Ajouter tests de contrat à partir des réponses réelles expurgées
 - [ ] Préparer client Digest optionnel isolé, sans l’utiliser si inutile au MVP
 - [ ] Vérifier que le frontend n’a jamais accès aux identifiants Fronius
@@ -130,3 +130,16 @@
 - [ ] Étudier notifications (panne, défaut, production anormale)
 - [ ] Étudier multi-onduleurs et profils utilisateurs si besoin réel
 - [ ] Réévaluer la procédure de récupération Technician via voie autorisée
+
+## Journal
+
+- 2026-10-16 — Étape 1 : socle du dépôt (`.gitignore`, MIT, `CHANGELOG.md`, `.env.example`,
+  `Makefile`, `docs/`), correction `references/` dans `AGENTS.md`. Commit
+  `chore: init monorepo`.
+- 2026-10-16 — Étape 2 : `go.mod` (`fronius-supervisor`, go 1.24) et simulateur
+  `cmd/fronius-sim`. Courbe `max(0, sin(π·(h−7)/12))·nominal·cloud(t)` avec bruit lissé
+  dérivé du seed, `?at=` (extension simulateur), pannes `500/503/401/404/timeout/invalid_json/
+  empty/status7`, `/sim/health`. Décision : `rel_*` émis à `null` quand leur dénominateur est
+  nul (jamais de zéro inventé) ; `P_Akku` reste `null` même avec `--with-meter` car aucune
+  batterie n'est modélisée. Vérifié en direct : `P_PV > 0` à 11:39 locale, `P_Grid = null`,
+  `Head.Status.Code = 0`, deux appels `?at=` identiques octet pour octet, nuit à 0.
