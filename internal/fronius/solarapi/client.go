@@ -106,6 +106,7 @@ func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnve
 
 	c.log.Debug("solar api",
 		"solar_api_path", PowerFlowPath,
+		"url", req.URL.String(),
 		"status", resp.StatusCode,
 		"bytes", len(body),
 		"duration_ms", time.Since(start).Milliseconds())

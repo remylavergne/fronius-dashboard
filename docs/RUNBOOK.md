@@ -63,7 +63,8 @@ old.
 | `last_error` contains `HTTP 401`/`403` | the device requires authentication on the Solar API path of this firmware | set the credentials (§ "Device credentials") and restart; do not attempt improvised credentials |
 | `detection.meter.state: "unknown"` and reason "credentials not configured" | `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` absent: the device requires authentication on this path | set both variables in the environment of `froniusd`, then restart the service |
 | `device.identity.available: false` with reason "access denied (401)" | credentials present but refused: user, password or realm different from the expected one | check the user (role "customer" or "technician" in the manufacturer interface); compare the realm announced by `fronius-probe` |
-| `last_error` contains `HTTP 404` | the path differs on this firmware | fix `internal/fronius/solarapi/dto.go` after a probe capture |
+| `last_error` contains `HTTP 404` | the path differs on this firmware, **or** the request never reached the inverter | compare `solarapi_url` from `/api/v1/system` with the device address, then check both paths by hand: `curl -s -o /dev/null -w '%{http_code}\n' http://<device>/status/version` and the same on `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`. A bare `404` on both means the host is not the inverter; a `401` means authentication is now required |
+| detection reason `challenged, then refused` | the device answered `401` with a challenge, then refused the **authenticated** request (often with `404` or `403`) | the path exists — a bare `404` challenges nobody — so the credentials or the role they carry are the problem: check `FRONIUS_DEVICE_USER`/`FRONIUS_DEVICE_PASSWORD`, then run `fronius-probe --endpoint /status/version`, which prints the raw status and whether a challenge was issued |
 | `last_error` contains `decode` | unexpected response shape | capture with `cmd/fronius-probe`, compare with `docs/SOURCES.md` |
 | `last_error` contains `device_status` | the inverter reports an application error | consult the manufacturer interface; no measurement is recorded in that case |
 | `meta.stale: true` while the device responds | cadence or threshold misconfigured | compare `FRONIUS_POLL_INTERVAL` and `FRONIUS_STALE_AFTER` |
@@ -208,7 +209,9 @@ one year of data (ADR 0006).
 
 `log/slog` on stderr. `FRONIUS_LOG_FORMAT=json` for ingestion by a log
 collector, `FRONIUS_LOG_LEVEL=debug` for request detail (Solar API and internal
-paths: path, status, bytes, duration; never a header).
+paths: **full URL**, path, status, bytes, duration; never a header). The URL is
+what tells a wrong `FRONIUS_SOLARAPI_URL` from an endpoint that changed on the
+device: a `404` on every path usually means the request went to the wrong host.
 
 Device credentials cannot appear in the logs: the `secret.String` type
 (`internal/secret`) masks the value for any formatting — `slog`, `fmt` and

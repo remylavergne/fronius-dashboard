@@ -46,6 +46,11 @@ const (
 	ReasonNoCredentials  = "credentials not configured (FRONIUS_DEVICE_USER / FRONIUS_DEVICE_PASSWORD)"
 	ReasonUnauthorized   = "access denied (401): credentials absent or invalid"
 	ReasonEndpointAbsent = "endpoint absent on this firmware (404)"
+	// ReasonRefusedAfterChallenge: the device issued a challenge and then refused
+	// the authenticated request (a 404 or a 403 after a 401). The path therefore
+	// exists — a bare 404 challenges nobody — so the cause is the credentials or
+	// the role they carry, never an absent endpoint.
+	ReasonRefusedAfterChallenge = "challenged, then refused: check the credentials and the role they carry"
 	// ReasonNoReadYet: no identity read has succeeded yet.
 	ReasonNoReadYet = "no identity read has succeeded yet"
 	// deviceEventMessage is the fallback message of an event with no text.
@@ -258,6 +263,22 @@ func (d *Detector) readEvents(ctx context.Context, now time.Time) (model.Resourc
 // failedDetection translates a read error into an `unknown` state.
 func (d *Detector) failedDetection(ctx context.Context, path string, err error) model.ResourceDetection {
 	kind, _ := froniuserr.KindOf(err)
+
+	// The challenge-then-refusal sequence is more specific than the generic rules
+	// below: the challenge proves the path exists, and the sequence proves
+	// credentials were presented. Reporting it first keeps the cause visible.
+	if errors.Is(err, froniuserr.ErrRefusedAfterChallenge) {
+		status := 0
+		var typed *froniuserr.Error
+		if errors.As(err, &typed) {
+			status = typed.HTTPStatus
+		}
+		return model.ResourceDetection{
+			State:  model.StateUnknown,
+			Source: path,
+			Reason: fmt.Sprintf("%s (HTTP %d on %s)", ReasonRefusedAfterChallenge, status, path),
+		}
+	}
 
 	if kind == froniuserr.KindUnauthorized && !d.CredentialsConfigured {
 		// No credential: no point re-emitting a 401 on every cycle.

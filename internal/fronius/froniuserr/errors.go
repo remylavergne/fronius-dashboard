@@ -11,6 +11,13 @@ import (
 	"strings"
 )
 
+// ErrRefusedAfterChallenge: the device answered a 401 with a challenge, then
+// refused the authenticated request with another client status (typically 404 or
+// 403). The path therefore EXISTS — a bare 404 never issues a challenge — so
+// "endpoint absent" would be a false conclusion: the sequence points at the
+// credentials or at the role they carry.
+var ErrRefusedAfterChallenge = errors.New("device challenged the request then refused the authenticated one")
+
 // Kind classifies the nature of an error.
 type Kind string
 

@@ -173,6 +173,20 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-16 — **A refusal received after a Digest challenge is no longer reported
+  as an absent endpoint** (`internal/fronius/digest`, `internal/detect`). When the
+  device answers `401` with a challenge and then refuses the *authenticated*
+  request with `404` (or any other 4xx), the path demonstrably exists — a bare
+  `404` challenges nobody — yet the final status alone produced the detection
+  reason "endpoint absent on this firmware (404)", which sent the operator looking
+  at the firmware instead of at the credentials. The transport now reports the
+  sequence (`froniuserr.ErrRefusedAfterChallenge`, kind `unauthorized`, with the
+  final status) and the detector exposes it as its own reason,
+  "challenged, then refused: check the credentials and the role they carry
+  (HTTP 404 on /status/version)". Both clients also log the **full URL** at debug
+  level, so a wrong `FRONIUS_SOLARAPI_URL` is visible at a glance instead of
+  surfacing as a `404` on every path.
+
 - 2026-10-16 — **`GetPowerFlowRealtimeData` DTO** (`internal/fronius/solarapi/dto.go`).
   The hardware capture contradicts the retired `[HYPOTHESIS]` on the meter-location
   field: it is **`Meter_Location`**, a **string** (`"unknown"`), not

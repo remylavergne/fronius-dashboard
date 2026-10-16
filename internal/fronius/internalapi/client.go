@@ -99,6 +99,7 @@ func (c *Client) get(ctx context.Context, ep Endpoint) ([]byte, error) {
 
 	c.log.Debug("internal api",
 		"internal_path", ep.Path,
+		"url", req.URL.String(),
 		"status", resp.StatusCode,
 		"bytes", len(body),
 		"duration_ms", time.Since(start).Milliseconds())

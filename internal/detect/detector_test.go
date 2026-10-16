@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -317,6 +318,36 @@ func TestDetectOnceUnauthorizedWithoutCredentialsStopsPolling(t *testing.T) {
 	}
 	if second.Identity.State != model.StateUnknown || second.Identity.Reason != ReasonNoCredentials {
 		t.Fatalf("second identity = %+v", second.Identity)
+	}
+}
+
+// TestRefusedAfterChallengeIsReportedAsSuch: the device challenged the request and
+// then refused it. That is not an absent endpoint, and the dashboard must not say
+// so.
+func TestRefusedAfterChallengeIsReportedAsSuch(t *testing.T) {
+	reader := newFakeReader()
+	reader.versionErr = &froniuserr.Error{
+		Kind:       froniuserr.KindUnauthorized,
+		HTTPStatus: 404,
+		Endpoint:   internalapi.VersionPath,
+		Err:        fmt.Errorf("%w: HTTP 404 after the challenge", froniuserr.ErrRefusedAfterChallenge),
+	}
+	sink := newFakeSink()
+	d := newDetector(t, reader, sink)
+
+	got, err := d.DetectOnce(context.Background())
+	if err != nil {
+		t.Fatalf("DetectOnce: %v", err)
+	}
+	if got.Identity.State != model.StateUnknown {
+		t.Fatalf("identity = %+v", got.Identity)
+	}
+	if got.Identity.Reason == ReasonEndpointAbsent {
+		t.Fatal("a challenged-then-refused request is not an absent endpoint")
+	}
+	want := ReasonRefusedAfterChallenge + " (HTTP 404 on " + internalapi.VersionPath + ")"
+	if got.Identity.Reason != want {
+		t.Fatalf("reason = %q, want %q", got.Identity.Reason, want)
 	}
 }
 

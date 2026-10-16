@@ -197,6 +197,20 @@ func (t *Transport) Do(req *http.Request) (*http.Response, error) {
 			Err:        ErrRetryExhausted,
 		}
 	}
+	// The device challenged us and then refused the authenticated request with
+	// another client status. The path exists (a bare 404 challenges nobody), so
+	// the final status alone would read as "absent endpoint" or as a generic
+	// failure: the sequence is the fact to report.
+	if retried.StatusCode >= 400 && retried.StatusCode < 500 {
+		status := retried.StatusCode
+		drain(retried)
+		return nil, &froniuserr.Error{
+			Kind:       froniuserr.KindUnauthorized,
+			HTTPStatus: status,
+			Endpoint:   req.URL.Path,
+			Err:        fmt.Errorf("%w: HTTP %d after the challenge", froniuserr.ErrRefusedAfterChallenge, status),
+		}
+	}
 	return retried, nil
 }
 

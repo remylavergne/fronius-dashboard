@@ -490,6 +490,62 @@ func TestPersistentUnauthorizedStopsAfterTwoRequests(t *testing.T) {
 	}
 }
 
+// TestRefusedAfterChallengeIsNotReportedAsAbsent: the device challenges the bare
+// request, then answers 404 to the authenticated one. The path exists (a bare
+// 404 challenges nobody), so the final status must not read as "endpoint
+// absent": the sequence itself is the fact to report.
+func TestRefusedAfterChallengeIsNotReportedAsAbsent(t *testing.T) {
+	d := newDevice(t, testUser, testPassword, testRealm)
+	d.start(t, func(w http.ResponseWriter, r *http.Request) {
+		if !d.accept(t, r) {
+			challenge(w, "x-www-authenticate", testRealm, d.nonce(), "auth", "", false)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	tr := newTransport(t, d.srv.URL, Credentials{Username: testUser, Password: secret.New(testPassword)})
+	_, err := get(t, tr, d.srv.URL+"/status/version")
+	if err == nil {
+		t.Fatal("a refusal after the challenge must produce an error")
+	}
+	if !errors.Is(err, froniuserr.ErrRefusedAfterChallenge) {
+		t.Fatalf("error = %v, want ErrRefusedAfterChallenge", err)
+	}
+	var typed *froniuserr.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As did not find *froniuserr.Error: %v", err)
+	}
+	if typed.Kind != froniuserr.KindUnauthorized || typed.HTTPStatus != http.StatusNotFound {
+		t.Fatalf("error = %+v, want KindUnauthorized with HTTP 404", typed)
+	}
+	if total, _ := d.counts(); total != 2 {
+		t.Fatalf("sends = %d, want 2 (bare, then authenticated)", total)
+	}
+}
+
+// TestBareNotFoundIsPassedThrough: without any challenge, a 404 is a genuine
+// absent endpoint and must reach the caller untouched, with no retry.
+func TestBareNotFoundIsPassedThrough(t *testing.T) {
+	d := newDevice(t, testUser, testPassword, testRealm)
+	d.start(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.NotFound(w, nil)
+	})
+
+	tr := newTransport(t, d.srv.URL, Credentials{Username: testUser, Password: secret.New(testPassword)})
+	resp, err := get(t, tr, d.srv.URL+"/status/version")
+	if err != nil {
+		t.Fatalf("a bare 404 must not be turned into an error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	if total, _ := d.counts(); total != 1 {
+		t.Fatalf("sends = %d, want 1 (no challenge, hence no retry)", total)
+	}
+}
+
 func TestStandardChallengeHeaderIsRead(t *testing.T) {
 	d := newDevice(t, testUser, testPassword, testRealm)
 	d.start(t, func(w http.ResponseWriter, r *http.Request) {
