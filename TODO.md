@@ -64,7 +64,7 @@
 - [x] Définir schéma SQLite : measurements, aggregates, events, system_status
 - [x] Ajouter migrations versionnées et WAL
 - [x] Implémenter upsert idempotent et déduplication
-- [ ] Agréger minutes/heures/jours avec règles explicites
+- [x] Agréger minutes/heures/jours avec règles explicites
 - [x] Gérer fuseaux et changement d’heure Europe/Brussels
 - [x] Définir rétention et purge programmée
 - [ ] Implémenter sauvegarde/restauration testée
@@ -102,7 +102,7 @@
 
 ## 6 — Qualité, déploiement, exploitation
 
-- [ ] Tests unitaires parseurs, conversions et agrégations
+- [x] Tests unitaires parseurs, conversions et agrégations
 - [x] Tests DST, trous temporels, doublons, reboot et données aberrantes
 - [x] Tests API sur erreurs réseau, authentification et corruption JSON
 - [ ] Tests composants React et tests E2E sur simulateur
