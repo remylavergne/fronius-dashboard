@@ -9,6 +9,47 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Device detail.** The application reads five more paths and
+  publishes what the device says about **itself**, beyond its production. Solar
+  API: `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData`
+  (constant `solarapi.CommonQuery`), read by `internal/collector` **every
+  collection cycle** — its `DeviceStatus` and its thirteen measurements, one
+  extra `GET` per cycle. Internal API: `/status/common`, `/status/network`,
+  `/status/devices`, `/status/emrs` — the allowlist grows from **four to eight
+  paths** (all `READ`, envelope `Default`: their answers are **bare** JSON, no
+  Body/Head; `Digest: true` per the polled registry while the device answered
+  them `200` without a header). The four diagnostics are read by `internal/detect`
+  on the detection cycle (`FRONIUS_DETECT_INTERVAL`), so each family carries its
+  **own** read instant. Storage: migration `0008_detail.sql`, table
+  `device_detail(family PRIMARY KEY, read_at_utc, available, reason, data_json)` —
+  one row per family (`inverter`, `system`, `network`, `devices`, `emrs`),
+  replaced on each read: a **snapshot**, not a series. Carried by
+  `Store.Restore` (added to `backupTables`), **not** purged with the retention
+  (it is state, like `device`, not history). New route `GET /api/v1/detail`
+  (`{read_at, families: [{family, available, reason, read_at, data}]}`), which
+  keeps the **three** states distinct: recorded and available · recorded and
+  unavailable **with its reason** · never read (**absent from the list**). The
+  inverter measurements come as an **ordered** list with a `label` per key (a
+  fallback; the interface has its own dictionary), a `unit` and a nullable
+  `value` (`null` = the device reported nothing, never a zero). Models:
+  `internal/model/detail.go`, `internal/fronius/internalapi/status.go`,
+  `internal/fronius/solarapi/realtime.go`. The source catalogue follows: the
+  common collection and the four diagnostics move from `candidate` to **`called`**
+  with `Called: true`, their `would_unlock` gone; `/status/common`'s
+  `updateRunning` becomes `displayed` (it is on the detail page).
+  `cmd/fronius-sim` serves the four diagnostic families in the observed shapes
+  (bare JSON; `network` carries one `eth0` on **documentation-range** `192.0.2.x`).
+  Frontend: a **"Device detail"** page (`/detail`) and an **inverter state chip**
+  on Overview. Tests: `internal/storage/detail_test.go`,
+  `internal/api/detail_test.go`, `apps/web/src/routes/Detail.test.tsx` (new) and
+  the extended `internal/collector/collector_test.go`,
+  `internal/detect/detector_test.go`, `internal/fronius/internalapi/client_test.go`,
+  `cmd/fronius-probe/probe_test.go`, `cmd/fronius-sim/internal_api_test.go` and
+  `apps/web/src/routes/Overview.test.tsx`.
+  Documentation updated (`docs/ARCHITECTURE.md`, `docs/ENDPOINTS.md`,
+  `docs/SOURCES.md`, `docs/PROBE-READONLY.md`, `docs/RUNBOOK.md`,
+  `docs/UNKNOWNS.md`, `TODO.md`).
+
 - 2026-10-16 — **Read-only survey of the whole catalogue.** `cmd/fronius-probe
   --survey` walks every catalogued path, **one `GET` per path**, sequentially
   with `--delay` between paths (default `1s`), and records the outcome of each:
@@ -297,6 +338,20 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Changed
 
+- 2026-10-16 — **The probe's `--endpoint` selector disambiguates the
+  realtime-data collections.** Three collections share
+  `/solar_api/v1/GetInverterRealtimeData.cgi` and differ only by their query;
+  selecting the **path** alone silently probed the first of them — which is what
+  happened on the device run of 2026-10-16, where the **accumulation** collection
+  was captured twice. `--endpoint` now accepts a **catalogue identifier**
+  (`solarapi.inverter.common`) or a **path with its query**, in addition to a
+  bare path, and an **error names the three ways to select** when none matches.
+  The saved file name carries the query for an entry that has one
+  (`probe_…_commoninverterdata_<instant>.json`), so two collections of one path
+  can no longer overwrite each other. The probe's default set, still derived from
+  the catalogue, is now **eleven** entries (ten `called` plus the one `captured`
+  accumulation collection). Recorded in `docs/PROBE-READONLY.md`.
+
 - 2026-10-16 — **The daily chart cannot come from the device: the first real
   survey settles it.** `cmd/fronius-probe --survey` was run on
   `http://192.0.2.10`, firmware `1.19.7-1`, with no credentials (27
@@ -313,7 +368,8 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   Conversely, `CommonInverterData` and `CumulationInverterData` are **served**,
   so the electrical detail and the inverter `DeviceStatus`
   (`InverterState`/`StatusCode`/`ErrorCode`) exist on this device — candidates
-  for the dashboard's missing state and detail, not wired. `/solar_api/GetAPIVersion`
+  for the dashboard's missing state and detail, **wired later the same day** (see
+  the Device detail entry above). `/solar_api/GetAPIVersion`
   is `404` and stays an **open candidate**, no reason asserted. Recorded in
   `docs/SOURCES.md` (§ Hardware captures and the candidate table),
   `docs/UNKNOWNS.md`, `docs/PROBE-READONLY.md` and `TODO.md` (step 21).

@@ -252,12 +252,27 @@ func selectEndpoints(name string) ([]endpoint, error) {
 	case "", allowAllEndpoints:
 		return slices.Clone(whitelist), nil
 	}
+
+	// A catalogue identifier names one entry unambiguously — necessary because
+	// three collections share the realtime-data path, and selecting "the" path
+	// would silently probe the first of them.
+	if src, ok := sources.ByID(trimmed); ok {
+		for _, ep := range surveyWhitelist {
+			if ep.path == src.Path && ep.query == src.Query {
+				return []endpoint{ep}, nil
+			}
+		}
+	}
+
+	// The path alone, and the path with its frozen query: both are accepted.
 	for _, ep := range surveyWhitelist {
-		if ep.path == trimmed {
+		if ep.displayPath() == trimmed || ep.path == trimmed {
 			return []endpoint{ep}, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: %q", errNotWhitelisted, trimmed)
+
+	return nil, fmt.Errorf("%w: %q\nselect a path, a path with its query, or a catalogue identifier "+
+		"(cmd/fronius-probe --survey --list prints them)", errNotWhitelisted, trimmed)
 }
 
 // credentials gathers the credentials, without ever logging them.
@@ -386,7 +401,7 @@ func saveRedacted(dir string, ep endpoint, body []byte) (string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("creating %s: %w", dir, err)
 	}
-	name := fmt.Sprintf("probe_%s_%s.json", saveName(ep.path),
+	name := fmt.Sprintf("probe_%s_%s.json", saveLabel(ep),
 		time.Now().UTC().Format("20060102T150405Z"))
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, body, 0o600); err != nil {
@@ -408,6 +423,19 @@ func (e endpoint) displayPath() string {
 		return e.path
 	}
 	return e.path + "?" + e.query
+}
+
+// saveLabel is the file name of an entry, without its instant.
+//
+// The query is part of it: two collections of the same path answer different
+// things, and a name that hid the difference would silently overwrite one
+// capture with the other.
+func saveLabel(ep endpoint) string {
+	label := saveName(ep.path)
+	if ep.query != "" {
+		label += "_" + saveName(ep.query)
+	}
+	return label
 }
 
 func saveName(path string) string {

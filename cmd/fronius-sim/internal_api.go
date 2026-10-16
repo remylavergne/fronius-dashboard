@@ -29,13 +29,23 @@ const (
 	activeEventsPath = "/status/activeEvents"
 	powerMeterPath   = "/components/PowerMeter/readable"
 	batteryPath      = "/components/BatteryManagementSystem/readable"
+	// The diagnostic paths the survey of 2026-10-16 observed on the reference
+	// device (docs/SOURCES.md § First survey of the reference installation).
+	// Their answers are bare JSON — no Body/Head envelope.
+	commonPath  = "/status/common"
+	networkPath = "/status/network"
+	devicesPath = "/status/devices"
+	emrsPath    = "/status/emrs"
 )
 
 // internalPaths is the frozen list of internal paths the simulator serves. It
 // matches the application allowlist (internal/fronius/internalapi): the same
 // paths, so that a probe rehearsal against the simulator answers exactly what
 // the device answers.
-var internalPaths = []string{versionPath, activeEventsPath, powerMeterPath, batteryPath}
+var internalPaths = []string{
+	versionPath, activeEventsPath, powerMeterPath, batteryPath,
+	commonPath, networkPath, devicesPath, emrsPath,
+}
 
 // Challenge headers.
 const (
@@ -102,6 +112,14 @@ func (s *simulator) internalHandler(path string) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, cgiBody(s.activeEventsData()))
 		case powerMeterPath, batteryPath:
 			writeJSON(w, http.StatusOK, cgiBody(s.componentData(path)))
+		case commonPath:
+			writeJSON(w, http.StatusOK, s.commonBody())
+		case networkPath:
+			writeJSON(w, http.StatusOK, s.networkBody())
+		case devicesPath:
+			writeJSON(w, http.StatusOK, s.devicesBody())
+		case emrsPath:
+			writeJSON(w, http.StatusOK, s.emrsBody())
 		default:
 			http.NotFound(w, r)
 		}
@@ -111,6 +129,70 @@ func (s *simulator) internalHandler(path string) http.HandlerFunc {
 // ---------------------------------------------------------------------------
 // Response bodies
 // ---------------------------------------------------------------------------
+
+// commonBody is the shape of /status/common: the ten keys the survey observed,
+// in the nesting the device uses (networkState, passwordState). The account
+// booleans are the device's own declaration — the simulator declares both kinds
+// enabled, which is what a fresh installation reports.
+func (s *simulator) commonBody() map[string]any {
+	return map[string]any{
+		"systemName":     "SIMULATED-INSTALLATION",
+		"serviceState":   "Running",
+		"updateRunning":  false,
+		"supportEnabled": false,
+		"networkState": map[string]any{
+			"connectedViaAP": false,
+			"interfaces": []map[string]any{
+				{"name": "eth0", "type": "ethernet"},
+			},
+		},
+		"passwordState": map[string]any{
+			"customer":   true,
+			"technician": false,
+		},
+	}
+}
+
+// networkBody is the shape of /status/network: one entry per interface, plus
+// the FDMP flag. The addressing is documentation-range (TEST-NET-1), never a
+// real address of an installation.
+func (s *simulator) networkBody() map[string]any {
+	return map[string]any{
+		"isFDMPConnected": false,
+		"eth0": map[string]any{
+			"ip": map[string]any{
+				"configured": "static",
+				"dns":        []string{"192.0.2.1"},
+				"gateway":    "192.0.2.254",
+				"ip":         "192.0.2.10",
+				"mask":       "255.255.255.0",
+			},
+			"network": map[string]any{
+				"interface_mode": "ethernet",
+				"ssid":           "",
+				"status":         "up",
+				"wps_state":      "",
+			},
+		},
+	}
+}
+
+// devicesBody is the shape of /status/devices: a bare array.
+func (s *simulator) devicesBody() []map[string]any {
+	return []map[string]any{
+		{"type": "inverter", "status": 0, "statusMessage": "Running"},
+	}
+}
+
+// emrsBody is the shape of /status/emrs: four pins, each with a state and its
+// reason. The simulator reports them open, with no reason to give.
+func (s *simulator) emrsBody() map[string]any {
+	out := map[string]any{}
+	for i := 1; i <= 4; i++ {
+		out["pin"+strconv.Itoa(i)] = map[string]any{"state": false, "reason": ""}
+	}
+	return out
+}
 
 // versionJSON is the shape of /status/version.
 //

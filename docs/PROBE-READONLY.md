@@ -32,17 +32,23 @@ responsibility.
 ## 2. Exact requests emitted
 
 The probe can only emit the requests of its allowlist, **derived from the source
-catalogue** `internal/sources` (§ 3): its default run reaches the six catalogued
-sources whose state is `called` or `captured`, all `READ` and all `GET`:
+catalogue** `internal/sources` (§ 3): its default run reaches the **eleven**
+catalogued sources whose state is `called` or `captured` (ten `called` and one
+`captured`), all `READ` and all `GET`:
 
 | Path                                           | Digest    | What it provides                                                        |
 | ---------------------------------------------- | --------- | ----------------------------------------------------------------------- |
 | `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`  | no        | production measurements (site and inverters)                            |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | no | per-inverter electrical detail and device state; **read by the application** every collector cycle (constant `solarapi.CommonQuery`), published on the device detail page; **surveyed** 2026-10-16 (`200`, 1680 bytes, no challenge) |
 | `/status/version`                              | after 401 | device identity (serial number, number of phases, device group)         |
 | `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
 | `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
 | `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`), on the "Solar API first" route (ADR 0003/0008); **captured** 2026-10-16 (`200`, 883 bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so it is **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13) — it is the documented source of the inverter state (`DeviceStatus`, a **candidate** metric, not implemented) |
+| `/status/common`                               | after 401 | device-wide state of the device detail (system name, service state, update, support, declared account kinds, interfaces); **read by the application** on the detection cycle; **surveyed** 2026-10-16 (`200`, 349 bytes) |
+| `/status/network`                              | after 401 | network interfaces of the device detail (addressing, mode, radio); **surveyed** 2026-10-16 (`200`, 768 bytes) |
+| `/status/devices`                              | after 401 | device inventory of the device detail; **surveyed** 2026-10-16 (`200`, 65 bytes) |
+| `/status/emrs`                                 | after 401 | EMRS pin states of the device detail; **surveyed** 2026-10-16 (`200`, 214 bytes) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | no | documented Solar API accumulation data (`E_Day`, `E_Year`, `E_Total`), on the "Solar API first" route (ADR 0003/0008); **captured** 2026-10-16 (`200`, 883 bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so it is **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13) — it is the documented source of the inverter state (`DeviceStatus`); the application does not call it (the probe does) |
 
 **Result of the first real run** (2026-10-16, firmware 1.19.7-1): the five paths
 of the allowlist at that time answered `200` on the **bare** request — no
@@ -57,28 +63,28 @@ Since then, the allowlist briefly held a sixth entry, `/status/powerflow`
 #13), added later and **captured** on hardware (2026-10-16, `200`, no challenge);
 the body is promoted as `internalapi/status_powerflow.json`. The captured body is
 **decisive**: `site.E_Day`/`E_Year` are **null there too**, so the fallback filled
-nothing on this installation, and the entry has since been **removed** — the probe
-lists **six** entries again, and `cmd/fronius-sim` no longer serves
-`/status/powerflow` (the captured fixture does).
+nothing on this installation, and the entry has since been **removed** —
+`cmd/fronius-sim` no longer serves `/status/powerflow` (the captured fixture does).
 
-The sixth entry that **stays** is the documented Solar API accumulation endpoint:
-`GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
-(class `READ`, `digest=false`). It carries a **frozen query string** — the
-`endpoint.query` field, a constant of the binary (`solarapi.CumulationQuery`) — so
-the guarantee below holds unchanged: the probe cannot target an arbitrary URL, and
-the query is shown in `--list`; `--endpoint` still selects by **path** (without
-the query). It was **captured on the device** on 2026-10-16 (`200`, 883 bytes, no
-challenge): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while `TOTAL_ENERGY`
-is live, so **no local source** exposes the day and year counters
+The set then grew, on the survey of 2026-10-16, to **eleven** entries: the Solar
+API **common** inverter collection (read by the application every collector cycle)
+and the four internal **diagnostic** families (`/status/common`, `/status/network`,
+`/status/devices`, `/status/emrs`, read by the application on the detection cycle)
+joined the default run. The Solar API **accumulation** collection is the one
+`captured` entry; like every entry carrying a query it holds a **frozen query
+string** — the `endpoint.query` field, a constant of the binary
+(`solarapi.CumulationQuery`) — which `--list` shows, so the guarantee holds
+unchanged: the probe cannot target an arbitrary URL. `--endpoint` accepts a
+**path**, a **path with its query**, or a **catalogue identifier** (§ 3). The
+accumulation endpoint was **captured on the device** on 2026-10-16 (`200`, 883
+bytes, no challenge): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while
+`TOTAL_ENERGY` is live, so **no local source** exposes the day and year counters
 (`docs/UNKNOWNS.md` #13) — the "Solar API first" route (ADR 0003/0008) is settled
-and the internal fallback was removed. The answer carries the inverter state the
-flow endpoints do not (`Body.Data.DeviceStatus`), a **candidate** for a future
-metric, not implemented. `cmd/fronius-sim` serves the endpoint (documented shape,
-values from its own curve), so a probe rehearsal against the simulator answers
-**six** paths with `200`; the rehearsal was run and passed (`200`, 296 bytes, query
-echoed in `Head.RequestArguments`). The probe's file name for this path is
-`solar_api_v1_getinverterrealtimedata.json` (derived from the path, query
-excluded); the redacted capture is kept at
+and the internal fallback was removed. `cmd/fronius-sim` serves the endpoint
+(documented shape, values from its own curve), so a probe rehearsal against the
+simulator answers the Solar API entries with `200`. The probe's file name now
+carries the query when there is one (§ 8); the accumulation capture taken before
+that change is kept at
 `/tmp/probe-real/probe_solar_api_v1_getinverterrealtimedata_20261016T170038Z.json`
 (§ 6).
 
@@ -134,9 +140,10 @@ Host: <address provided with --base-url>
 - **Parameters**: no caller-supplied parameter. The probe adds neither body nor
   form field, and no query string of its own: an entry MAY carry a **frozen query
   string** (`endpoint.query`), a constant of the binary — the Solar API
-  accumulation entry carries
-  `Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` — which `--list`
-  shows; `--endpoint` selects by path, without the query.
+  accumulation and common entries carry
+  `Scope=Device&DeviceId=1&DataCollection=…` — which `--list` shows;
+  `--endpoint` selects by path, by path with its query, or by catalogue
+  identifier (§ 3).
 - **Headers**: `Accept: application/json`, then `Authorization` **only in
   response to a 401**. The header is never sent preemptively: the first send to
   an internal path is always a bare request, which the simulator and the test
@@ -179,16 +186,20 @@ loopback refusal (without `--allow-non-loopback`, § 5) and the credential rules
 | `--db` | database that records the survey (default `$FRONIUS_DB_PATH`; empty = report file only) |
 
 `--survey` refuses to be combined with `--endpoint`: "the whole catalogue" and
-"this one path" are two different runs. `--endpoint <path>` accepts **any**
-catalogued path (see the derived allowlist below).
+"this one path" are two different runs. `--endpoint` accepts **any** catalogued
+path, a path with its query, or a catalogue identifier (see the derived allowlist
+below).
 
 ### The allowlist is derived from the catalogue
 
 The probe's allowlist is no longer a literal of the binary: it is **derived from
 `internal/sources`** (the source catalogue, `docs/SOURCES.md`). The default set
-is the catalogued sources whose state is `called` or `captured` (six entries, as
-before); `--survey` walks the whole catalogue; `--endpoint <path>` accepts any
-catalogued path. The reason: **a path cannot be probed without being
+is the catalogued sources whose state is `called` or `captured` (eleven entries
+today: ten `called` and the one `captured` accumulation collection); `--survey`
+walks the whole catalogue; `--endpoint` accepts any catalogued **path**, a path
+**with its query**, or a catalogue **identifier** (`solarapi.inverter.common`) —
+the identifier is what selects one of the three realtime-data collections
+unambiguously. The reason: **a path cannot be probed without being
 catalogued** — the catalogue is the register, and the project's tests bind it to
 `docs/SOURCES.md`, `docs/ENDPOINTS.md` and the code allowlist, so the probe and
 the registers cannot drift apart.
@@ -272,9 +283,12 @@ export FRONIUS_DEVICE_USER=installer
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081 --password-stdin
 ```
 
-`--endpoint <path|all>` restricts the probe to one allowlist entry (selected by
-**path**; a frozen query belongs to the entry, not to the selector); any other
-path is refused.
+`--endpoint <selector|all>` restricts the probe to one allowlist entry. The
+selector is a catalogued **path**, a **path with its frozen query**
+(`/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData`),
+or a catalogue **identifier** (`solarapi.inverter.common`); anything else is
+refused. The identifier is the reliable way to pick one of the three
+realtime-data collections, which share a path and differ only by their query.
 
 ## 5. Local-address guard
 
@@ -300,10 +314,10 @@ Towards the local simulator (no risk, no hardware):
 # terminal 1
 go run ./cmd/fronius-sim --api-user sim --api-password simpass --with-meter
 
-# terminal 2: without credentials, the four internal paths answer 401
+# terminal 2: without credentials, the eight internal paths answer 401
 go run ./cmd/fronius-probe --base-url http://127.0.0.1:8081
 
-# terminal 2: with the simulator account, the six paths answer 200.
+# terminal 2: with the simulator account, the eleven paths answer 200.
 # The simulator password is "simpass"; it is entered on standard input
 # so it does not appear in the shell history.
 export FRONIUS_DEVICE_USER=sim
@@ -325,7 +339,10 @@ go run ./cmd/fronius-probe \
 
 The accumulation endpoint **was captured** with the command below (2026-10-16,
 into a fresh directory so the earlier captures are not overwritten); it is kept
-for reference:
+for reference. Note the selector: the device run selected the **path alone**,
+which then resolved to the first collection of that path — the accumulation —
+and is why the two collections of `GetInverterRealtimeData.cgi` are now
+distinguished by a **query** or a **catalogue identifier**:
 
 ```bash
 ./bin/fronius-probe \
@@ -333,6 +350,10 @@ for reference:
   --allow-non-loopback \
   --endpoint /solar_api/v1/GetInverterRealtimeData.cgi \
   --save /tmp/probe-real
+# today, the same entry is selected unambiguously as:
+#   --endpoint solarapi.inverter.cumulation
+# its twin as:
+#   --endpoint solarapi.inverter.common
 ```
 
 The password is then entered on standard input, never as an argument. At most
@@ -384,7 +405,7 @@ implemented in `cmd/fronius-probe/redact.go` and tested in `probe_test.go`.
 | Textual values | IPv4 address, IPv6 address, MAC address, host name or fully qualified name → `<redacted>`.                                                                                                                                                                                                                     |
 | Non-JSON body  | The assignments `password=…`, `nonce=…`, `serial=…`, etc. are redacted, then the address patterns are applied to the text.                                                                                                                                                                                     |
 | HTTP headers   | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `WWW-Authenticate` / `x-www-authenticate`, `X-CSRF-Token`, `X-Auth-Token`: value fully masked. Other headers are masked if their value looks like an address.                                                                                  |
-| Written file   | Mode `0600`, name derived from the **path** and timestamped (`probe_components_powermeter_readable_<UTC>.json`). The name cannot come from the last segment alone: `/components/PowerMeter/readable` and `/components/BatteryManagementSystem/readable` both end in `readable` and would overwrite each other. |
+| Written file   | Mode `0600`, name derived from the **path** and timestamped (`probe_components_powermeter_readable_<UTC>.json`), with the **query appended** when the entry carries one (`probe_solar_api_v1_getinverterrealtimedata_scope_device_deviceid_1_datacollection_commoninverterdata_<UTC>.json`). The name cannot come from the last segment alone: `/components/PowerMeter/readable` and `/components/BatteryManagementSystem/readable` both end in `readable` and would overwrite each other; and two collections of one path answer different things, so hiding the query would silently overwrite one capture with the other. |
 
 Two non-regression rules are tested explicitly:
 
@@ -404,8 +425,8 @@ structural redaction.
 promoted (`powerflow_produce_only.json` and the five internal fixtures); see
 `docs/SOURCES.md`. A later run the same day captured the **accumulation
 endpoint** (`883` bytes) but **no fixture is versioned for it**: the application
-does not call the endpoint, and its facts live in `docs/SOURCES.md` and
-`docs/UNKNOWNS.md` (#13).
+does not call the **accumulation** endpoint (it reads the **common** one), and
+its facts live in `docs/SOURCES.md` and `docs/UNKNOWNS.md` (#13).
 
 1. Check the written file: open `probe_*.json` and confirm that no serial
    number, host name, address or identifier remains.
@@ -429,11 +450,11 @@ does not call the endpoint, and its facts live in `docs/SOURCES.md` and
    `docs/SOURCES.md`), and it is the observed response that settles it for _this_
    installation.
 
-3. Rename after the captured **path** (`status_version.json`,
-   `components_powermeter_readable.json`, `status_activeevents.json`,
-   `components_batterymanagementsystem_readable.json`, `status_powerflow.json`,
-   `solar_api_v1_getinverterrealtimedata.json`, or
-   `powerflow_produce_only.json`, `powerflow_with_meter.json`, …) and replace
+3. Rename after the captured **path** — the query included, when there is one
+   (`status_version.json`, `components_powermeter_readable.json`,
+   `status_activeevents.json`, `components_batterymanagementsystem_readable.json`,
+   `status_powerflow.json`, `solar_api_v1_getinverterrealtimedata_scope_device_deviceid_1_datacollection_commoninverterdata.json`,
+   or `powerflow_produce_only.json`, `powerflow_with_meter.json`, …) and replace
    the corresponding synthetic file.
 4. Re-run `go test ./...`: the contract test
    (`internal/fronius/solarapi/contract_test.go`) will fail on the expected

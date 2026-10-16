@@ -41,14 +41,22 @@ func (d *countingDoer) Do(r *http.Request) (*http.Response, error) {
 
 func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 	list := Allowlist()
-	if len(list) != 4 {
-		t.Fatalf("allowlist = %d entries, want 4", len(list))
+	// Four paths the application needs, four diagnostics the survey of
+	// 2026-10-16 justified: every addition is a documented decision.
+	if len(list) != 8 {
+		t.Fatalf("allowlist = %d entries, want 8", len(list))
 	}
 	want := map[string]Envelope{
 		VersionPath:      EnvelopeDefault,
 		ActiveEventsPath: EnvelopeDefault,
 		PowerMeterPath:   EnvelopeCgi,
 		BatteryPath:      EnvelopeCgi,
+		// The diagnostics of the survey: all four answer a bare body, which is
+		// the Default envelope of the polled registry.
+		CommonPath:  EnvelopeDefault,
+		NetworkPath: EnvelopeDefault,
+		DevicesPath: EnvelopeDefault,
+		EmrsPath:    EnvelopeDefault,
 	}
 	for _, ep := range list {
 		if ep.Class != ClassRead {
@@ -90,7 +98,11 @@ func TestAllowlistRejectsEverythingElse(t *testing.T) {
 	for _, path := range []string{
 		"/config/modbus",
 		"/status/events",
-		"/status/devices",
+		// The diagnostic paths the survey of 2026-10-16 justified are now
+		// allowed; these four remain outside the list.
+		"/status/powerflow",
+		"/commands/GetUTCTime",
+		"/components/cache/readable",
 		"/components/DataManager/readable",
 		"/status/version/../events",
 		"",

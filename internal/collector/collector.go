@@ -8,6 +8,7 @@ package collector
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math/rand/v2"
@@ -36,6 +37,10 @@ const (
 // the single endpoint of phase 1.
 type Source interface {
 	GetPowerFlowRealtimeData(ctx context.Context) (solarapi.PowerFlowEnvelope, error)
+	// InverterRealtime reads one collection of the realtime-data family: the
+	// inverter's state and its electrical detail, which the flow endpoint does
+	// not carry. The query is a constant of the binary (solarapi.CommonQuery).
+	InverterRealtime(ctx context.Context, query string) (solarapi.InverterRealtime, error)
 }
 
 // Sink persists the effects of a collection cycle.
@@ -45,6 +50,7 @@ type Source interface {
 // with anti-duplication, and recovery event).
 type Sink interface {
 	InsertSample(context.Context, model.Sample) error
+	SaveDetails(context.Context, []storage.Detail) error
 	InsertEvent(context.Context, model.Event) error
 	InsertRun(context.Context, storage.RunRecord) error
 	SetState(context.Context, string, string) error
@@ -138,9 +144,43 @@ func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 		return sm, err
 	}
 
+	// The inverter's own description of itself, read after the sample: its state
+	// and the electrical detail. This is a SNAPSHOT, not a measurement — it
+	// replaces the previous one and never accumulates — and a failure here is
+	// recorded as unavailable rather than failing the cycle: the sample is the
+	// primary duty of the collector.
+	c.readInverterDetail(ctx, started)
+
 	c.onSuccess(ctx, started)
 	return sm, nil
 }
+
+// readInverterDetail reads the inverter family and records its snapshot.
+func (c *Collector) readInverterDetail(ctx context.Context, now time.Time) {
+	rt, err := c.Source.InverterRealtime(ctx, solarapi.CommonQuery)
+
+	detail := storage.Detail{Family: model.FamilyInverter, ReadAtUTC: now, Data: json.RawMessage("{}")}
+	if err != nil {
+		detail.Reason = err.Error()
+		if len(detail.Reason) > maxDetailReason {
+			detail.Reason = detail.Reason[:maxDetailReason]
+		}
+	} else {
+		body, mErr := json.Marshal(model.FromInverterRealtime(rt))
+		if mErr != nil {
+			detail.Reason = "the snapshot could not be serialised"
+		} else {
+			detail.Available = true
+			detail.Data = body
+		}
+	}
+	if err := c.Sink.SaveDetails(ctx, []storage.Detail{detail}); err != nil {
+		c.log().Warn("inverter detail not recorded", "error", err)
+	}
+}
+
+// maxDetailReason bounds the cause stored with an unavailable family.
+const maxDetailReason = 200
 
 func (c *Collector) recordFailure(ctx context.Context, started time.Time, duration time.Duration, err error) {
 	kind, _ := froniuserr.KindOf(err)

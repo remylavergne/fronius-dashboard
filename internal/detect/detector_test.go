@@ -29,6 +29,15 @@ type fakeReader struct {
 	events    []json.RawMessage
 	eventsErr error
 
+	system     internalapi.SystemInfo
+	systemErr  error
+	network    internalapi.NetworkInfo
+	networkErr error
+	devices    []internalapi.DeviceEntry
+	devicesErr error
+	emrs       []internalapi.EmrsPin
+	emrsErr    error
+
 	mu           sync.Mutex
 	versionCalls int
 	compCalls    map[string]int
@@ -68,6 +77,22 @@ func (f *fakeReader) ActiveEvents(context.Context) ([]json.RawMessage, error) {
 	return f.events, f.eventsErr
 }
 
+func (f *fakeReader) System(context.Context) (internalapi.SystemInfo, error) {
+	return f.system, f.systemErr
+}
+
+func (f *fakeReader) Network(context.Context) (internalapi.NetworkInfo, error) {
+	return f.network, f.networkErr
+}
+
+func (f *fakeReader) Devices(context.Context) ([]internalapi.DeviceEntry, error) {
+	return f.devices, f.devicesErr
+}
+
+func (f *fakeReader) Emrs(context.Context) ([]internalapi.EmrsPin, error) {
+	return f.emrs, f.emrsErr
+}
+
 func (f *fakeReader) calls() (int, int, int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -77,6 +102,8 @@ func (f *fakeReader) calls() (int, int, int) {
 // fakeSink is an in-memory store.
 type fakeSink struct {
 	mu        sync.Mutex
+	details   []storage.Detail
+	detailErr error
 	devices   []storage.DeviceRecord
 	events    []model.Event
 	seen      map[string]bool
@@ -88,6 +115,16 @@ type fakeSink struct {
 
 func newFakeSink() *fakeSink {
 	return &fakeSink{seen: map[string]bool{}, state: map[string]string{}}
+}
+
+func (s *fakeSink) SaveDetails(_ context.Context, details []storage.Detail) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.detailErr != nil {
+		return s.detailErr
+	}
+	s.details = append(s.details, details...)
+	return nil
 }
 
 func (s *fakeSink) SaveDevice(_ context.Context, d storage.DeviceRecord) error {

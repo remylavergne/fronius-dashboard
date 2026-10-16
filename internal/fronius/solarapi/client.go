@@ -15,14 +15,18 @@ import (
 	"fronius-supervisor/internal/fronius/froniuserr"
 )
 
+// errNotAllowedQuery: the client can only read the collections this project
+// knows, so the caller cannot compose a query string of its own.
+var errNotAllowedQuery = errors.New("solarapi: query not in the allowed collections")
+
 // PowerFlowPath is the path of the single endpoint used in phase 1.
 const PowerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 
-// InverterRealtimePath is the documented Solar API endpoint for per-device
-// realtime data. The application does NOT call it yet: cmd/fronius-probe probes
-// it, with CumulationQuery, to settle whether this firmware exposes the day and
-// year counters that both flow endpoints return as null (docs/UNKNOWNS.md #13).
-// It becomes a client call only if a capture proves it carries them.
+// InverterRealtimePath is the Solar API endpoint for per-device realtime data.
+// The collector reads it every cycle with CommonQuery — the electrical detail
+// and the inverter state the flow endpoint does not carry — and cmd/fronius-probe
+// reads it with CumulationQuery, which settled on 2026-10-16 that this firmware
+// returns null for the day and year counters (docs/UNKNOWNS.md #13).
 //
 // The suffix is `.cgi`, not `.fcgi`: the realtime-data family of Solar API v1 is
 // served as CGI, while `.fcgi` carries the flow and inventory endpoints. A probe

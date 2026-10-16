@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,9 +23,24 @@ type result struct {
 }
 
 type fakeSource struct {
-	results []result
-	idx     int
-	calls   int
+	mu        sync.Mutex
+	results   []result
+	idx       int
+	calls     int
+	realtime  solarapi.InverterRealtime
+	detailErr error
+}
+
+// InverterRealtime answers the second read of a cycle: the inverter's state and
+// electrical detail. The zero value is an empty answer, which is what the
+// collector stores when nothing configured it.
+func (f *fakeSource) InverterRealtime(context.Context, string) (solarapi.InverterRealtime, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.detailErr != nil {
+		return solarapi.InverterRealtime{}, f.detailErr
+	}
+	return f.realtime, nil
 }
 
 func (f *fakeSource) GetPowerFlowRealtimeData(context.Context) (solarapi.PowerFlowEnvelope, error) {
@@ -40,6 +56,9 @@ func (f *fakeSource) GetPowerFlowRealtimeData(context.Context) (solarapi.PowerFl
 }
 
 type fakeSink struct {
+	mu        sync.Mutex
+	details   []storage.Detail
+	detailErr error
 	samples   []model.Sample
 	events    []model.Event
 	runs      []storage.RunRecord
@@ -50,6 +69,16 @@ type fakeSink struct {
 }
 
 func newFakeSink() *fakeSink { return &fakeSink{state: map[string]string{}} }
+
+func (f *fakeSink) SaveDetails(_ context.Context, details []storage.Detail) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.detailErr != nil {
+		return f.detailErr
+	}
+	f.details = append(f.details, details...)
+	return nil
+}
 
 func (f *fakeSink) InsertSample(_ context.Context, sm model.Sample) error {
 	if f.insertErr != nil {
@@ -353,6 +382,10 @@ type loopingSource struct {
 	sawGet bool
 }
 
+func (l *loopingSource) InverterRealtime(context.Context, string) (solarapi.InverterRealtime, error) {
+	return solarapi.InverterRealtime{}, nil
+}
+
 func (l *loopingSource) GetPowerFlowRealtimeData(context.Context) (solarapi.PowerFlowEnvelope, error) {
 	l.sawGet = true
 	return okEnvelope("2026-10-16T09:17:43+02:00", 100), nil
@@ -391,6 +424,10 @@ func TestRunDoesNotInsertSamplesWhileFailing(t *testing.T) {
 }
 
 type loopingFailureSource struct{ calls int }
+
+func (l *loopingFailureSource) InverterRealtime(context.Context, string) (solarapi.InverterRealtime, error) {
+	return solarapi.InverterRealtime{}, nil
+}
 
 func (l *loopingFailureSource) GetPowerFlowRealtimeData(context.Context) (solarapi.PowerFlowEnvelope, error) {
 	l.calls++

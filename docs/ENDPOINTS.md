@@ -25,18 +25,23 @@ document: every internal path it holds must appear here.
 
 ## Executable allowlist
 
-Five entries, and no others: this is the table frozen in
-`internal/fronius/internalapi/allowlist.go` (four internal paths) and in the
-Solar API client (one path). `cmd/fronius-probe` accepts nothing beyond its own
-frozen list (`--list`, `--endpoint`).
+Ten entries, and no others: this is the table frozen in
+`internal/fronius/internalapi/allowlist.go` (eight internal paths) and in the
+Solar API client (two paths). `cmd/fronius-probe` accepts nothing beyond its own
+list, **derived from the source catalogue** (`--list`, `--endpoint`).
 
 | Path | Method | Classification | Envelope | Evidence |
 |---|---|---|---|---|
 | `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVED-CONVERSATION]` "responds"; **absent from the bundle**; GET method imposed by `internal/fronius/readonly.go`; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | GET | READ | — (flat `Body.Data`) | **absent from the bundle**; query is a binary constant (`solarapi.CommonQuery`); read **every collector cycle** by `internal/collector`; **captured/surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `1680` bytes, `36` fields — the thirteen measurements and `DeviceStatus` sit **flat** under `Body.Data` (the documented wrapper object does **not** appear) |
 | `/status/version` | GET | READ | `Default` | `[SOURCE-JS]` l. 183050 (path **without** header, module `yTJA`); **absent from the `aYRN` registry** (see the note below); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
 | `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (registry, interval 10 000 ms) + l. 183060 (variant `?sync=true`, without header); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. Fields read: see the extraction table |
 | `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76035 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
 | `/components/BatteryManagementSystem/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76032 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
+| `/status/common` | GET | READ | `Default` (bare body) | `[SOURCE-JS]` l. 76041 (`aYRN` registry, interval 5 000 ms, `Default` envelope); read by `internal/detect`; **surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `349` bytes, `10` fields (`systemName`, `serviceState`, `updateRunning`, `supportEnabled`, `networkState.connectedViaAP`, `networkState.interfaces[]`, `passwordState.customer`, `passwordState.technician`) |
+| `/status/network` | GET | READ | `Default` (bare body) | `[SOURCE-JS]` l. 76028 (`aYRN` registry, `Default` envelope); read by `internal/detect`; **surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `768` bytes, `38` fields — per-interface `ip.{ip,mask,gateway,dns[],configured}` and `network.{interface_mode,status,ssid,wps_state}`, plus `isFDMPConnected` |
+| `/status/devices` | GET | READ | `Default` (bare body) | `[SOURCE-JS]` l. 76027 (`aYRN` registry, `Default` envelope); read by `internal/detect`; **surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `65` bytes — a bare JSON array whose entries carry `type`, `status`, `statusMessage` |
+| `/status/emrs` | GET | READ | `Default` (bare body) | `[SOURCE-JS]` l. 76029 (`aYRN` registry, `Default` envelope); read by `internal/detect`; **surveyed** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `214` bytes, `8` fields — four pins (`pin1`…`pin4`), each with `state` and its reason |
 
 Note: in the official client, **two paths** exist — with an `Authorization`
 header (module `aYRN`, polled registry) and without (module `yTJA`, status
@@ -44,7 +49,7 @@ service) — but they do not overlap: `/components/PowerMeter/readable` and
 `/components/BatteryManagementSystem/readable` only appear in `aYRN`,
 while `/status/version` only appears in `yTJA` (verified by searching the
 literal in the bundle). The `READ` classification is about the effect, not
-the authentication: none of the five has an observed persistent effect.
+the authentication: none of the ten has an observed persistent effect.
 On the reference device, however, **neither route challenges**: on firmware
 1.19.7-1 (captured 2026-10-16) all five paths of the allowlist at that time
 answered `200` without an
@@ -56,16 +61,24 @@ the device answers with `inverters` as an array, and the day and year energies a
 the only members the application reads. Decisively, those two energies are **null
 here too**, and the documented accumulation collection is **null on the same
 counters** while its total stays live — so **no local source exposes them** and the
-entry is **no longer called**: it was removed, the allowlist is back to four
-internal paths, and `/status/powerflow` is now documented here as **extracted but
-not called** (unknown #13).
+entry is **no longer called**: it was removed and `/status/powerflow` is now
+documented here as **extracted but not called** (unknown #13).
+
+The application then gained **five readings**. The four internal **diagnostic
+families** — `/status/common`, `/status/network`, `/status/devices`,
+`/status/emrs` — took the internal allowlist from four to **eight paths**; they
+are read by `internal/detect` on the detection cycle (`FRONIUS_DETECT_INTERVAL`).
+The Solar API **common** inverter collection is read by `internal/collector` on
+the collection cycle. All five come from the first survey of the reference
+installation (2026-10-16, firmware `1.19.7-1`), which is their evidence; each
+addition is a documented decision (see the rows above).
 
 ## Paths explicitly set aside
 
 | Path | Reason |
 |---|---|
 | `/config/meter`, `/config/batteries` | Plausible and **now established** read: `GET` by `loadData()` (l. 161422), literals at l. 161471 and 161462, write by `saveData()` in `POST` (l. 161428). The earlier justification — "literal and verb outside the readable area of the bundle (module `rCKn`)" — was false and is withdrawn. These two paths remain **outside** the application by scope choice, not for lack of contract: the presence of the meter and of the battery is deduced from `Body.Data` of the `Cgi` paths, without reading these configurations. |
-| `/status/events`, `/status/devices`, `/status/common`, `/components/DataManager/readable` | Inventoried and readable (method, arguments and fields are now extracted in the table below), but outside the phase 2 need: not calling what you do not need reduces the surface. |
+| `/status/events`, `/components/DataManager/readable` | Inventoried and readable (method, arguments and fields are now extracted in the table below), but outside the phase 2 need: not calling what you do not need reduces the surface. `/status/devices` and `/status/common` left this table when the survey of 2026-10-16 observed them and the application began reading them (see the allowlist above). |
 
 ## `/commands/` (35 paths)
 
@@ -154,15 +167,15 @@ limits or the control interfaces.
 | `/components/cache/readable` | READ | State read |
 | `/status/activeEvents` | READ | **called**: active events of the device |
 | `/status/capabilities` | READ | Capability read |
-| `/status/common` | READ | State read; `[TO-TEST]` candidate for the device identity |
+| `/status/common` | READ | **called**: device-wide state of the device detail (`systemName`, `serviceState`, `updateRunning`, `supportEnabled`, declared account kinds, interfaces) |
 | `/status/deviceDB` | READ | Device database read |
-| `/status/devices` | READ | Device read |
-| `/status/emrs` | READ | State read |
+| `/status/devices` | READ | **called**: inventory of the devices the device knows (device detail) |
+| `/status/emrs` | READ | **called**: EMRS pin states (device detail) |
 | `/status/events` | READ | Event read |
 | `/status/ioServices` | READ | State read |
 | `/status/license` | READ | License read |
 | `/status/license/features` | READ | Active features read |
-| `/status/network` | READ | Network read |
+| `/status/network` | READ | **called**: network interfaces, addressing and radio state (device detail) |
 | `/status/powerflow` | READ | Queried every 5 000 ms by the official client `[SOURCE-JS]`; **extracted but not called** by the application — it briefly served as the **fallback** for the day and year energies the Solar API returns as `null` (unknown #13), and that fallback was removed once the captures proved no local source exposes those counters |
 | `/status/powerflowcontroller` | READ | State read |
 | `/status/registrationData` | READ | State read |
@@ -435,6 +448,11 @@ replayed on the hardware.
 | `/status/activeEvents` | `GET` (imposed by the guard) | none | same | same | none: event read |
 | `/components/PowerMeter/readable` | `GET` (imposed by the guard) | none | same | same | none: state read |
 | `/components/BatteryManagementSystem/readable` | `GET` (imposed by the guard) | none | same | same | none: state read |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | `GET` (imposed by the guard) | `Scope`, `DeviceId`, `DataCollection` (the frozen `solarapi.CommonQuery`) | none (no known authentication) | **simulator**: 200 without header; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: read; the thirteen measurements and `DeviceStatus` (state and codes), read every collector cycle |
+| `/status/common` | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: 200 (or 401 without credentials), then 200 after Digest; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: device-wide state (device detail) |
+| `/status/network` | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: 401 without credentials, then 200 after Digest; **hardware**: surveyed 2026-10-16, `200`, `digest_required: false` | none: network interfaces (device detail) |
+| `/status/devices` | `GET` (imposed by the guard) | none | same | same | none: device inventory (device detail) |
+| `/status/emrs` | `GET` (imposed by the guard) | none | same | same | none: EMRS pin states (device detail) |
 | `/status/powerflow` (**removed from the allowlist — extracted but not called**) | `GET` (imposed by the guard) | none | `Default` `[SOURCE-JS]`; the Digest flag `true` describes the official client, not this device | **simulator**: no longer serves the path; **hardware**: captured 2026-10-16 (firmware 1.19.7-1, `200`, `digest_required: false`, `inverters` an array; fixture `internalapi/status_powerflow.json`) | none: read; it briefly served as the **fallback** for the day and year energies the Solar API returns as `null`, but the captured body has them **null too** and the accumulation collection nulls them as well, so it fills nothing on this installation (unknown #13) |
 | **`READ` paths now extracted**: `/status/*` (17 lines), `/components/*/readable` (5), `/commands/*` reads (10), `/config/*` reads (24) | `GET`, except `POST` for `/commands/ConnectedPowermeter` and for the `/config/*` write | per path: see "Method, arguments and DTO per path" | Angular display roles `[SOURCE-JS]`, unproven at this stage; `user: "customer"` declared on `/commands/GetUTCTime` alone | **none** | none expected (read); `[OBSERVED-CONVERSATION]`: `GET` 200 on the four `/config/*` paths already tried |
 | `/config/*` writes (24 paths) | `POST` observed (l. 161428) | per path: see the extraction table | logged-in account (`fallback`, l. 161428) — server role unknown | **none** | configuration change; `DANGEROUS` for `gridcode`, `pcc`, `powerlimits`, `modbus`, `setup/*` |
@@ -443,10 +461,12 @@ replayed on the hardware.
 | `/commands/License`, `LicenseExchangeData`, `ServiceFile` | `GET`/`POST` observed (`?status=`, `?acknowledgement=`, `?serviceFile=`) | variable | unknown | **none** | undetermined ⇒ treated as a write |
 | `/update/start` | `POST` observed (XHR, l. 90677) | body = file | unknown | **none** | device firmware update |
 
-What this matrix establishes: **five paths are called**, all in `GET`, without
-parameter, without observed side effect, and without any `MUTATION` or
-`DANGEROUS` entry in the executable allowlist. `/status/powerflow` appears in
-the matrix only as a retired fallback: it is **extracted but not called**. The 79 other paths listed in
+What this matrix establishes: **ten paths are called** — the **eight** internal
+paths of the allowlist, the Solar API flow endpoint and the Solar API common
+inverter collection — all in `GET`, without observed side effect, and without any
+`MUTATION` or `DANGEROUS` entry in the executable allowlist. `/status/powerflow`
+appears in the matrix only as a retired fallback: it is **extracted but not
+called**. The 79 other paths listed in
 this document remain inventoried to be explicitly avoided. The "unknown"
 cells are not implicit authorizations: they are unknowns
 (see `docs/UNKNOWNS.md`).

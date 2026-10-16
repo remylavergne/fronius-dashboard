@@ -75,6 +75,7 @@
 - [x] Implement `/api/v1/capabilities` and non-sensitive settings
 - [x] Publish the source catalogue: machine-readable register of every endpoint and field, served by /api/v1/sources
 - [x] Run a read-only survey of every catalogued path and record its outcome (class, shape, firmware) in `source_probe`, merged into `/api/v1/sources`
+- [x] Read and publish the device detail families (inverter, system, network, devices, emrs) served by `GET /api/v1/detail` — a snapshot per family in `device_detail` (migration `0008_detail.sql`), the inverter family with the collector, the four diagnostics with the detector, so each family carries its own read instant; the five new readings documented in `docs/ENDPOINTS.md` § Executable allowlist and `docs/SOURCES.md` § Endpoint inventory
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
@@ -89,7 +90,7 @@
 - [x] Build the 24h power curve with tooltips, units and period selection
 - [ ] Build daily/weekly/monthly/yearly aggregates
 - [ ] Add period comparisons and production calendar
-- [ ] Add inverter state, firmware, network and available diagnostics
+- [x] Add inverter state, firmware, network and available diagnostics — the "Device detail" page (`/detail`) shows the five families with their read instant, their availability and their reason; the Overview carries the **inverter state chip**; the firmware and the identity stay on the System page
 - [ ] Add events and filters by date/severity
 - [x] Add collector health page and last refresh
 - [ ] Add settings page and read-only connectivity test
@@ -541,3 +542,54 @@
   line), `CHANGELOG.md` (the chart cannot come from the device). **No box is
   ticked by this step** — the survey tool itself was delivered and checked at
   step 20 — and none the run closes is re-opened.
+
+- 2026-10-16 — Step 22 (phase 4/5): the device detail. The survey of step 21
+  observed five more paths, and this step reads and publishes them. **Solar API**:
+  `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData`
+  (constant `solarapi.CommonQuery`), read by `internal/collector` **every
+  collection cycle** — its `DeviceStatus` and its thirteen measurements; the
+  query is a constant of the binary, so the read-only surface stays the same.
+  **Internal API**: `/status/common`, `/status/network`, `/status/devices`,
+  `/status/emrs`, taking the allowlist from **four to eight paths** (all `READ`,
+  envelope `Default` — bare JSON, no Body/Head; `Digest: true` per the polled
+  registry while the device answered them `200` without a header), read by
+  `internal/detect` on the detection cycle (`FRONIUS_DETECT_INTERVAL`). **Two
+  cadences, one table**: migration `0008_detail.sql`, table
+  `device_detail(family PRIMARY KEY, read_at_utc, available, reason, data_json)` —
+  one row per family (`inverter`, `system`, `network`, `devices`, `emrs`),
+  replaced on each read, a **snapshot** and not a series; each family carries its
+  **own** instant. Carried by `Store.Restore` (added to `backupTables`), **not**
+  purged with the retention (state, like `device`, not history). New route
+  `GET /api/v1/detail` (`{read_at, families: […]}`) keeps **three** states
+  distinct: available · unavailable **with its reason** · never read (**absent**);
+  the inverter measurements are an **ordered** list with a `label`, a `unit` and
+  a nullable `value` (`null` = the device reported nothing, never a zero). The
+  model invariant holds: `DAY_ENERGY`/`YEAR_ENERGY` are `null` on the reference
+  firmware and published as null; `IDC_3`/`UDC_3` are null (inputs not
+  connected). Models: `internal/model/detail.go`,
+  `internal/fronius/internalapi/status.go`,
+  `internal/fronius/solarapi/realtime.go`. The catalogue follows: the common
+  collection and the four diagnostics move from `candidate` to **`called`**
+  (`Called: true`), their `would_unlock` gone, `/status/common`'s `updateRunning`
+  now `displayed`. `cmd/fronius-sim` serves the four families in the observed
+  shapes (bare JSON; `network` with one `eth0` on documentation-range
+  `192.0.2.x`). `cmd/fronius-probe`: `--endpoint` accepts a **catalogue
+  identifier** or a **path with its query** (three collections share the
+  realtime-data path; selecting the path alone silently probed the first, which
+  is what the device run of step 21 did — the accumulation was captured twice),
+  and the saved file name carries the query. Frontend: the **"Device detail"**
+  page (`/detail`) and the **inverter state chip** on Overview. Tests:
+  `internal/storage/detail_test.go`, `internal/api/detail_test.go`,
+  `apps/web/src/routes/Detail.test.tsx` (new) and the extended collector,
+  detector, probe, simulator and Overview tests. Documentation:
+  `docs/ARCHITECTURE.md` (the detail snapshot, the two cadences, the package and
+  frontend rows), `docs/ENDPOINTS.md` (allowlist at eight internal paths, the
+  common collection called, the matrix), `docs/SOURCES.md` (endpoint inventory),
+  `docs/PROBE-READONLY.md` (default set of eleven, the selector, the file name),
+  `docs/RUNBOOK.md` (§ Device detail), `docs/UNKNOWNS.md` (#6: the account
+  booleans are the device's **declaration**, never a permission; #13: the
+  inverter state is now read), `CHANGELOG.md`. Boxes ticked at this step: "Read
+  and publish the device detail families" (phase 4) and "Add inverter state,
+  firmware, network and available diagnostics" (phase 5). No deviation from the
+  plan; the reads are `GET` only and each addition to the allowlist is justified
+  by the survey (ADR 0008).

@@ -434,6 +434,199 @@ export const sourcesSchema = z.object({
 export type SourceCatalogue = z.infer<typeof sourcesSchema>
 
 // ---------------------------------------------------------------------------
+// Device detail (/api/v1/detail)
+// ---------------------------------------------------------------------------
+
+/**
+ * One family of the device detail: what the collector reads from the device's
+ * own interface, on a slow cycle.
+ *
+ * A family may be **absent** from the payload, which means the collector has
+ * never read it; `available` may be `false` with a `reason` — a sentence of the
+ * backend. Those two states are not the same, and neither is a zero.
+ *
+ * `data` is `unknown`: each family has a shape of its own, described below and
+ * validated where it is typed. Inside a family's `data`, only the field that
+ * identifies a row is required (`key` of a measurement, `name` of an interface,
+ * `type` of a device, `path` of an entry): every other field is optional,
+ * because the answer varies with the firmware. An absent value renders as a
+ * dash — while a `0` the device really reported stays a `0`.
+ */
+export const detailFamilySchema = z.object({
+  family: z.string(),
+  available: z.boolean(),
+  /**
+   * Sentence of the backend explaining an unavailable family. Accepted absent
+   * or `null` as well as empty: the Go DTO omits it when it is empty, and the
+   * three spellings mean the same absence here.
+   */
+  reason: z.string().nullish(),
+  /**
+   * Instant of the read this family comes from. Absent when the collector has
+   * never read this family — the same absence as being missing from `families`.
+   */
+  read_at: timestamp.optional(),
+  data: z.unknown(),
+})
+export type DetailFamily = z.infer<typeof detailFamilySchema>
+
+export const detailSchema = z.object({
+  /** Absent when the collector has never read the detail at all. */
+  read_at: timestamp.optional(),
+  /** `null` and an absent key both mean "nothing was read" (nil slice). */
+  families: z.array(detailFamilySchema).nullish(),
+})
+export type Detail = z.infer<typeof detailSchema>
+
+/**
+ * One measured quantity of the inverter, in the base unit of `unit`.
+ *
+ * Every field but `key` is nullable: the backend publishes `null` for a value
+ * the device did not report (never a zero), and passes a stored answer through
+ * untouched when it cannot read it.
+ */
+export const detailMeasurementSchema = z.object({
+  /** Machine key (`PAC`, `DAY_ENERGY`…), displayed in monospace. */
+  key: z.string(),
+  label: z.string().nullish(),
+  /** Unit to display as-is: `W`, `Wh`, `V`, `A`, `VA`. */
+  unit: z.string().nullish(),
+  /** `null` (or absent) when the device reported no value: never a zero. */
+  value: z.number().nullish(),
+})
+export type DetailMeasurement = z.infer<typeof detailMeasurementSchema>
+
+/** Inverter state: the word, plus the two numeric codes that qualify it. */
+export const detailInverterStateSchema = z.object({
+  inverter_state: z.string().nullish(),
+  status_code: z.number().nullish(),
+  error_code: z.number().nullish(),
+})
+export type DetailInverterState = z.infer<typeof detailInverterStateSchema>
+
+/** Base-unit energies (Wh); each stays `null` when the device reports none. */
+export const detailEnergiesSchema = z.object({
+  day_wh: z.number().nullish(),
+  year_wh: z.number().nullish(),
+  total_wh: z.number().nullish(),
+})
+export type DetailEnergies = z.infer<typeof detailEnergiesSchema>
+
+export const detailInverterDataSchema = z.object({
+  state: detailInverterStateSchema.nullish(),
+  /** Ordered by the backend: never sorted here. */
+  measurements: z.array(detailMeasurementSchema).nullish(),
+  energies: detailEnergiesSchema.nullish(),
+})
+export type DetailInverterData = z.infer<typeof detailInverterDataSchema>
+
+/**
+ * One interface declared by the system family: its name and its kind.
+ *
+ * Both are pointers on the Go side: `null` is the device not naming either, and
+ * the page renders that absence as a dash.
+ */
+export const detailSystemInterfaceSchema = z.object({
+  name: z.string().nullish(),
+  type: z.string().nullish(),
+})
+export type DetailSystemInterface = z.infer<typeof detailSystemInterfaceSchema>
+
+export const detailSystemDataSchema = z.object({
+  system_name: z.string().nullish(),
+  service_state: z.string().nullish(),
+  update_running: z.boolean().nullish(),
+  support_enabled: z.boolean().nullish(),
+  connected_via_ap: z.boolean().nullish(),
+  /**
+   * Declared accounts by name: `{customer: true, technician: false}`. A value
+   * is `null` when the device did not declare that account — which is a third
+   * state, not a `false`.
+   */
+  accounts: z.record(z.string(), z.boolean().nullish()).nullish(),
+  interfaces: z.array(detailSystemInterfaceSchema).nullish(),
+})
+export type DetailSystemData = z.infer<typeof detailSystemDataSchema>
+
+/** One network interface: addressing, mode and radio state. */
+export const detailNetworkInterfaceSchema = z.object({
+  name: z.string(),
+  ip: z.string().nullish(),
+  mask: z.string().nullish(),
+  gateway: z.string().nullish(),
+  dns: z.array(z.string()).nullish(),
+  configured: z.string().nullish(),
+  interface_mode: z.string().nullish(),
+  status: z.string().nullish(),
+  ssid: z.string().nullish(),
+  wps_state: z.string().nullish(),
+})
+export type DetailNetworkInterface = z.infer<typeof detailNetworkInterfaceSchema>
+
+export const detailNetworkDataSchema = z.object({
+  fdmp_connected: z.boolean().nullish(),
+  interfaces: z.array(detailNetworkInterfaceSchema).nullish(),
+})
+export type DetailNetworkData = z.infer<typeof detailNetworkDataSchema>
+
+export const detailDeviceSchema = z.object({
+  /** Kind of the device, as the inverter names it; `null` when it names none. */
+  type: z.string().nullish(),
+  /** Numeric status code: `0` is a real code, not an absence. */
+  status: z.number().nullish(),
+  status_message: z.string().nullish(),
+})
+export type DetailDevice = z.infer<typeof detailDeviceSchema>
+
+export const detailDevicesDataSchema = z.object({
+  devices: z.array(detailDeviceSchema).nullish(),
+})
+export type DetailDevicesData = z.infer<typeof detailDevicesDataSchema>
+
+/**
+ * One `path → value` pair of a generic family.
+ *
+ * The value is a JSON scalar; it is kept `unknown` so that a shape this build
+ * does not anticipate (an object, an array) still renders as text rather than
+ * failing the whole table.
+ */
+export const detailEntrySchema = z.object({
+  path: z.string(),
+  value: z.unknown(),
+})
+export type DetailEntry = z.infer<typeof detailEntrySchema>
+
+/**
+ * The generic shape of a family: EMRS today, and any family the backend adds
+ * later — a flat list whose values are JSON scalars.
+ */
+export const detailEntriesDataSchema = z.object({
+  entries: z.array(detailEntrySchema).nullish(),
+})
+export type DetailEntriesData = z.infer<typeof detailEntriesDataSchema>
+
+/**
+ * One family by its name. `undefined` means the collector never read it: a fact
+ * of its own, rendered as such — never as an unavailable family, never as zeros.
+ */
+export function findDetailFamily(payload: Detail | null | undefined, name: string): DetailFamily | undefined {
+  return (payload?.families ?? []).find((family) => family.family === name)
+}
+
+/**
+ * Typed read of a family's `data`. `null` when the family is absent, carries no
+ * data, or its shape is not the expected one — the caller then says the answer
+ * could not be read rather than render a half-empty table.
+ */
+export function parseDetailFamilyData<T>(family: DetailFamily | undefined, schema: z.ZodType<T>): T | null {
+  if (!family) {
+    return null
+  }
+  const result = schema.safeParse(family.data)
+  return result.success ? result.data : null
+}
+
+// ---------------------------------------------------------------------------
 // Envelopes per endpoint
 // ---------------------------------------------------------------------------
 
@@ -446,6 +639,7 @@ export const energyDailyEnvelopeSchema = envelopeSchema(z.array(dailyEnergySchem
 export const eventsEnvelopeSchema = envelopeSchema(z.array(eventSchema))
 export const capabilitiesEnvelopeSchema = envelopeSchema(z.array(capabilitySchema))
 export const sourcesEnvelopeSchema = envelopeSchema(sourcesSchema)
+export const detailEnvelopeSchema = envelopeSchema(detailSchema)
 
 export type HealthEnvelope = z.infer<typeof healthEnvelopeSchema>
 export type SystemEnvelope = z.infer<typeof systemEnvelopeSchema>
@@ -455,6 +649,7 @@ export type EnergyDailyEnvelope = z.infer<typeof energyDailyEnvelopeSchema>
 export type EventsEnvelope = z.infer<typeof eventsEnvelopeSchema>
 export type CapabilitiesEnvelope = z.infer<typeof capabilitiesEnvelopeSchema>
 export type SourcesEnvelope = z.infer<typeof sourcesEnvelopeSchema>
+export type DetailEnvelope = z.infer<typeof detailEnvelopeSchema>
 
 /** Error code signalling a still-empty database (`/api/v1/live`). */
 export const CODE_NO_DATA = 'no_data'

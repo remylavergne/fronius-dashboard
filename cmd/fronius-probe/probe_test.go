@@ -13,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"fronius-supervisor/internal/sources"
 )
 
 func TestRedactJSONPreservesMeasurements(t *testing.T) {
@@ -96,8 +98,21 @@ func TestMaskHeaderValue(t *testing.T) {
 }
 
 func TestWhitelistIsGetOnly(t *testing.T) {
-	if len(whitelist) != 6 {
-		t.Fatalf("allowlist = %d entries, want 6", len(whitelist))
+	// The probe's default set is derived from the source catalogue (the sources
+	// this project reads, plus the ones already captured): the expectation is
+	// counted from that register rather than written down, so adding a source
+	// cannot leave a stale number here.
+	want := 0
+	for _, src := range sources.Catalog() {
+		if src.State == sources.StateCalled || src.State == sources.StateCaptured {
+			want++
+		}
+	}
+	if len(whitelist) != want {
+		t.Fatalf("allowlist = %d entries, want the %d called/captured sources", len(whitelist), want)
+	}
+	if want == 0 {
+		t.Fatal("the catalogue announces no source to probe: the check above proves nothing")
 	}
 	seen := map[string]bool{}
 	for _, ep := range whitelist {
@@ -110,10 +125,13 @@ func TestWhitelistIsGetOnly(t *testing.T) {
 		if ep.note == "" {
 			t.Fatalf("%s: the note is mandatory", ep.path)
 		}
-		if seen[ep.path] {
-			t.Fatalf("%s: duplicate path", ep.path)
+		// Two collection variants share the realtime-data path, so the identity
+		// of an entry is the path WITH its query — which is also what
+		// --endpoint accepts.
+		if seen[ep.displayPath()] {
+			t.Fatalf("%s: duplicate entry", ep.displayPath())
 		}
-		seen[ep.path] = true
+		seen[ep.displayPath()] = true
 	}
 
 	// The five internal paths are reached with a Digest by the official client;
@@ -131,9 +149,9 @@ func TestWhitelistIsGetOnly(t *testing.T) {
 	// internal paths both end with "readable".
 	names := map[string]bool{}
 	for _, ep := range whitelist {
-		name := saveName(ep.path)
+		name := saveLabel(ep)
 		if names[name] {
-			t.Fatalf("%s: file name collision (%s)", ep.path, name)
+			t.Fatalf("%s: file name collision (%s)", ep.displayPath(), name)
 		}
 		names[name] = true
 	}
@@ -286,8 +304,17 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 			unauthenticated++
 		}
 	}
-	if unauthenticated != 3 {
-		t.Fatalf("requests without header = %d, want 3 (both solar api paths + the first bare internal attempt)", unauthenticated)
+	// One bare internal attempt (the first; the nonce is reused afterwards) plus
+	// one bare request per non-digest entry. Counted from the list rather than
+	// written down: adding a solar path must not leave a stale number here.
+	wantBare := 1
+	for _, ep := range whitelist {
+		if !ep.digest {
+			wantBare++
+		}
+	}
+	if unauthenticated != wantBare {
+		t.Fatalf("requests without header = %d, want %d", unauthenticated, wantBare)
 	}
 	for _, header := range seen {
 		if header != "" && !strings.HasPrefix(header, "Digest ") {
@@ -354,11 +381,16 @@ func TestListPrintsWhitelist(t *testing.T) {
 			t.Fatalf("--list output incomplete (%q missing):\n%s", want, out)
 		}
 	}
-	// Two Solar API paths: the flow endpoint the application uses, and the
-	// accumulation endpoint the probe offers until a capture settles whether this
-	// firmware exposes the day and year counters (docs/UNKNOWNS.md #13).
-	if n := strings.Count(out, "/solar_api/"); n != 2 {
-		t.Fatalf("the allowlist must cite both Solar API paths (%d):\n%s", n, out)
+	// Every Solar API entry of the default set is cited, counted from the list
+	// rather than written down.
+	wantSolar := 0
+	for _, ep := range whitelist {
+		if strings.HasPrefix(ep.path, "/solar_api/") {
+			wantSolar++
+		}
+	}
+	if n := strings.Count(out, "/solar_api/"); n != wantSolar {
+		t.Fatalf("the allowlist cites %d Solar API entries, want %d:\n%s", n, wantSolar, out)
 	}
 	if !strings.Contains(out, "DataCollection=CumulationInverterData") {
 		t.Fatalf("the accumulation entry must show its frozen query:\n%s", out)

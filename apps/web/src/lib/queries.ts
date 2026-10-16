@@ -14,6 +14,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { fetchJSON } from './api'
 import {
   capabilitiesEnvelopeSchema,
+  detailEnvelopeSchema,
   energyDailyEnvelopeSchema,
   healthEnvelopeSchema,
   liveEnvelopeSchema,
@@ -21,7 +22,7 @@ import {
   systemEnvelopeSchema,
   timeseriesEnvelopeSchema,
 } from './schema'
-import type { CapabilitiesEnvelope, EnergyDailyEnvelope, HealthEnvelope, LiveEnvelope, SourcesEnvelope, SystemEnvelope, TimeseriesEnvelope } from './schema'
+import type { CapabilitiesEnvelope, DetailEnvelope, EnergyDailyEnvelope, HealthEnvelope, LiveEnvelope, SourcesEnvelope, SystemEnvelope, TimeseriesEnvelope } from './schema'
 
 const POLL_MS = 5000
 
@@ -68,6 +69,21 @@ export function useSources(): UseQueryResult<SourcesEnvelope> {
   return useQuery({
     queryKey: ['sources'],
     queryFn: ({ signal }) => fetchJSON('/api/v1/sources', sourcesEnvelopeSchema, signal),
+    ...pollOptions,
+  })
+}
+
+/**
+ * Device detail.
+ *
+ * The poll cadence is the interface's, not the device's: the answer carries what
+ * the collector last read, on its own slow cycle. Polling this path therefore
+ * costs one read of the API's cache, never a read of the device.
+ */
+export function useDetail(): UseQueryResult<DetailEnvelope> {
+  return useQuery({
+    queryKey: ['detail'],
+    queryFn: ({ signal }) => fetchJSON('/api/v1/detail', detailEnvelopeSchema, signal),
     ...pollOptions,
   })
 }

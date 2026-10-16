@@ -54,6 +54,14 @@ const (
 	ActiveEventsPath = "/status/activeEvents"
 	PowerMeterPath   = "/components/PowerMeter/readable"
 	BatteryPath      = "/components/BatteryManagementSystem/readable"
+	// The diagnostic paths added after the survey of 2026-10-16 observed them
+	// (docs/SOURCES.md § First survey of the reference installation). Each
+	// answers a bare JSON body: the polled registry reads them with the Default
+	// envelope, not the Cgi one.
+	CommonPath  = "/status/common"
+	NetworkPath = "/status/network"
+	DevicesPath = "/status/devices"
+	EmrsPath    = "/status/emrs"
 )
 
 // ErrNotAllowed is returned by Get for any path outside the allowlist. It is a
@@ -94,6 +102,38 @@ var allowlist = []Endpoint{
 		Digest:   true,
 		Purpose:  "presence of a battery",
 		Evidence: "bundle: polled registry l. 76032 with Cgi envelope (module aYRN). Captured 2026-10-16 on firmware 1.19.7-1 (empty Body.Data: no battery). Verified by cmd/fronius-sim.",
+	},
+	{
+		Path:     CommonPath,
+		Class:    ClassRead,
+		Envelope: EnvelopeDefault,
+		Digest:   true,
+		Purpose:  "device-wide state: system name, service state, update running, support enabled, declared account kinds",
+		Evidence: "bundle: polled registry l. 76041 (module aYRN, interval 5,000 ms, Default envelope). Surveyed 2026-10-16 on firmware 1.19.7-1: 200 without Authorization, 349 bytes, 10 fields (systemName, serviceState, updateRunning, supportEnabled, networkState.connectedViaAP, networkState.interfaces[], passwordState.customer, passwordState.technician). The account booleans are what the DEVICE declares, never a permission granted to this application (docs/UNKNOWNS.md #6).",
+	},
+	{
+		Path:     NetworkPath,
+		Class:    ClassRead,
+		Envelope: EnvelopeDefault,
+		Digest:   true,
+		Purpose:  "network interfaces: addressing, mode and radio state",
+		Evidence: "bundle: polled registry l. 76028 (module aYRN, Default envelope). Surveyed 2026-10-16 on firmware 1.19.7-1: 200 without Authorization, 768 bytes, 38 fields — one entry per interface (eth0, eth1) with ip.{ip,mask,gateway,dns[],configured} and network.{interface_mode,status,ssid,wps_state}, plus isFDMPConnected.",
+	},
+	{
+		Path:     DevicesPath,
+		Class:    ClassRead,
+		Envelope: EnvelopeDefault,
+		Digest:   true,
+		Purpose:  "inventory of the devices the device knows, with their status",
+		Evidence: "bundle: polled registry l. 76027 (module aYRN, Default envelope). Surveyed 2026-10-16 on firmware 1.19.7-1: 200 without Authorization, 65 bytes — a bare JSON array whose entries carry type, status and statusMessage.",
+	},
+	{
+		Path:     EmrsPath,
+		Class:    ClassRead,
+		Envelope: EnvelopeDefault,
+		Digest:   true,
+		Purpose:  "EMRS pin states",
+		Evidence: "bundle: polled registry l. 76029 (module aYRN, Default envelope). Surveyed 2026-10-16 on firmware 1.19.7-1: 200 without Authorization, 214 bytes, 8 fields — four pins (pin1…pin4), each with state and its reason.",
 	},
 }
 

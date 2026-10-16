@@ -492,8 +492,14 @@ func TestInternalPathMethodAndUnknownPath(t *testing.T) {
 		t.Fatalf("POST %s: status = %d, want 405", versionPath, resp.StatusCode)
 	}
 
-	// An internal path that is not in the allowlist does not exist.
-	for _, path := range []string{"/status/events", "/status/devices", "/components/DataManager/readable"} {
+	// An internal path that is not in the allowlist does not exist. The paths
+	// the survey of 2026-10-16 justified are served now (/status/common,
+	// /status/network, /status/devices, /status/emrs): this list holds the ones
+	// that remain outside it.
+	for _, path := range []string{
+		"/status/events", "/status/powerflow", "/components/cache/readable",
+		"/components/DataManager/readable",
+	} {
 		if code, _, _ := get(t, srv, path, nil); code != http.StatusNotFound {
 			t.Fatalf("%s: status = %d, want 404", path, code)
 		}

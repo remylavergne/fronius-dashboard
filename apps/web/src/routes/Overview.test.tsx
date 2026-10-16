@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { sampleSchema, type Sample } from '@/lib/schema'
+import type { DetailFamily } from '@/lib/schema'
 import { resolveEnergy } from '@/lib/energy'
 import { Overview } from './Overview'
 
-// `vi.mock` is hoisted above the imports: the live query result must live in a
+// `vi.mock` is hoisted above the imports: the query results must live in a
 // hoisted binding to be referenced by the factory.
-const { liveMock } = vi.hoisted(() => ({ liveMock: vi.fn() }))
+const { liveMock, detailMock, noDetail } = vi.hoisted(() => ({
+  liveMock: vi.fn(),
+  detailMock: vi.fn(),
+  /**
+   * Detail answer of a page that has none: the chip then says nothing. Also the
+   * fallback of the factory below, whose mock result is reset between tests.
+   */
+  noDetail: { data: undefined, isLoading: false, isError: false, error: undefined, refetch: vi.fn() },
+}))
 
 vi.mock('@/lib/queries', () => ({
   RANGES: ['24h', '7d', '30d'],
@@ -17,9 +26,21 @@ vi.mock('@/lib/queries', () => ({
   useLive: () => liveMock(),
   useHealth: () => ({ data: undefined }),
   useCapabilities: () => ({ data: undefined }),
+  useDetail: () => detailMock() ?? noDetail,
   useMinuteTick: () => new Date('2026-10-16T10:00:00.000Z'),
   useTimeseries: () => ({ data: undefined }),
 }))
+
+/** The inverter family of the detail answer, as the chip receives it. */
+function mockDetail(families: DetailFamily[]) {
+  detailMock.mockReturnValue({
+    data: { data: { read_at: '2026-10-16T09:30:00Z', families }, meta: { generated_at: '2026-10-16T09:30:00Z' } },
+    isLoading: false,
+    isError: false,
+    error: undefined,
+    refetch: vi.fn(),
+  })
+}
 
 /** A sample with every optional quantity absent: each test fills what it needs. */
 const baseSample: Sample = {
@@ -156,5 +177,75 @@ describe('sampleSchema energy_derived', () => {
       expect(result.data.energy_derived?.day_wh).toBe(139.2)
       expect(result.data.energy_derived?.from).toBe('energy_total_wh')
     }
+  })
+})
+
+describe('Overview inverter state chip', () => {
+  beforeEach(() => {
+    liveMock.mockReset()
+    mockLive(baseSample)
+  })
+
+  it('shows the state word and its codes when the inverter family is available', () => {
+    mockDetail([
+      {
+        family: 'inverter',
+        available: true,
+        reason: '',
+        read_at: '2026-10-16T09:30:00Z',
+        data: { state: { inverter_state: 'Sleeping', status_code: 13, error_code: 1175 } },
+      },
+    ])
+
+    render(<Overview />)
+
+    const chip = screen.getByTestId('inverter-state-chip')
+    expect(within(chip).getByText('Sleeping')).toBeInTheDocument()
+    expect(within(chip).getByText('Status code 13 · Error code 1175')).toBeInTheDocument()
+  })
+
+  it('shows a dash and the reason when the inverter family is unavailable', () => {
+    mockDetail([
+      {
+        family: 'inverter',
+        available: false,
+        reason: 'No session could be opened with the device.',
+        read_at: '2026-10-16T09:30:00Z',
+        data: null,
+      },
+    ])
+
+    render(<Overview />)
+
+    const chip = screen.getByTestId('inverter-state-chip')
+    expect(within(chip).getByText('Unavailable')).toBeInTheDocument()
+    expect(within(chip).getByText('No session could be opened with the device.')).toBeInTheDocument()
+    expect(within(chip).getByText('—')).toBeInTheDocument()
+  })
+
+  it('invents no state when the family is available but carries no word', () => {
+    mockDetail([
+      {
+        family: 'inverter',
+        available: true,
+        reason: '',
+        read_at: '2026-10-16T09:30:00Z',
+        data: { measurements: [{ key: 'PAC', label: 'AC power', unit: 'W', value: 0 }] },
+      },
+    ])
+
+    render(<Overview />)
+
+    const chip = screen.getByTestId('inverter-state-chip')
+    expect(within(chip).getByText('—')).toBeInTheDocument()
+    expect(within(chip).queryByText('Sleeping')).not.toBeInTheDocument()
+  })
+
+  it('renders no chip at all when the inverter family was never read', () => {
+    mockDetail([])
+
+    render(<Overview />)
+
+    expect(screen.queryByTestId('inverter-state-chip')).not.toBeInTheDocument()
   })
 })

@@ -188,8 +188,23 @@ func TestSourcesPublishesTheCalledSetAndThePaths(t *testing.T) {
 	if !called[solarapi.PowerFlowPath] {
 		t.Errorf("%s is not published as called", solarapi.PowerFlowPath)
 	}
-	if len(called) != len(internalapi.Allowlist())+1 {
-		t.Errorf("%d paths published as called, want %d", len(called), len(internalapi.Allowlist())+1)
+	// The Solar API side: the two paths the code names — the flow endpoint and
+	// the common collection the collector reads for the device detail. Counted
+	// from the code, not written down.
+	solarCalled := map[string]bool{}
+	for _, entry := range got.Data.Sources {
+		if entry.Called && entry.Transport == "solar_api" {
+			solarCalled[entry.Path] = true
+		}
+	}
+	if !solarCalled[solarapi.PowerFlowPath] {
+		t.Errorf("%s is not published as called", solarapi.PowerFlowPath)
+	}
+	if !solarCalled[solarapi.InverterRealtimePath] {
+		t.Errorf("%s is not published as called", solarapi.InverterRealtimePath)
+	}
+	if len(solarCalled) != 2 {
+		t.Errorf("%d Solar API paths published as called, want 2: %v", len(solarCalled), solarCalled)
 	}
 
 	// The filtered fields explain the two carried-over findings of the session.

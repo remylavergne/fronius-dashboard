@@ -31,7 +31,8 @@ feeds or would unlock. It is served by `GET /api/v1/sources` (the "Data sources"
 page).
 
 `internal/sources/catalog_test.go` binds the catalogue to the registers: the
-`called` set is exactly the code allowlist plus the one Solar API path, every
+`called` set is exactly the code allowlist plus the Solar API paths the collector
+reads, every
 capability id exists (or is a candidate the catalogue introduces), every declared
 fixture exists on disk, and the catalogue holds exactly the Solar API paths of
 the candidate table below and every internal path of `docs/ENDPOINTS.md`. A path
@@ -285,12 +286,17 @@ nor the method, nor the permissions.
 | Path | Method | Auth | Proof status |
 |---|---|---|---|
 | `GET /solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16): `200 OK`, no `Authorization`, schema captured (§ Shape of the Solar API v1 response); **absent from the bundle** |
-| `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16, `200`, `883` bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live ⇒ **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13); it is the documented source of the inverter state (`Body.Data.DeviceStatus`, a **candidate** metric, not implemented); **absent from the bundle**; called by `cmd/fronius-probe`, **not** by the application |
+| `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | GET | none (captured) | `[VERIFIED]` (hardware, 2026-10-16, `200`, `883` bytes, no challenge): `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live ⇒ **not** a source for the day and year counters (`docs/UNKNOWNS.md` #13); it is also the documented source of the inverter state (`Body.Data.DeviceStatus`) — **read on the common collection** and published by the device detail page, while this accumulation collection stays probe-only; **absent from the bundle**; called by `cmd/fronius-probe`, **not** by the application |
+| `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData` | GET | none (captured) | **called**: `[VERIFIED]` (hardware, survey 2026-10-16, `200`, `1680` bytes, `digest_required: false`) — read by `internal/collector` **every collection cycle** (constant `solarapi.CommonQuery`); the thirteen measurements and `DeviceStatus` sit **flat** under `Body.Data`; the measurements and the state are published on the device detail page (`GET /api/v1/detail`). **No fixture is promoted** for this answer: it is read live, and its shape is pinned by the survey record, not by a versioned file |
 | `/status/powerflow` | GET | internal | `[SOURCE-JS]` — polled every 5,000 ms by the official client (basis for `FRONIUS_POLL_INTERVAL`); **extracted but no longer called** by the application: it briefly served as the **fallback** for the day and year energies the Solar API returns as `null` (`docs/UNKNOWNS.md` #13), a fallback **removed** once the captures proved no local source exposes them. The simulator no longer serves it; it was **captured** `[VERIFIED]` (hardware, 2026-10-16, firmware `1.19.7-1`): `200`, `digest_required: false`, promoted as `internalapi/status_powerflow.json` — `inverters` is an **array** of `{CID, DT, E_Total, ID, P}` (the bundle could not tell, its client reading that member through `Object.keys`/`Object.values`), `site.MLoc` is the internal twin of the Solar API's `Meter_Location` (integer `255`, versus the string `"unknown"`), and `common`/`version` are **not read** by the application. **Decisive:** `site.E_Day` and `site.E_Year` are **null here too**, and the accumulation collection nulls the same counters, so **no local source** delivers them on this installation (`docs/UNKNOWNS.md` #13) |
 | `/status/version` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 183050 (`yTJA` route, without a header — **this path is not in the `aYRN` registry**); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`). Provides `serialNumber`, `numberOfPhases`, `devicegroup`, `swrevisions` |
 | `/status/activeEvents` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76030 (10,000 ms interval); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, root array). Fields read listed in `docs/ENDPOINTS.md` |
 | `/components/PowerMeter/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76035 (envelope `Cgi`); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no meter**). Presence deduced from `Body.Data` |
 | `/components/BatteryManagementSystem/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76032; `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no battery**). Presence deduced from `Body.Data` |
+| `/status/common` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76041 (`aYRN` registry, envelope `Default`); `[VERIFIED]` on the simulator and **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `349` bytes, `10` fields). Read by `internal/detect` on the detection cycle; the four families are published by `GET /api/v1/detail` |
+| `/status/network` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76028 (`aYRN` registry, envelope `Default`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `768` bytes, `38` fields). One entry per interface |
+| `/status/devices` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76027 (`aYRN` registry, envelope `Default`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `65` bytes) — a bare JSON array (`type`, `status`, `statusMessage`) |
+| `/status/emrs` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76029 (`aYRN` registry, envelope `Default`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `214` bytes, `8` fields) — four pins (`pin1`…`pin4`) |
 | `/config/meter`, `/config/batteries` | `GET` (l. 161422) | Digest "after 401" | **off-list** by scope choice: literal and verb **observed** (l. 161471 and 161462; module `rCKn`), the opposite claim having been corrected |
 | `/config/*` (24 paths) | GET | Digest "Customer" | `[OBSERVED-CONVERSATION]` for a few (`/config/common`, `/config/modbus`, `/config/meter`, `/config/iomapping`: 200; `/config/powerlimits`, `/config/setup/*`: 200 `{}`); phase 2. The captured `/status/*` and `/components/*` paths need **no** Digest (§ Hardware captures) |
 | `/commands/*` | GET/POST | Digest depending on the command | `[SOURCE-JS]`; several are mutations — **out of scope**, never called |
@@ -417,7 +423,7 @@ their presence on **this** firmware, not on the model in general.
 | Candidate endpoint | What it would provide | Status |
 |---|---|---|
 | `/solar_api/GetAPIVersion` | API version exposed by the device | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve this path. The documented path may need a suffix (`.cgi`); the answer does not say, so this stays an **open candidate** and no reason is asserted |
-| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | **captured 2026-10-16** — `cmd/fronius-probe` entry, `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (class `READ`, `digest=false`, frozen query `solarapi.CumulationQuery`), the "Solar API first" route (ADR 0003/0008); `cmd/fronius-sim` serves it too, per collection, in the **captured** shape (`Unit`/`Value` pairs, `DeviceStatus`; `3PInverterData` answers an empty `Body.Data` as the single-phase unit does) with values from its own curve. **First attempt 2026-10-16**: the path was probed with the `.fcgi` suffix and answered `404` with the webserver's XHTML error page (`Server: webserver`, `Content-Type: text/html`, `iso-8859-1`) — the realtime-data family of Solar API v1 is `.cgi`, so the suffix was the mistake. **Capture 2026-10-16** (`200`, `883` bytes, no challenge, `17:00:38Z`): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while `TOTAL_ENERGY` is live (`15089627.579722222` Wh), so this endpoint is **not** a source for the day and year counters either (`docs/UNKNOWNS.md` #13); it is the documented source of the inverter state (`DeviceStatus`), a **candidate** metric, not implemented (§ Hardware captures) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | **captured 2026-10-16** — `cmd/fronius-probe` entry, `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (class `READ`, `digest=false`, frozen query `solarapi.CumulationQuery`), the "Solar API first" route (ADR 0003/0008); `cmd/fronius-sim` serves it too, per collection, in the **captured** shape (`Unit`/`Value` pairs, `DeviceStatus`; `3PInverterData` answers an empty `Body.Data` as the single-phase unit does) with values from its own curve. **First attempt 2026-10-16**: the path was probed with the `.fcgi` suffix and answered `404` with the webserver's XHTML error page (`Server: webserver`, `Content-Type: text/html`, `iso-8859-1`) — the realtime-data family of Solar API v1 is `.cgi`, so the suffix was the mistake. **Capture 2026-10-16** (`200`, `883` bytes, no challenge, `17:00:38Z`): `DAY_ENERGY` and `YEAR_ENERGY` come back **null** while `TOTAL_ENERGY` is live (`15089627.579722222` Wh), so this endpoint is **not** a source for the day and year counters either (`docs/UNKNOWNS.md` #13); it is the documented source of the inverter state (`DeviceStatus`). The **common** collection (`DataCollection=CommonInverterData`) is now **read by the application** — once per collector cycle, constant `solarapi.CommonQuery` — and its measurements and state are published on the device detail page (`GET /api/v1/detail`); the accumulation collection stays **probe-only** (§ Hardware captures) |
 | `/solar_api/v1/GetInverterInfo.fcgi` | **Identity**: model, serial number, firmware per inverter | `404` on firmware 1.19.7-1 (survey 2026-10-16) — this firmware does not serve it, so the "identity from the Solar API" route is **closed**: the identity stays on the Digest-protected internal API (`/status/version`), `docs/UNKNOWNS.md` #3 |
 | `/solar_api/v1/GetLoggerInfo.fcgi` | Identity of the datalogger / the interface | `404` on firmware 1.19.7-1 (survey 2026-10-16) — same conclusion as `GetInverterInfo.fcgi`: no Solar API identity source on this firmware |
 | `/solar_api/v1/GetMeterRealtimeData.fcgi` | Measurements of the Fronius Smart Meter, if present | `404` on firmware 1.19.7-1 (survey 2026-10-16) — not served; and `/components/PowerMeter/readable` answered with an **empty** `Body.Data`, proving **no Smart Meter installed**, so there is nothing to read here either (§ Hardware captures) |
@@ -458,7 +464,7 @@ redacted by `fronius-probe --save`):
 | `internalapi/components_batterymanagementsystem_readable.json` | yes | `/components/BatteryManagementSystem/readable` (empty `Body.Data`) |
 | `internalapi/status_powerflow.json` | yes | `/status/powerflow` — the recorded capture of a path that is **no longer called** (the fallback was removed) |
 
-The **accumulation capture** is versioned as `solarapi/inverter_realtime_accumulation.json` (2026-10-16, `883` bytes, query `DataCollection=CumulationInverterData`): the application does not call the endpoint (the probe does), and the fixture is what pins its shape —
+The **accumulation capture** is versioned as `solarapi/inverter_realtime_accumulation.json` (2026-10-16, `883` bytes, query `DataCollection=CumulationInverterData`): the application does not call the **accumulation** endpoint (the probe does; the application reads the **common** one), and the fixture is what pins its shape —
 `internal/fronius/solarapi`'s contract test fails if the flat `Unit`/`Value` answer, the null `DAY_ENERGY`/`YEAR_ENERGY` or the `DeviceStatus` object ever drifts.
 
 The internal fixture `internalapi/status_powerflow.json` is **promoted**
@@ -483,7 +489,10 @@ the probe itself.
 
 The phase 2 probe writes one file per explored path, named after the path:
 `/status/version` → `probe_status_version_<UTC>.json`, etc. The name cannot come
-from the last segment alone ("readable" for both components).
+from the last segment alone ("readable" for both components), and a frozen query
+is appended to it — two collections of one path answer different things:
+`/solar_api/v1/GetInverterRealtimeData.cgi?…DataCollection=CommonInverterData` →
+`probe_solar_api_v1_getinverterrealtimedata_scope_device_deviceid_1_datacollection_commoninverterdata_<UTC>.json`.
 
 Promotion of a fixture: a real capture produced by `fronius-probe --save` must
 set `synthetic` to `false`, `confidence` to `VERIFIED (hardware)`, carry
@@ -527,16 +536,18 @@ with the password entered on standard input — captured the **accumulation
 collection** (2026-10-16T17:00:38Z, `200`, `883` bytes, no challenge,
 `Content-Type` not recorded). The redacted body is kept at
 `/tmp/probe-real/probe_solar_api_v1_getinverterrealtimedata_20261016T170038Z.json`;
-**no fixture is versioned for it** — the application does not call the endpoint, so
-the facts live in this document. The body settles it: `Body.Data.DAY_ENERGY` and
+**no fixture is versioned for it** — the application does not call this
+**accumulation** endpoint, so the facts live in this document. The body settles
+it: `Body.Data.DAY_ENERGY` and
 `Body.Data.YEAR_ENERGY` are **null** while `Body.Data.TOTAL_ENERGY` is live
 (`15089627.579722222` Wh) and `PAC` is `0.0`. The same body carries what the flow
 endpoints do not — `Body.Data.DeviceStatus` (`{"ErrorCode":1175,
 "InverterState":"Sleeping","StatusCode":13}`): the endpoint is the **documented
 source of the inverter state**, and it shows the inverter was **Sleeping** at 17:00
-UTC, which explains the `0.0` powers while `TOTAL_ENERGY` stayed live. A "device
-state" metric built on `DeviceStatus` is a **candidate** only — a decision,
-**not implemented**.
+UTC, which explains the `0.0` powers while `TOTAL_ENERGY` stayed live. That state
+is now **read** — on the **common** collection, published as the inverter family
+of the device detail page — while this **accumulation** collection stays
+probe-only.
 
 Promoted into `test/fixtures` on **2026-10-16** (§ Fixtures). Consequences
 recorded in `docs/UNKNOWNS.md`: #2 resolved (no authentication required), #4 and
@@ -574,8 +585,8 @@ Field-level facts observed in the report:
 
 - **`CommonInverterData`** (36 fields) carries the Solar API `Unit`/`Value`
   measurement pairs **plus** `ErrorCode`, `InverterState`, `StatusCode`: the
-  electrical detail and the device status, both on a path the application does
-  not call.
+  electrical detail and the device status — now **read by the application**
+  every collector cycle and published on the device detail page.
 - **`/status/version`** (29) carries `apiversions` (commandsApi, configApi,
   setupAppApi, statusApi, updateApi), eleven `swrevisions` components (of which
   only `GEN24` is read), three `hwrevisions` keys, `minAppVersions`
@@ -607,8 +618,10 @@ What the run settles:
    API" idea is closed (`docs/UNKNOWNS.md` #3).
 3. **`CommonInverterData` and `CumulationInverterData` are served**: the
    electrical detail and the inverter `DeviceStatus`
-   (`InverterState`/`StatusCode`/`ErrorCode`) are available on this device — the
-   two candidates worth wiring for the dashboard's missing state and detail.
+   (`InverterState`/`StatusCode`/`ErrorCode`) are available on this device. The
+   **common** collection is now **read by the application** — its measurements
+   and state are the inverter family of the device detail page — while the
+   accumulation collection stays **probe-only**.
 4. **`3PInverterData` is empty** and the meter, battery and Ohmpilot readables
    are empty: consistent with the installed hardware (single-phase Primo, no
    meter, no battery, no Ohmpilot).

@@ -31,6 +31,7 @@ flowchart LR
   DG --> IA --> DET
   DET --> DB
   COL --> MOD --> DB
+  COL --> DB
   MAINT --> DB
   DB --> MAINT
   SEC -.-> DG
@@ -50,6 +51,32 @@ The simulator and the inverter are interchangeable: the client knows only
 `FRONIUS_SOLARAPI_URL`. The probe is outside the operational flow — it is a manual
 diagnostic tool, never started by the service or by CI.
 
+### The device detail snapshot
+
+Readings in two cadences describe the device **itself** rather than its
+production, and the API publishes them on a page of their own
+(`GET /api/v1/detail`). They are **snapshots**, not series: one row per family in
+`device_detail`, replaced on each read, so the table says what the device says
+*now* and never accumulates a history — which is why it is carried by
+`Store.Restore` but **not** purged with the retention (it is state, like
+`device`, not history).
+
+- The **inverter** family is the Solar API collection
+  `GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData`
+  (constant `solarapi.CommonQuery`): its `DeviceStatus` and its thirteen
+  measurements. `internal/collector` reads it **once per collection cycle**,
+  beside the measurements — that is **one extra `GET` per cycle**, the cost of a
+  fresh electrical detail the flow endpoint does not carry.
+- The **system**, **network**, **devices** and **emrs** families are read by
+  `internal/detect`, on the detection cycle (`FRONIUS_DETECT_INTERVAL`): they
+  change rarely, and a snapshot of them belongs with the identity read.
+
+The two cadences are why each family carries its **own** read instant
+(`read_at`): the snapshot is not live, and a reader must not present a slow
+family as if it had been read with the measurement. A family has three distinct
+states: recorded and available; recorded and unavailable **with its reason**;
+never read (**absent from the list**).
+
 ## Go packages
 
 | Package | Role | Depends on |
@@ -65,13 +92,13 @@ diagnostic tool, never started by the service or by CI.
 | `internal/fronius/digest` | Digest transport (RFC 2617): challenge, header, one retry on 401, nonce cache | `fronius`, `froniuserr`, `secret` |
 | `internal/fronius/solarapi` | Solar API client and the **only** encoding of the JSON shape | `fronius`, `froniuserr` |
 | `internal/fronius/internalapi` | Internal paths: **executable allowlist** and tolerant extraction | `fronius`, `froniuserr` |
-| `internal/model` | Normalized model, units, three-state detection, capabilities, events | `solarapi` |
-| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, the recorded survey (`source_probe`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
+| `internal/model` | Normalized model, units, three-state detection, capabilities, events, and the device detail snapshots (the five families) | `solarapi` |
+| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, the recorded survey (`source_probe`), the device detail (`device_detail`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
-| `internal/collector` | Collection loop, backoff, events | `solarapi`, `model`, `storage` |
-| `internal/detect` | Detection loop: identity, presence, events, states and reasons | `internalapi`, `model`, `storage` |
+| `internal/collector` | Collection loop, backoff, events, and the inverter detail snapshot (`InverterRealtime`, once per cycle) | `solarapi`, `model`, `storage` |
+| `internal/detect` | Detection loop: identity, presence, events, states and reasons, and the system/network/devices/emrs detail families | `internalapi`, `model`, `storage` |
 | `internal/sources` | Machine-readable catalogue of every known source: transport (`solar_api` / `internal_api`), state, field-level status, proofs and capability join; served by `GET /api/v1/sources` | — |
-| `internal/api` | REST API, validation, envelope and DTO | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
+| `internal/api` | REST API, validation, envelope and DTO; the read routes include `/api/v1/detail` (the device detail families) | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
 
 The direction of the dependencies is acyclic and goes from the most concrete
 (the binaries) to the most abstract (the typed errors). No internal package
@@ -86,7 +113,7 @@ imports a `cmd/`.
 | `src/lib/queries.ts` | TanStack Query hooks, polling 5 s, ranges and steps |
 | `src/lib/chart.ts` | Buckets → chart points, **materialized gaps** |
 | `src/lib/freshness.ts` | Staleness decision displayed |
-| `src/routes/*` | Overview, System, Capabilities, Settings, Sources |
+| `src/routes/*` | Overview, System, Capabilities, Detail, Settings, Sources |
 | `src/i18n/*` | Flat FR dictionary, ready for EN/DE |
 
 The frontend talks only to `/api` (relayed by the Vite proxy in development). It
@@ -150,7 +177,8 @@ Node process, nor a bundle, nor an HTTP response.
    status (`displayed` / `stored` / `validated` / `ignored` / `unverified`) with
    its reason, proofs and capability join — and `GET /api/v1/sources` serves it.
    `internal/sources/catalog_test.go` enforces the binding: the `called` set is
-   exactly the code allowlist plus the one Solar API path, every ignored or
+   exactly the code allowlist plus the Solar API paths the collector reads,
+   every ignored or
    unverified field carries its reason, every capability id exists or is
    introduced by the catalogue, every declared fixture exists, and the catalogue
    holds exactly the Solar API paths of the candidate table of `docs/SOURCES.md`

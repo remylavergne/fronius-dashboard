@@ -50,13 +50,16 @@ curl -s localhost:8080/api/v1/health | jq
 curl -s localhost:8080/api/v1/live | jq '.data.power_pv_w, .meta.stale'
 curl -s localhost:8080/api/v1/capabilities | jq -r '.data[]|select(.available==false)|.id+" — "+.reason'
 curl -s localhost:8080/api/v1/sources | jq '.data.summary'
+curl -s localhost:8080/api/v1/detail | jq -r '.data.families[]|.family+" — "+.available|tostring'
 ```
 
-The last call lists what the device exposes and what this application does with
-it: each source with its state (`called` / `captured` / `candidate` /
+The `/sources` call lists what the device exposes and what this application does
+with it: each source with its state (`called` / `captured` / `candidate` /
 `archived`), its fields with their status, and the capability it feeds or would
 unlock. It is the machine-readable form of `docs/SOURCES.md` and
-`docs/ENDPOINTS.md` (see `internal/sources/catalog.go`).
+`docs/ENDPOINTS.md` (see `internal/sources/catalog.go`). The `/detail` call lists
+the device detail families with their availability, their reason and their own
+read instant (§ Device detail).
 
 `meta.stale = true` means: no measurement for longer than `FRONIUS_STALE_AFTER`.
 The displayed values remain the last known ones — they are not wrong, they are
@@ -86,8 +89,10 @@ normal, and it avoids hammering a device that is restarting.
 ## Device credentials
 
 Some device paths exist only behind Digest authentication: identity
-(`/status/version`), events (`/status/activeEvents`) and component presence
-(`/components/…`). It is `froniusd` that queries them, periodically, and the
+(`/status/version`), events (`/status/activeEvents`), component presence
+(`/components/…`) and, since the device detail, the four diagnostic families
+(`/status/common`, `/status/network`, `/status/devices`, `/status/emrs`). It is
+`froniusd` that queries them, periodically, and the
 `Authorization` header is emitted **only in response to a `401`** — never
 preemptively, never to another host, never to the frontend.
 
@@ -130,6 +135,40 @@ On `401`: the service retries **once** per path after the challenge. If the
 absent or invalid" — then check the user, the password, and the realm announced
 by the device (`fronius-probe --endpoint /status/version`). Never "fix" this by
 broadening the application: no device-modifying command exists in this binary.
+
+## Device detail
+
+The **Device detail** page (`/detail`, served by `GET /api/v1/detail`) shows what
+the device says about **itself**, beyond its production: the **inverter** family
+(its state and its thirteen electrical measurements) plus the **system**,
+**network**, **devices** and **emrs** families. The **Overview** page also
+carries an **inverter state chip**, fed by the same inverter family.
+
+The readings come on **two cadences**, because they answer two different needs:
+
+- the **inverter** family is read by the collector **once per collection cycle**
+  (`FRONIUS_POLL_INTERVAL`), right after the measurements — this is **one extra
+  `GET` per cycle**, the cost of a fresh electrical detail the flow endpoint does
+  not carry;
+- the **system**, **network**, **devices** and **emrs** families are read by the
+  detector on its own cycle (`FRONIUS_DETECT_INTERVAL`): they change rarely.
+
+Each family therefore carries **its own** read instant (`read_at`), and the page
+shows it. The endpoint serves a **snapshot**, never a live read: opening the page
+costs one read of the API's own table, never a read of the device.
+
+A family is in one of **three** states, and the page renders all three — they are
+not the same fact:
+
+| The page shows | What it means | What to do |
+|---|---|---|
+| the values | recorded and **available** | nothing; the read instant tells how recent it is |
+| the reason | recorded and **unavailable**, with the cause the read produced (a `401`, a timeout, a decoding error) | read the reason; if it names credentials, set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ Device credentials) and restart; if it is a decoding error, capture with `cmd/fronius-probe` and compare with `docs/SOURCES.md` |
+| "Never read by the collector" | the family has **no** recorded row yet (a fresh database, or a cycle that has not run) | wait for the next cycle; it is not an error |
+
+"Unavailable with a reason" is neither "absent" nor a zero: the read **failed**,
+and the cause belongs with the read that produced it. A measurement the device
+reported as nothing is shown as a dash, never as `0`.
 
 ## Surveying every catalogued path
 

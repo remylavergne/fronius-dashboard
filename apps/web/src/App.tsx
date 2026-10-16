@@ -3,6 +3,7 @@ import { AppShell } from '@/components/AppShell'
 import { EmptyState } from '@/components/EmptyState'
 import { useT } from '@/i18n'
 import { CapabilitiesPage } from '@/routes/Capabilities'
+import { DetailPage } from '@/routes/Detail'
 import { Overview } from '@/routes/Overview'
 import { SettingsPage } from '@/routes/Settings'
 import { SourcesPage } from '@/routes/Sources'
@@ -18,6 +19,7 @@ const router = createBrowserRouter([
   { path: '/system', element: <AppShell><SystemPage /></AppShell> },
   { path: '/capabilities', element: <AppShell><CapabilitiesPage /></AppShell> },
   { path: '/sources', element: <AppShell><SourcesPage /></AppShell> },
+  { path: '/detail', element: <AppShell><DetailPage /></AppShell> },
   { path: '/settings', element: <AppShell><SettingsPage /></AppShell> },
   { path: '*', element: <AppShell><NotFound /></AppShell> },
 ])

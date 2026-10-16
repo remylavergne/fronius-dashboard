@@ -102,6 +102,7 @@ func (s *Server) apiMux() http.Handler {
 	register("/api/v1/events", s.handleEvents)
 	register("/api/v1/capabilities", s.handleCapabilities)
 	register("/api/v1/sources", s.handleSources)
+	register("/api/v1/detail", s.handleDetail)
 
 	// Everything else: JSON 404.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

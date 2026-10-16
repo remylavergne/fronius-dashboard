@@ -66,11 +66,19 @@ type Reader interface {
 	Version(ctx context.Context) (internalapi.Version, error)
 	ComponentPresent(ctx context.Context, path string) (bool, error)
 	ActiveEvents(ctx context.Context) ([]json.RawMessage, error)
+	// The diagnostic families, read on the same slow cycle: they change
+	// rarely, and a snapshot of them belongs with the identity read rather
+	// than with the measurements.
+	System(ctx context.Context) (internalapi.SystemInfo, error)
+	Network(ctx context.Context) (internalapi.NetworkInfo, error)
+	Devices(ctx context.Context) ([]internalapi.DeviceEntry, error)
+	Emrs(ctx context.Context) ([]internalapi.EmrsPin, error)
 }
 
 // Sink persists the effects of a detection. *storage.Store satisfies it.
 type Sink interface {
 	SaveDevice(ctx context.Context, d storage.DeviceRecord) error
+	SaveDetails(ctx context.Context, details []storage.Detail) error
 	MarkDeviceEventSeen(ctx context.Context, key string, seenAt time.Time) (bool, error)
 	InsertEvent(ctx context.Context, e model.Event) error
 	SetState(ctx context.Context, k, v string) error
@@ -142,6 +150,12 @@ func (d *Detector) DetectOnce(ctx context.Context) (model.Detection, error) {
 
 	eventsDetection, eventsErr := d.readEvents(ctx, now)
 	detection.DeviceEvents = eventsDetection
+
+	// The diagnostic families share this cycle: identity, presence and the
+	// device's own description of itself all change rarely. They are read after
+	// the state above so that a slow or failing detail path never delays the
+	// detection the interface depends on.
+	d.readDetail(ctx, now)
 
 	record := storage.DeviceRecord{
 		ReadAtUTC:          now,

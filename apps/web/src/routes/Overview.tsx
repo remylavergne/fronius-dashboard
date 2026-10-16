@@ -4,6 +4,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { KpiCard } from '@/components/KpiCard'
 import { PowerChart } from '@/components/PowerChart'
 import { StaleBadge } from '@/components/StaleBadge'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,14 +21,15 @@ import {
   localInputToISO,
   rangeToQuery,
   useCapabilities,
+  useDetail,
   useHealth,
   useLive,
   useMinuteTick,
   useTimeseries,
 } from '@/lib/queries'
 import type { RangeKey, StepKey } from '@/lib/queries'
-import { CODE_NO_DATA } from '@/lib/schema'
-import type { Bucket } from '@/lib/schema'
+import { CODE_NO_DATA, detailInverterDataSchema, findDetailFamily, parseDetailFamilyData } from '@/lib/schema'
+import type { Bucket, DetailFamily } from '@/lib/schema'
 
 /**
  * Shared empty array: without a stable reference, `?? []` would recreate an
@@ -48,6 +50,55 @@ const STEP_LABELS: Record<StepKey, string> = {
 }
 
 /** Value of an energy KPI plus whether it comes from the derivation. */
+
+/**
+ * Inverter state chip, fed by the `inverter` family of the device detail.
+ *
+ * The three states of that family stay distinct: nothing at all when it was
+ * never read, the dash and the backend's reason when it is unavailable, and the
+ * state word with its numeric codes when it is available. A word is never
+ * invented from a missing answer — the KPI grid next to it may be empty, the
+ * chip simply says nothing.
+ */
+function InverterStateChip({ family }: { family: DetailFamily | undefined }) {
+  const { t } = useT()
+  if (!family) {
+    return null
+  }
+
+  const data = family.available ? parseDetailFamilyData(family, detailInverterDataSchema) : null
+  const state = data?.state ?? null
+
+  return (
+    <div
+      data-testid="inverter-state-chip"
+      className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-xs"
+    >
+      <span className="text-muted-foreground">{t('overview.inverterState')}</span>
+      {family.available ? (
+        state?.inverter_state ? (
+          <>
+            <Badge variant="secondary">{state.inverter_state}</Badge>
+            <span className="text-muted-foreground tabular-nums">
+              {t('overview.statusCode')} {state.status_code ?? '—'} · {t('overview.errorCode')} {state.error_code ?? '—'}
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )
+      ) : (
+        <>
+          <Badge variant="outline">—</Badge>
+          <span className="text-muted-foreground">{t('state.unavailable')}</span>
+          {family.reason ? (
+            <span className="text-muted-foreground">{family.reason}</span>
+          ) : null}
+        </>
+      )}
+    </div>
+  )
+}
+
 /**
  * Overview: production, energies, collector status and curve.
  *
@@ -61,6 +112,7 @@ export function Overview() {
   const live = useLive()
   const health = useHealth()
   const capabilities = useCapabilities()
+  const detail = useDetail()
   const now = useMinuteTick()
 
   const [selection, setSelection] = useState<Selection>('24h')
@@ -113,7 +165,10 @@ export function Overview() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">{t('nav.overview')}</h1>
-        <StaleBadge stale={resolveStale(meta, offline)} staleAfterS={meta?.stale_after_s} sampledAt={meta?.sampled_at} />
+        <div className="flex flex-wrap items-center gap-3">
+          <InverterStateChip family={findDetailFamily(detail.data?.data, 'inverter')} />
+          <StaleBadge stale={resolveStale(meta, offline)} staleAfterS={meta?.stale_after_s} sampledAt={meta?.sampled_at} />
+        </div>
       </div>
 
       {offline ? (
