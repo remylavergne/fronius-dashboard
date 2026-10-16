@@ -1,0 +1,49 @@
+{
+  "apiversions": {
+    "commandsApi": "4.0.0",
+    "configApi": "4.0.0",
+    "setupAppApi": "2.2.0",
+    "statusApi": "2.6.0",
+    "updateApi": "1.0.0"
+  },
+  "articleNumber": "4,210,141,002",
+  "commonName": "pilot-0.6a-<redacted>_<redacted>",
+  "devicegroup": "P6RW",
+  "devicename": "Primo GEN24 3.6 Plus",
+  "hardwareId": "pilot-0.6a-<redacted>",
+  "hwrevisions": {
+    "1PN6K-<redacted>": "<redacted>|4,071,593|1.1C__|1PN6K|R|",
+    "PILOT-<redacted>": "<redacted>|4,071,452|0.6A_A|PILOT|R|",
+    "ROX-L-<redacted>": "<redacted>|4,071,779|0.2A_B|ROX-L|R|"
+  },
+  "minAppVersions": {
+    "minAndroidVersion": 1,
+    "minIOSVersion": 1,
+    "minWinVersion": 1
+  },
+  "numberOfPhases": 1,
+  "serialNumber": "<redacted>",
+  "swrevisions": {
+    "CoyoteControl": "1.0.1-1",
+    "CoyoteCore": "1.15.5-1",
+    "DEVICEGROUP": "1.19.7-1",
+    "GEN24": "1.19.7-1",
+    "GEN24PRIMO": "1.19.7-1",
+    "GEN24ROW": "1.19.7-1",
+    "Kronos": "2.28.1-14393",
+    "P6RW-pilot": "1.15.5-1",
+    "Rhea": "2.10.1-1",
+    "Zeus": "2.19.4-8502",
+    "imx6sx-pilot": "1.15.5-1"
+  },
+  "_provenance": {
+    "synthetic": false,
+    "source": "fronius-probe",
+    "confidence": "VERIFIED (hardware)",
+    "firmware": "1.19.7-1",
+    "captured_at": "2026-10-16T15:17:23Z",
+    "http_status": 200,
+    "digest_required": false,
+    "note": "Reference installation. The probe redacted serialNumber; the unit-level hardware identifiers (hardwareId, commonName, hwrevisions) were masked by hand before versioning — the shape, the key names and the version strings are untouched. swrevisions.GEN24 is the software version the vendor interface displays; no model key exists in this payload."
+  }
+}

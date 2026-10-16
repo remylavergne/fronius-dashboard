@@ -1,28 +1,34 @@
 {
   "Body": {
     "Data": {
-      "Site": {
-        "Mode": "produce-only",
-        "P_PV": 3251,
-        "P_Grid": null,
-        "P_Load": null,
-        "P_Akku": null,
-        "E_Day": 9064.1,
-        "E_Year": 4215488.4,
-        "E_Total": 14236126.1,
-        "rel_Autonomy": null,
-        "rel_SelfConsumption": null,
-        "Meter_Location_Current": 0
-      },
       "Inverters": {
         "1": {
           "DT": 1,
-          "P": 3251,
-          "E_Day": 9064.1,
-          "E_Year": 4215488.4,
-          "E_Total": 14236126.1
+          "E_Day": null,
+          "E_Total": 15089488.925277777,
+          "E_Year": null,
+          "P": 185.58811950683594
         }
-      }
+      },
+      "Site": {
+        "BackupMode": false,
+        "BatteryStandby": true,
+        "E_Day": null,
+        "E_Total": 15089488.925277777,
+        "E_Year": null,
+        "Meter_Location": "unknown",
+        "Mode": "produce-only",
+        "P_Akku": null,
+        "P_Grid": null,
+        "P_Load": null,
+        "P_PV": 228.35735321044922,
+        "rel_Autonomy": null,
+        "rel_SelfConsumption": null
+      },
+      "Smartloads": {
+        "Ohmpilots": {}
+      },
+      "Version": "12"
     }
   },
   "Head": {
@@ -32,14 +38,16 @@
       "Reason": "",
       "UserMessage": ""
     },
-    "Timestamp": "2026-06-21T12:00:00+02:00"
+    "Timestamp": "2026-10-16T15:17:23+00:00"
   },
   "_provenance": {
-    "synthetic": true,
-    "source": "fronius-sim",
-    "seed": 42,
-    "instant": "2026-06-21T12:00:00+02:00",
-    "confidence": "HYPOTHESIS",
-    "note": "JSON shape not validated on firmware 1.19.7-1"
+    "synthetic": false,
+    "source": "fronius-probe",
+    "confidence": "VERIFIED (hardware)",
+    "firmware": "1.19.7-1",
+    "captured_at": "2026-10-16T15:17:23Z",
+    "http_status": 200,
+    "digest_required": false,
+    "note": "Reference installation: no Smart Meter, no battery, single phase. E_Day and E_Year are null on this firmware; E_Total is present. Fields absent from dto.go (BackupMode, BatteryStandby, Smartloads, Version) are tolerated and ignored."
   }
 }

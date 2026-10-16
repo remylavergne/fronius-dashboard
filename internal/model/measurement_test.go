@@ -24,12 +24,12 @@ func envelope(ts string, site solarapi.SiteData, inverters map[string]solarapi.I
 func TestFromPowerFlowDeviceTimestamp(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 	site := solarapi.SiteData{
-		Mode:                   "produce-only",
-		P_PV:                   new(1902.4),
-		E_Day:                  new(12345.6),
-		E_Year:                 new(float64(4800000)),
-		E_Total:                new(float64(12000000)),
-		Meter_Location_Current: new(0),
+		Mode:           "produce-only",
+		P_PV:           new(1902.4),
+		E_Day:          new(12345.6),
+		E_Year:         new(float64(4800000)),
+		E_Total:        new(float64(12000000)),
+		Meter_Location: new("unknown"),
 	}
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", site, nil), now)
 

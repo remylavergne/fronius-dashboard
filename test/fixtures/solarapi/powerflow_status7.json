@@ -12,7 +12,7 @@
         "E_Total": 14236126.1,
         "rel_Autonomy": null,
         "rel_SelfConsumption": null,
-        "Meter_Location_Current": 0
+        "Meter_Location": "unknown"
       },
       "Inverters": {
         "1": {

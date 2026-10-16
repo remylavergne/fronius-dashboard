@@ -34,32 +34,41 @@ responsibility.
 The probe can only emit the requests of its allowlist, frozen in the binary
 (five entries, all `READ` and all `GET`):
 
-| Path | Digest | What it provides |
-|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | no | production measurements (site and inverters) |
-| `/status/version` | after 401 | device identity (serial number, number of phases, device group) |
-| `/status/activeEvents` | after 401 | active events (shape **not established**: this is the expected capture) |
-| `/components/PowerMeter/readable` | after 401 | presence of a Fronius Smart Meter |
-| `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery |
+| Path                                           | Digest    | What it provides                                                        |
+| ---------------------------------------------- | --------- | ----------------------------------------------------------------------- |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`  | no        | production measurements (site and inverters)                            |
+| `/status/version`                              | after 401 | device identity (serial number, number of phases, device group)         |
+| `/status/activeEvents`                         | after 401 | active events (shape established: **root array** of objects)            |
+| `/components/PowerMeter/readable`              | after 401 | presence of a Fronius Smart Meter                                       |
+| `/components/BatteryManagementSystem/readable` | after 401 | presence of a battery                                                   |
+
+**Result of the first real run** (2026-10-16, firmware 1.19.7-1): all five paths
+answered `200` on the **bare** request — no `Authorization` header was ever
+constructed and no `401` was ever issued, so `digest_required` is `false` for all
+five and the "after 401" column was never triggered. The two component paths
+replied with `Content-Type: text/javascript` (not `application/json`). Details
+and residual points: `docs/UNKNOWNS.md`, `docs/SOURCES.md`.
 
 ### What the capture must confirm, path by path
 
 The bundle extraction (`docs/ENDPOINTS.md`) replaced the unknowns with
 **client-code** facts; what remains is to obtain the **device** facts. Each
-capture of the allowlist closes a precise unknown:
+capture of the allowlist closes a precise unknown. The first run took place on
+2026-10-16 (firmware 1.19.7-1) and closed all five unknowns below; the table is
+kept as the record of what each capture had to settle:
 
-| Path | Unknown to close | What the extraction already asserts | What the capture settles |
-|---|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | #1 (JSON shape), #2 (authentication) | **absent from the bundle**: no schema is proven, `dto.go` is a hypothesis | schema, units, timestamps; and whether a Smart Meter or a battery exists (`P_Grid`, `P_Akku`, `rel_*`) |
-| `/status/version` | #3 (identity) | `serialNumber`, `numberOfPhases`, `devicegroup` proven; `swrevisions.GEN24` is the software version read by the official client (l. 128882); `hardwareId`, `devicename`, `articleNumber` are read; **no model key** is observed | the real version, the existence of a model key, and the expected shape of `articleNumber` |
-| `/status/activeEvents` | #11 (event shape) | payload = array; 11 fields read; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728); identity = `uuid`, or `prefix`-`eventID`; text = `label` | the real names and types, the semantics of `viewer`, and whether `label` carries readable text or a code |
-| `/components/PowerMeter/readable` | #4 (meter presence) | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]` | presence, real signal names and units on `1.19.7-1` |
-| `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge) | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%` | presence, and whether the state of charge really exists on this firmware |
+| Path                                           | Unknown to close                     | What the extraction already asserts                                                                                                                                                                                             | What the capture settles                                                                                 |
+| ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi`  | #1 (JSON shape), #2 (authentication) | **absent from the bundle**: no schema is proven, `dto.go` is a hypothesis                                                                                                                                                       | schema, units, timestamps; and whether a Smart Meter or a battery exists (`P_Grid`, `P_Akku`, `rel_*`)   |
+| `/status/version`                              | #3 (identity)                        | `serialNumber`, `numberOfPhases`, `devicegroup` proven; `swrevisions.GEN24` is the software version read by the official client (l. 128882); `hardwareId`, `devicename`, `articleNumber` are read; **no model key** is observed | the real version, the existence of a model key, and the expected shape of `articleNumber`                |
+| `/status/activeEvents`                         | #11 (event shape)                    | payload = array; 11 fields read; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728); identity = `uuid`, or `prefix`-`eventID`; text = `label`                                                          | the real names and types, the semantics of `viewer`, and whether `label` carries readable text or a code |
+| `/components/PowerMeter/readable`              | #4 (meter presence)                  | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]`                                                                                             | presence, real signal names and units on `1.19.7-1`                                                      |
+| `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge)     | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`                                                                                                                                              | presence, and whether the state of charge really exists on this firmware                                 |
 
-As long as these five captures are missing, **no other path has any reason to
-enter the allowlist**: the rule for adding is a metric that the Solar API does
-not provide, and a metric is not chosen from an inventory (ADR 0008). Promotion
-of captures follows § 8.
+Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
+in § 8), **no other path was added to the allowlist**: the rule for adding
+remains a metric that the Solar API does not provide, and a metric is not chosen
+from an inventory (ADR 0008).
 
 Shape of a request to an internal path:
 
@@ -113,11 +122,11 @@ go run ./cmd/fronius-probe --list
 Credentials **never** go through a command-line argument: a password in an
 argument appears in the shell history and in the process table.
 
-| Source | Usage |
-|---|---|
-| `FRONIUS_DEVICE_USER` | user, read from the environment |
+| Source                    | Usage                                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `FRONIUS_DEVICE_USER`     | user, read from the environment                                                    |
 | `FRONIUS_DEVICE_PASSWORD` | password, read from the environment (set with `read -rs`, never on a command line) |
-| `--password-stdin` | password read from the first line of standard input, for interactive use |
+| `--password-stdin`        | password read from the first line of standard input, for interactive use           |
 
 Both go together: providing only one is an error, refused before any request.
 With no credentials at all, the probe works as in phase 1: it emits bare
@@ -214,26 +223,26 @@ a fallback) is displayed masked: it carries a nonce, hence a session identifier.
 
 Interpretation:
 
-| Observation | Consequence |
-|---|---|
-| `200 OK` and `Body.Data.Site` populated | The assumed shape of `dto.go` is confirmed: promote the fixture (§ 8). |
-| `401` or `403` with `x-www-authenticate` | The device requires authentication on this path: set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ 3) and re-run. A persistent `401` **after** re-authentication signals a wrong user or password, or an unexpected realm. |
-| `404` | The path differs on this firmware: fix `internal/fronius/solarapi/dto.go` and this document. |
-| Fields or units different from those expected | Fix `dto.go`, the fixtures and `docs/SOURCES.md`. The SQLite columns do not change (base SI units). |
-| Absence of `P_Grid`, `P_Load`, `rel_*` | Expected behaviour without a Smart Meter; confirms the invariant "no invented zero". |
+| Observation                                   | Consequence                                                                                                                                                                                                                       |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `200 OK` and `Body.Data.Site` populated       | The assumed shape of `dto.go` is confirmed: promote the fixture (§ 8).                                                                                                                                                            |
+| `401` or `403` with `x-www-authenticate`      | The device requires authentication on this path: set `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (§ 3) and re-run. A persistent `401` **after** re-authentication signals a wrong user or password, or an unexpected realm. |
+| `404`                                         | The path differs on this firmware: fix `internal/fronius/solarapi/dto.go` and this document.                                                                                                                                      |
+| Fields or units different from those expected | Fix `dto.go`, the fixtures and `docs/SOURCES.md`. The SQLite columns do not change (base SI units).                                                                                                                               |
+| Absence of `P_Grid`, `P_Load`, `rel_*`        | Expected behaviour without a Smart Meter; confirms the invariant "no invented zero".                                                                                                                                              |
 
 ## 7. Redaction rules
 
 Redaction applies **before** any display and **before** any write to disk. It is
 implemented in `cmd/fronius-probe/redact.go` and tested in `probe_test.go`.
 
-| Target | Rule |
-|---|---|
-| JSON fields | Any key containing `password`, `passwd`, `secret`, `nonce`, `token`, `authorization`, `credential`, `serial`, `mac`, `ssid`, `hostname`, `ipaddress` or `sessionid` has its value replaced by `<redacted>`. |
-| Textual values | IPv4 address, IPv6 address, MAC address, host name or fully qualified name → `<redacted>`. |
-| Non-JSON body | The assignments `password=…`, `nonce=…`, `serial=…`, etc. are redacted, then the address patterns are applied to the text. |
-| HTTP headers | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `WWW-Authenticate` / `x-www-authenticate`, `X-CSRF-Token`, `X-Auth-Token`: value fully masked. Other headers are masked if their value looks like an address. |
-| Written file | Mode `0600`, name derived from the **path** and timestamped (`probe_components_powermeter_readable_<UTC>.json`). The name cannot come from the last segment alone: `/components/PowerMeter/readable` and `/components/BatteryManagementSystem/readable` both end in `readable` and would overwrite each other. |
+| Target         | Rule                                                                                                                                                                                                                                                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JSON fields    | Any key containing `password`, `passwd`, `secret`, `nonce`, `token`, `authorization`, `credential`, `serial`, `mac`, `ssid`, `hostname`, `ipaddress` or `sessionid` has its value replaced by `<redacted>`.                                                                                                    |
+| Textual values | IPv4 address, IPv6 address, MAC address, host name or fully qualified name → `<redacted>`.                                                                                                                                                                                                                     |
+| Non-JSON body  | The assignments `password=…`, `nonce=…`, `serial=…`, etc. are redacted, then the address patterns are applied to the text.                                                                                                                                                                                     |
+| HTTP headers   | `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `WWW-Authenticate` / `x-www-authenticate`, `X-CSRF-Token`, `X-Auth-Token`: value fully masked. Other headers are masked if their value looks like an address.                                                                                  |
+| Written file   | Mode `0600`, name derived from the **path** and timestamped (`probe_components_powermeter_readable_<UTC>.json`). The name cannot come from the last segment alone: `/components/PowerMeter/readable` and `/components/BatteryManagementSystem/readable` both end in `readable` and would overwrite each other. |
 
 Two non-regression rules are tested explicitly:
 
@@ -248,6 +257,10 @@ an object. The result remains valid JSON; that is the price of reliable
 structural redaction.
 
 ## 8. Promotion of a redacted fixture
+
+**First promotion: 2026-10-16, firmware 1.19.7-1** — the five captures were
+promoted (`powerflow_produce_only.json` and the four internal fixtures); see
+`docs/SOURCES.md`.
 
 1. Check the written file: open `probe_*.json` and confirm that no serial
    number, host name, address or identifier remains.
@@ -268,7 +281,7 @@ structural redaction.
 
    `digest_required` is `true` if the device answered `401` before the challenge,
    `false` if it answered directly: both paths exist in the official client (see
-   `docs/SOURCES.md`), and it is the observed response that settles it for *this*
+   `docs/SOURCES.md`), and it is the observed response that settles it for _this_
    installation.
 
 3. Rename after the captured **path** (`status_version.json`,
@@ -278,7 +291,7 @@ structural redaction.
    the corresponding synthetic file.
 4. Re-run `go test ./...`: the contract test
    (`internal/fronius/solarapi/contract_test.go`) will fail on the expected
-   values. **That is the point**: update the expected values *after*
+   values. **That is the point**: update the expected values _after_
    verification, never to make the test pass.
 5. Update `docs/SOURCES.md` (capture status, firmware, date) and record the
    change in `CHANGELOG.md`.

@@ -1,0 +1,16 @@
+[
+  {
+    "category": 0,
+    "confirmable": false,
+    "eventID": 1260,
+    "label": "LicensedFeatureDisabled",
+    "prefix": "GEN24",
+    "severity": 3,
+    "sourceID": 65540,
+    "subID": 0,
+    "timestamp": 1792131898,
+    "type": 0,
+    "uuid": "56b077da-0d11-45be-8b24-7b09d53ad558",
+    "viewer": 1
+  }
+]

@@ -7,18 +7,19 @@ it remains visible in the interface (`/api/v1/capabilities`) and in
 
 | # | Unknown | Provisional decision | What would resolve it |
 |---|---|---|---|
-| 1 | Shape of the `GetPowerFlowRealtimeData` JSON | `[HYPOTHESIS]` encoded in `dto.go`, tolerant decoding, fixtures marked synthetic | a real capture by `cmd/fronius-probe` and promotion of the fixtures |
-| 2 | Authentication **of the Solar API** on firmware 1.19.7-1 | `[TO-TEST]`: the client sends none; the internal paths, for their part, are authenticated after a 401 | a 401/403 response from the probe on the Solar API path |
-| 3 | **Partial source** of the inverter identity | `[SOURCE-JS]` + `[VERIFIED]` simulator: `/status/version` is the named source. **Resolved by the extraction**: the software version is read on the proven path `swrevisions.GEN24` (l. 128882, 135137), which the official client displays as the current version — the application now uses it (`firmwareOf`). Proven fields: `serialNumber`, `numberOfPhases`, `devicegroup`, `hwrevisions.FAMILYID`, and `hardwareId`/`devicename`/`articleNumber` (read, not exposed). **Still open**: no **model** key is observed ⇒ `Model` stays `nil` (the device group is no longer used as a fallback), and the three extracted fields are not exposed up to the screen — wiring them costs 14 files including an SQL migration, decision deferred for lack of a consumer (ADR 0008) | a real capture of `/status/version`: confirm the version, decide on the existence of a model key |
-| 4 | Presence of a Fronius Smart Meter | detected by the `Cgi` envelope of `/components/PowerMeter/readable`: non-empty `Body.Data` ⇒ present, empty ⇒ absent, unreadable ⇒ **not determined** (never "absent"). Detection depends on no named field; the extraction does, however, record the fields usable afterwards (`channels`: 23 `SMARTMETER_*` signals, `attributes.addr`, `attributes["[ENABLE]"]` — `docs/ENDPOINTS.md`) | a real capture of `/components/PowerMeter/readable` |
-| 5 | Presence of a battery and state of charge | presence: same rule as #4 on `/components/BatteryManagementSystem/readable`; `battery.soc` remains **unavailable** in the application — scope decision unchanged. Nuance brought by the extraction: the official client **does read** a relative state of charge, `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`, in the `channels` of this path (l. 128986), and also `inverters[<id>].SOC` in `/status/powerflow` (l. 129053): proof of the existence of a measurement therefore exists on the internal API side, without any reading having been made on the device | a real capture, then an explicit decision (justification by a metric unavailable in the Solar API) before any reading of the state of charge |
+| 1 | Shape of the `GetPowerFlowRealtimeData` JSON | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: the shape is confirmed and `test/fixtures/solarapi/powerflow_produce_only.json` is promoted from the real capture. Two divergences from the retired `[HYPOTHESIS]` were settled: `Meter_Location` is a **string** (`"unknown"`), not `Meter_Location_Current`, an **integer** (field renamed and retyped); and `E_Day`/`E_Year` are **null** on this firmware, on `Site` and on the inverter (residual unknown #13). `BackupMode`, `BatteryStandby`, `Smartloads`, `Version` are present and tolerated. `dto.go`, the simulator, the tests and the fixtures are aligned | a later capture (another point in the day or after midnight) or a decision to read `/status/powerflow`, tracked under #13 |
+| 2 | Authentication **of the Solar API** on firmware 1.19.7-1 | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: **no authentication required** on this installation. All five allowlisted paths (the Solar API path and the four internal paths) answered `200 OK` with no `Authorization` header ever constructed (`digest_required: false` for each); no `401` was issued, so the Digest path was never exercised. `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` are therefore not needed here; the `internal/fronius/digest` machinery stays implemented and tested but unused by this device | a capture on another firmware or installation that does return a `401`/`403` |
+| 3 | **Partial source** of the inverter identity | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/status/version` confirms the key the application reads — `swrevisions.GEN24` = `1.19.7-1` (used by `firmwareOf`) — and `numberOfPhases` = **1** (the installation is **single-phase**). **No model key exists** in the payload ⇒ `Model` stays empty (the device group `devicegroup` = `"P6RW"` is not a model name and is no longer used as a fallback). `devicename` = `"Primo GEN24 3.6 Plus"` and `articleNumber` = `"4,210,141,002"` are captured and **available but not surfaced** by the application — wiring them costs 14 files including SQL migration `0004`, decision deferred for lack of a consumer (ADR 0008) | only a decision remains: surface `devicename`/`articleNumber` to the screen, or not (no capture is needed, the payload is known) |
+| 4 | Presence of a Fronius Smart Meter | **Resolved by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/components/PowerMeter/readable` answered `200` with `Body.Data` an **empty object** ⇒ **no Smart Meter installed**. The detection rule is confirmed (`Cgi` envelope: non-empty `Body.Data` ⇒ present, empty ⇒ absent, unreadable ⇒ **not determined**, never "absent"); the fields usable afterwards remain those of `docs/ENDPOINTS.md` (`channels`: 23 `SMARTMETER_*` signals, `attributes.addr`, `attributes["[ENABLE]"]`) | none on this installation; the presence rule stays available for another installation |
+| 5 | Presence of a battery and state of charge | **Resolved for presence by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `/components/BatteryManagementSystem/readable` answered `200` with `Body.Data` an **empty object** ⇒ **no battery installed**. `battery.soc` stays **unavailable** in the application — scope decision unchanged. The official client does read a relative state of charge, `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`, in the `channels` of this path (l. 128986), and `inverters[<id>].SOC` in `/status/powerflow` (l. 129053): the measurement exists on the internal API side, but its use by this application remains a separate decision | for `battery.soc`: an explicit decision (a metric the Solar API does not provide) and a capture on an installation fitted with a battery |
 | 6 | Permission matrix per endpoint and per role | the extraction (see `docs/ENDPOINTS.md`) establishes the **role declared by the client** — a display condition, never an authorization: `_isUserAllowed` (l. 75972-75984) grants `customer` to `customer \| technician \| support`, and `technician`/`support` to `technician \| support`; **a single** registry entry declares `user: "customer"` (`/commands/GetUTCTime`, l. 76039). It also establishes the **account sent** (`_getUserAndPass`, l. 46807-46813: request-group account, except `Login` as `passwordUser`) — **no server permission is provable from a bundle**. Decision unchanged: the **code allowlist** (`internal/fronius/internalapi/allowlist.go`) is the only executable authorization: four internal paths, `READ`, GET; the other 79 are inventoried to be avoided | a test account and HTTP captures per role (401 / 403 / 200); see `docs/ENDPOINTS.md` |
 | 7 | Technician access recovery | no confirmed secret or autonomous means; **no attempt** | official manufacturer procedure, installer documentation |
 | 8 | Non-standard challenge header `x-www-authenticate` | `[SOURCE-JS]` + `[VERIFIED]` simulator **and** third-party client: a single retry on 401, challenge read first from the non-standard header, `www-authenticate` as fallback | the real device, to confirm it indeed uses the non-standard header |
-| 9 | Dynamic hardware detection | **implemented**: `internal/detect` queries the four paths, the detection is persisted then injected into `model.Capabilities(detection)` | the resolution of #3, #4 and #5 by hardware capture |
-| 11 | Shape of `/status/activeEvents` | **Resolved by the extraction and applied**: payload = array of objects; `severity` is an **integer** (1 error, 2 warning, 3 information, l. 135728-135733) — before the fix, only strings were recognized and every hardware event was classified as "information"; the instance identity is `uuid`, otherwise `prefix`-`eventID` (l. 135693, 164699) — deduplicating on `code` alone lost a second event of the same type; the displayed text is `label` (l. 135654). The keys `code`, `state`, `level`, `message`, `text`, `description` remain **fallback candidates**, and `viewer`, `category`, `confirmable`, `activeUntil`, `sourceID`, `timestamp` are kept in `Detail` (raw JSON bounded to 2,048 bytes) without being interpreted | a real capture: confirm names and types, the semantics of `viewer` (the client sees it as an audience level, l. 135709-135717) and the fact that `label` indeed carries readable text |
+| 9 | Dynamic hardware detection | **implemented**: `internal/detect` queries the four paths, the detection is persisted then injected into `model.Capabilities(detection)` | **done** — #3 (identity), #4 (no meter) and #5 (no battery) are resolved by the 2026-10-16 hardware capture (see above) |
+| 11 | Shape of `/status/activeEvents` | **Resolved by extraction and confirmed by capture** `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: the body is a **root array** of objects (not a `Cgi` envelope); `severity` is an **integer** (3 = information), so the integer mapping in `internal/detect` is correct; the instance identity is `uuid` (e.g. `"56b077da-0d11-45be-8b24-7b09d53ad558"`) ⇒ the dedup key `device:<uuid>` is right; `label` is **not prose** but the vendor's **state-code name** (`LicensedFeatureDisabled`), which the vendor interface translates through its own dictionary (`STATECODETRANSLATIONS.StateCodes.<prefix>-<eventID>`); `subID`, `type`, `category` are additional keys the client reads, kept in `Detail`; `viewer` is an audience level (integer) | `viewer` semantics beyond an audience level (the client sees it as an audience level, l. 135709-135717) |
 | 12 | Digest challenge signature (`cnonce="NaN"`) | not reproduced: the official client emits `NaN` through a conversion bug; we emit a random `cnonce` of 16 hexadecimal characters | if the device refuses anyway, replace with the constant `"NaN"` (fallback documented in `CHANGELOG.md`) |
 | 10 | Outlying values of the device | **no filtering**: a received value is recorded as-is; only *absent* values are distinguished | a real observed need (drift, spike, meter running backwards) and an explicit rule |
+| 13 | `E_Day` / `E_Year` **null** in `GetPowerFlowRealtimeData` | `[VERIFIED]` (hardware), firmware 1.19.7-1, 2026-10-16: `E_Day` and `E_Year` come back **null** on both `Site` and `Inverters."1"`, while `E_Total` is a number and `P_PV`/`P` are live. The model handles it correctly (`nil`, never `0`), but the "energy of the day" and "energy of the year" KPIs have no value on the reference installation | the cause is **not established** (firmware behaviour? missing meter? a counter that fills later in the day?). What would lift it: another capture later in the day or after midnight; or a decision to read `/status/powerflow` (internal, proven DTO with `site.E_Day`/`E_Year`/`E_Total`) — that would be a whitelist addition requiring an explicit decision, justified only because the Solar API does not provide the metric here |
 
 ## 1. Shape of the Solar API JSON
 
@@ -27,65 +28,90 @@ it remains visible in the interface (`/api/v1/capabilities`) and in
 (only `/config/solar_api`, a configuration endpoint). The JS therefore provides
 no schema. Reproducible verifications in `docs/SOURCES.md`.
 
-**Decision.** The shape is encoded as a hypothesis in a single file
-(`internal/fronius/solarapi/dto.go`), decoding ignores unknown fields, and the
-fixtures carry `synthetic: true, confidence: "HYPOTHESIS"`. The `production.*`
-capabilities are available but marked "unverified" with the caveat "Schema not
-validated on firmware 1.19.7-1".
+**Resolved by capture.** `[VERIFIED]` (hardware), firmware 1.19.7-1,
+2026-10-16: `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` answered `200`,
+`Content-Type: application/json`, and the shape is confirmed against the
+retired `[HYPOTHESIS]`. Two divergences were settled: `Meter_Location` is a
+**string** (`"unknown"`), not `Meter_Location_Current`, an **integer** — the DTO
+field is renamed and retyped, with the simulator, the tests and the fixtures
+aligned — and `E_Day`/`E_Year` are **null** on this firmware, on `Site` and on
+the inverter, while `E_Total` is a number (see #13). `BackupMode`,
+`BatteryStandby`, `Smartloads`, `Version` are present and tolerated (decoding
+ignores unknown fields). The fixture `powerflow_produce_only.json` is promoted
+from the real capture.
 
-**Fallback if the capture differs.** Fix `dto.go`, the fixtures and
-`docs/SOURCES.md` (citing the firmware version). The SQLite columns do not
-change: they are already in base SI units (W, Wh, %).
+**Decision.** The shape is fixed in a single file
+(`internal/fronius/solarapi/dto.go`), decoding still ignores unknown fields, and
+the promoted fixture carries `synthetic: false, confidence: "VERIFIED
+(hardware)"`. The caveat "Schema not validated on firmware 1.19.7-1" no longer
+applies for this firmware: the schema is now validated. The SQLite columns do
+not change: they are already in base SI units (W, Wh, %).
+
+**Fallback if a later capture differs.** Fix `dto.go`, the fixtures and
+`docs/SOURCES.md` (citing the firmware version), as was done here for
+`Meter_Location`.
 
 ## 2. Solar API authentication
 
-**Established.** `[OBSERVED-CONVERSATION]`: the endpoint "responds". Nothing
-proves that an authentication applies to the Solar API path: in the official
-client, this path does not even exist. The **internal** paths, for their part, are
-reached through two routes (with and without a header), which is established and
-implemented.
+**Established (bundle).** In the official client the Solar API path does not
+exist; the **internal** paths, for their part, are reached through two routes
+(with and without a header), which is established and implemented.
 
-**Decision.** The Digest transport is composed in front of both clients, but it
-always sends the **bare** request first: if the Solar API path requires nothing,
-no header is added and the behaviour remains that of phase 1.
+**Resolved by capture.** `[VERIFIED]` (hardware), firmware 1.19.7-1,
+2026-10-16: **no authentication is required** on this installation. All five
+allowlisted paths — the Solar API path and the four internal paths — answered
+`200 OK` with no `Authorization` header ever constructed (`digest_required:
+false` for each); no `401` was issued, so the Digest path was never exercised.
+`FRONIUS_DEVICE_USER`/`FRONIUS_DEVICE_PASSWORD` are not needed here.
+
+**Decision.** The Digest transport stays composed in front of both clients and
+always sends the **bare** request first. It remains implemented and tested, but
+is unused by this device; a firmware or installation that does return a `401`
+would re-enable it without change.
 
 ## 3. Inverter identity
 
-**Established.** The PDF export provides model, firmware version and serial
-number `[SOURCE-PDF]`. On the HTTP side, `/status/version` is the source named by
-the official client (header-less route, module `yTJA`, l. 183050), and the
-extraction records there the fields **read**: `serialNumber`, `numberOfPhases`,
-`devicegroup`, `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`,
-`hwrevisions.FAMILYID`.
+**Established (bundle and PDF).** The PDF export provides model, firmware
+version and serial number `[SOURCE-PDF]`. On the HTTP side, `/status/version` is
+the source named by the official client (header-less route, module `yTJA`,
+l. 183050), and the extraction records there the fields **read**:
+`serialNumber`, `numberOfPhases`, `devicegroup`, `hardwareId`, `devicename`,
+`articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID`.
 
-**Resolved for the software version.** `swrevisions.GEN24` (l. 128882, 135137) is
-the key that the official client displays as the current version: it now comes
-before the flat candidates `firmwareVersion`/`firmware`/`version`, and the test
-`TestVersionExtractsKnownAndCandidateKeys` covers both paths. Since no **model**
-key is observed, `Model` stays `nil`: the device group (`devicegroup`) is no
-longer used as a fallback, because it is a sibling field of another nature
-(l. 183035).
+**Resolved by capture.** `[VERIFIED]` (hardware), firmware 1.19.7-1,
+2026-10-16: `/status/version` answered `200`, `application/json`. Confirmed:
+`swrevisions.GEN24` = `1.19.7-1` is the key read by the application (`firmwareOf`,
+l. 128882, 135137), and the value matches the system export;
+`numberOfPhases` = **1**, so the installation is **single-phase**. **No model key
+exists** in the payload ⇒ `Model` stays empty (the device group
+`devicegroup` = `"P6RW"` is not a model name and is no longer used as a
+fallback). `devicename` = `"Primo GEN24 3.6 Plus"` and
+`articleNumber` = `"4,210,141,002"` are captured and **available but not
+surfaced** by the application.
 
 **Decision.** The identity is read by `internal/detect` and persisted in the
 `device` table. Unproven keys are extracted through an ordered list of candidates,
-and an absent key gives `null`, never `""` nor "unknown". The three extracted
-fields without a consumer (`hardwareId`, `devicename`, `articleNumber`) are not
-persisted: exposing them costs 14 files including an SQL migration (`0004`),
-measured cost and decision deferred as long as no need names them (ADR 0008).
-Without a successful read, `GET /api/v1/system` returns `device: null` and an
-`unknown` detection with its reason: the PDF is never copied, it describes an
-instant, not a measurement.
+and an absent key gives `null`, never `""` nor "unknown". The extracted fields
+without a consumer (`hardwareId`, `devicename`, `articleNumber`) are not
+persisted: exposing `devicename`/`articleNumber` costs 14 files including an SQL
+migration (`0004`), measured cost and decision deferred as long as no need names
+them (ADR 0008). Without a successful read, `GET /api/v1/system` returns
+`device: null` and an `unknown` detection with its reason: the PDF is never
+copied, it describes an instant, not a measurement.
 
-**What would resolve it.** A real capture of `/status/version` by
-`cmd/fronius-probe --endpoint /status/version` (§ `docs/PROBE-READONLY.md`):
-confirm the version, decide on the existence of a model key.
+**What remains open.** No capture is needed — the payload is known. The only
+open point is a decision: surface `devicename`/`articleNumber` to the screen, or
+not.
 
 ## 4 and 5. Smart Meter and battery
 
-**Established.** Neither the PDF nor the bundle proves the presence or absence of
-a Fronius Smart Meter or a battery. The PDF declares `Battery Operation` and
-`Full Backup` **active**: these are declared software features, not a hardware
-inventory. The Ethernet is `disconnected`.
+**Resolved by capture.** `[VERIFIED]` (hardware), firmware 1.19.7-1,
+2026-10-16: both `/components/PowerMeter/readable` and
+`/components/BatteryManagementSystem/readable` answered `200` — but with
+`Content-Type: text/javascript`, **not** `application/json` — and `Body.Data` was
+an **empty object** in both ⇒ **no Smart Meter and no battery installed**. The
+PDF declared `Battery Operation` and `Full Backup` **active**: those were declared
+software features, not a hardware inventory (the Ethernet is `disconnected`).
 
 **Decision.** Presence is **detected** through the `Cgi` envelope: non-empty
 `Body.Data` ⇒ present, empty or absent ⇒ absent, unreadable body ⇒ decoding error
@@ -96,14 +122,13 @@ forbidden without a detected meter, and `battery.soc` remains unavailable even
 with a battery detected. No corresponding card is hard-coded in the interface:
 they derive from `/api/v1/capabilities`.
 
-**What would resolve it.** A real capture of the two `readable` paths — and, for
-the state of charge, an explicit decision: the official client does read
+**What remains open (state of charge).** The official client does read
 `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` (`%`) in the `channels` of the battery
 path (l. 128986) and `inverters[<id>].SOC` in `/status/powerflow` (l. 129053), so
 the measurement exists on the internal API side; its use by this application
 remains a separate decision, not taken here, which requires a justification (a
-metric the Solar API does not provide) and a capture to confirm the signal name on
-firmware **1.19.7-1**.
+metric the Solar API does not provide) and a capture on an installation fitted
+with a battery.
 
 ## 6. Permission matrix
 

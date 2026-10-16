@@ -19,7 +19,7 @@ const validBody = `{
   "Body": {"Data": {
     "Site": {"Mode":"produce-only","P_PV":1902.4,"P_Grid":null,"P_Load":null,"P_Akku":null,
              "E_Day":12345.6,"E_Year":4800000.0,"E_Total":12000000.0,
-             "rel_Autonomy":null,"rel_SelfConsumption":null,"Meter_Location_Current":0},
+             "rel_Autonomy":null,"rel_SelfConsumption":null,"Meter_Location":"unknown"},
     "Inverters": {"1": {"DT":1,"P":1902.4,"E_Day":12345.6,"E_Year":4800000.0,"E_Total":12000000.0}}
   }},
   "Head": {"RequestArguments":{},"Status":{"Code":0,"Reason":"","UserMessage":""},"Timestamp":"2026-10-16T09:17:43+02:00"}
@@ -99,8 +99,8 @@ func TestGetPowerFlowRealtimeDataNominal(t *testing.T) {
 	if site.E_Year == nil || *site.E_Year != 4800000 {
 		t.Fatalf("E_Year = %v", site.E_Year)
 	}
-	if site.Meter_Location_Current == nil || *site.Meter_Location_Current != 0 {
-		t.Fatalf("Meter_Location_Current = %v", site.Meter_Location_Current)
+	if site.Meter_Location == nil || *site.Meter_Location != "unknown" {
+		t.Fatalf("Meter_Location = %v", site.Meter_Location)
 	}
 	for name, v := range map[string]*float64{
 		"P_Grid": site.P_Grid, "P_Load": site.P_Load, "P_Akku": site.P_Akku,

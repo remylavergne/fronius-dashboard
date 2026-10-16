@@ -139,8 +139,8 @@ func TestEnvelopeShape(t *testing.T) {
 			t.Fatalf("%s = %v, want null", name, *v)
 		}
 	}
-	if site.MeterLocationCurrent == nil || *site.MeterLocationCurrent != 0 {
-		t.Fatalf("Meter_Location_Current = %v", site.MeterLocationCurrent)
+	if site.MeterLocation == nil || *site.MeterLocation != unknownMeterLocation {
+		t.Fatalf("Meter_Location = %v", site.MeterLocation)
 	}
 	if site.EDay == nil || *site.EDay <= 0 || site.EYear == nil || site.ETotal == nil {
 		t.Fatalf("missing energy counters: %+v", site)
@@ -153,7 +153,7 @@ func TestEnvelopeShape(t *testing.T) {
 	}
 
 	// The JSON must explicitly contain the assumed field names.
-	for _, want := range []string{`"P_PV"`, `"E_Day"`, `"E_Year"`, `"E_Total"`, `"rel_Autonomy"`, `"Meter_Location_Current"`} {
+	for _, want := range []string{`"P_PV"`, `"E_Day"`, `"E_Year"`, `"E_Total"`, `"rel_Autonomy"`, `"Meter_Location"`} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("field %s absent from the body", want)
 		}

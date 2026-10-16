@@ -25,11 +25,11 @@ Solar API client (one path). `cmd/fronius-probe` accepts nothing else
 
 | Path | Method | Classification | Envelope | Evidence |
 |---|---|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVED-CONVERSATION]` "responds"; **absent from the bundle**; GET method imposed by `internal/fronius/readonly.go` |
-| `/status/version` | GET | READ | `Default` | `[SOURCE-JS]` l. 183050 (path **without** header, module `yTJA`); **absent from the `aYRN` registry** (see the note below); `[VERIFIED]` on the simulator |
-| `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (registry, interval 10 000 ms) + l. 183060 (variant `?sync=true`, without header); `[VERIFIED]` on the simulator. Fields read: see the extraction table |
-| `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76035 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator |
-| `/components/BatteryManagementSystem/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76032 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVED-CONVERSATION]` "responds"; **absent from the bundle**; GET method imposed by `internal/fronius/readonly.go`; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
+| `/status/version` | GET | READ | `Default` | `[SOURCE-JS]` l. 183050 (path **without** header, module `yTJA`); **absent from the `aYRN` registry** (see the note below); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false` |
+| `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (registry, interval 10 000 ms) + l. 183060 (variant `?sync=true`, without header); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`. Fields read: see the extraction table |
+| `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76035 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
+| `/components/BatteryManagementSystem/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76032 + l. 75958 (`aYRN` registry, only path); `[VERIFIED]` on the simulator; **captured** `[VERIFIED]` (hardware) 2026-10-16, firmware 1.19.7-1: `200` without `Authorization`, `digest_required: false`, `Content-Type: text/javascript` |
 
 Note: in the official client, **two paths** exist — with an `Authorization`
 header (module `aYRN`, polled registry) and without (module `yTJA`, status
@@ -38,6 +38,10 @@ service) — but they do not overlap: `/components/PowerMeter/readable` and
 while `/status/version` only appears in `yTJA` (verified by searching the
 literal in the bundle). The `READ` classification is about the effect, not
 the authentication: none of the four has an observed persistent effect.
+On the reference device, however, **neither route challenges**: on firmware
+1.19.7-1 (captured 2026-10-16) all five paths answered `200` without an
+`Authorization` header, so the with/without-header distinction is a bundle fact
+only and is not observable on this installation.
 
 ## Paths explicitly set aside
 
@@ -203,13 +207,13 @@ read by `httpClient.get(this.url)` (l. 183020) ⇒ `GET` **without** header.
 | `/status/devices` | `GET` | none | `Default` | array of objects: `type`, `id`, `model`, `serial`, `name`, `additionalLabel`, `status` | none | l. 76027 (registry, 5 000 ms); l. 75963 (envelope); consumers l. 129075, 129089-129097, 129112, 129143-129146, 131216, 131225 |
 | `/status/network` | `GET` | none | `Default` | `eth0.network.status`, `eth0.ip.ip`, `ip.dns`, `ip.mask`, `ip.gateway`, `wlan0.network.interface_mode`, `wlan0.ip.ip`, `uap0.network.status`, `uap0.network.interface_mode` | none | l. 76028 (registry, 5 000 ms) **and** l. 183052 (path `yTJA`, without header); consumers l. 127383, 128678-128683, 143035, 143061-143066 |
 | `/status/emrs` | `GET` | none | `Default` | dynamic-key object (`Object.entries`); keys prefixed with `_` are discarded | none | l. 76029 (registry, 5 000 ms); consumer l. 134656 |
-| `/status/activeEvents` | `GET` | none | `Default` | array of objects: `severity`, `viewer`, `uuid`, `timestamp` (s), `activeUntil` (s), `category`, `confirmable`, `label`, `sourceID`, `prefix`, `eventID` | none | l. 76030 (registry, 10 000 ms); consumers l. 135689-135701, 135654, 164699, 71151, 154444 |
+| `/status/activeEvents` | `GET` | none | `Default` (**root array**, confirmed `[VERIFIED]` (hardware), captured 2026-10-16) | array of objects: `severity` (**integer**), `viewer`, `uuid`, `timestamp` (s), `activeUntil` (s), `category`, `confirmable`, `label` (vendor state-code name), `sourceID`, `prefix`, `eventID` | none | l. 76030 (registry, 10 000 ms); consumers l. 135689-135701, 135654, 164699, 71151, 154444; captured 2026-10-16, firmware 1.19.7-1 |
 | `/status/events` | `GET` | none | `Default` | **the same fields** as `/status/activeEvents` (same mapper) | none | l. 76031 (registry, 10 000 ms); consumer l. 135651 |
 | `/status/activeEvents?sync=true` | `GET` | `sync=true` | `Default` | `[NOT OBSERVED]` — emission used as a simple trigger | none (bare request, without header) | l. 183060 (path `yTJA`); only call site l. 135633 |
 | `/status/events?sync=true` | `GET` | `sync=true` | `Default` | `[NOT OBSERVED]` — same | none (bare request, without header) | l. 183061 (path `yTJA`); only call site l. 135633 |
 | `/status/powerflow` | `GET` | none | `Default` | `site.P_PV`, `site.P_Grid`, `site.P_Load`, `site.P_Akku`, `site.E_Day`, `site.E_Year`, `site.E_Total`, `inverters[<id>].SOC`, `inverters[<id>].BatMode`, `Smartloads.Ohmpilots[<id>].P_AC_Total` | none | l. 76036 (registry, 5 000 ms); consumers l. 129034, 129043-129063, 136261 |
 | `/status/common` | `GET` | none | `Default` | `licenseExchangeData`, `serviceState`, `updateRunning`, `networkState.connectedViaAP` | none | l. 76041 (registry, 5 000 ms) **and** l. 183049 (path `yTJA`, without header); consumers l. 25824, 45241, 127386, 135196, 143145 |
-| `/status/version` | `GET` | none | `Default` | `serialNumber`, `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID`, `numberOfPhases`, `devicegroup[0]` | none (path without header) | l. 183050 (path `yTJA` — **this path is not in the `aYRN` registry**); consumers l. 45243, 126568, 127380, 128813-128814, 128842, 128881-128882, 135137, 143048-143049, 183034-183035 |
+| `/status/version` | `GET` | none | `Default` | `serialNumber`, `hardwareId`, `devicename`, `articleNumber`, `swrevisions.GEN24`, `hwrevisions.FAMILYID`, `numberOfPhases`, `devicegroup[0]` | none (path without header) | l. 183050 (path `yTJA` — **this path is not in the `aYRN` registry**); consumers l. 45243, 126568, 127380, 128813-128814, 128842, 128881-128882, 135137, 143048-143049, 183034-183035; captured 2026-10-16 (firmware 1.19.7-1: `swrevisions.GEN24` = `1.19.7-1`, `numberOfPhases` = 1, no model key) |
 | `/status/registrationData` | `GET` | none | `Default` | `[NOT OBSERVED]` — payload handled as a JSON blob (`JSON.stringify` to a `<textarea>`), no named field read | none (path without header) | l. 183051; consumer l. 143036, display l. 143144 |
 | `/status/capabilities` | `GET` | none | `Default` | `gpios` | none (path without header) | l. 183053 (accessor `ioCapabilities`); consumers l. 126565, 126582 |
 | `/status/ioServices` | `GET` | none | `Default` | `services[].name`, `services[].label` | none (path without header) | l. 183054; consumers l. 126566, 126576-126578 |
@@ -227,9 +231,9 @@ the client iterates over them (`Object.keys`, l. 129130) and reads `[id].channel
 | Path | Method | Arguments | Envelope | DTO (fields read) | Declared role | Evidence (lines) |
 |---|---|---|---|---|---|---|
 | `/components/cache/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].channels` (43 signals, see below), `[id].attributes["inverter.devicetype"]` | none | l. 76033 (registry, 5 000 ms); l. 75958 (envelope); consumers l. 129070, 129091, 129123, 129130, 128972, 128976 |
-| `/components/BatteryManagementSystem/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].channels` (10 signals), keys = component identifiers | none | l. 76032 (registry, 5 000 ms); l. 75958; consumers l. 129098, 129123, 129130, 128986 |
+| `/components/BatteryManagementSystem/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].channels` (10 signals), keys = component identifiers | none | l. 76032 (registry, 5 000 ms); l. 75958; consumers l. 129098, 129123, 129130, 128986; captured 2026-10-16: `Body.Data` empty (no battery), `Content-Type: text/javascript` |
 | `/components/Ohmpilot/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].channels` (4 signals) | none | l. 76034 (registry, 5 000 ms); l. 75958; consumers l. 129105, 129002 |
-| `/components/PowerMeter/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].channels` (23 signals), `[id].attributes.addr`, `[id].attributes["[ENABLE]"]` | none | l. 76035 (registry, 5 000 ms); l. 75958; consumers l. 129114, 129011, 129015, 130974-130983 |
+| `/components/PowerMeter/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].channels` (23 signals), `[id].attributes.addr`, `[id].attributes["[ENABLE]"]` | none | l. 76035 (registry, 5 000 ms); l. 75958; consumers l. 129114, 129011, 129015, 130974-130983; captured 2026-10-16: `Body.Data` empty (no meter), `Content-Type: text/javascript` |
 | `/components/DataManager/readable` | `GET` | none | `Cgi` (`Body.Data`) | `[id].attributes.deviceTreeInfo` (JSON to decode), then `modbus.extras.defaults` in the decoded tree | none (path without header) | l. 183057; l. 183011 (envelope `Cgi`); consumers l. 132248-132249, 132251-132257 |
 
 #### Signals read in `channels`

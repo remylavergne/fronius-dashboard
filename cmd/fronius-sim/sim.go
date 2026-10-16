@@ -186,18 +186,22 @@ type dataJSON struct {
 	Inverters map[string]inverterJSON `json:"Inverters"`
 }
 
+// unknownMeterLocation is the value firmware 1.19.7-1 reports in
+// `Meter_Location` when no meter is configured (captured 2026-10-16).
+const unknownMeterLocation = "unknown"
+
 type siteJSON struct {
-	Mode                 string   `json:"Mode"`
-	PPV                  *float64 `json:"P_PV"`
-	PGrid                *float64 `json:"P_Grid"`
-	PLoad                *float64 `json:"P_Load"`
-	PAkku                *float64 `json:"P_Akku"`
-	EDay                 *float64 `json:"E_Day"`
-	EYear                *float64 `json:"E_Year"`
-	ETotal               *float64 `json:"E_Total"`
-	RelAutonomy          *float64 `json:"rel_Autonomy"`
-	RelSelfConsumption   *float64 `json:"rel_SelfConsumption"`
-	MeterLocationCurrent *int     `json:"Meter_Location_Current"`
+	Mode               string   `json:"Mode"`
+	PPV                *float64 `json:"P_PV"`
+	PGrid              *float64 `json:"P_Grid"`
+	PLoad              *float64 `json:"P_Load"`
+	PAkku              *float64 `json:"P_Akku"`
+	EDay               *float64 `json:"E_Day"`
+	EYear              *float64 `json:"E_Year"`
+	ETotal             *float64 `json:"E_Total"`
+	RelAutonomy        *float64 `json:"rel_Autonomy"`
+	RelSelfConsumption *float64 `json:"rel_SelfConsumption"`
+	MeterLocation      *string  `json:"Meter_Location"`
 }
 
 type inverterJSON struct {
@@ -234,12 +238,12 @@ func (g *generator) buildEnvelope(t time.Time, withMeter bool, statusCode int, r
 	snap := g.snapshotAt(t)
 
 	site := siteJSON{
-		Mode:                 "produce-only",
-		PPV:                  new(snap.PowerW),
-		EDay:                 new(snap.EDayWh),
-		EYear:                new(snap.EYearWh),
-		ETotal:               new(snap.ETotalWh),
-		MeterLocationCurrent: new(0),
+		Mode:          "produce-only",
+		PPV:           new(snap.PowerW),
+		EDay:          new(snap.EDayWh),
+		EYear:         new(snap.EYearWh),
+		ETotal:        new(snap.ETotalWh),
+		MeterLocation: new(unknownMeterLocation),
 	}
 
 	if withMeter {

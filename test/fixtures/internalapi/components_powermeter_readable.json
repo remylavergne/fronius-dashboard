@@ -1,0 +1,32 @@
+{
+  "Body": {
+    "Data": {}
+  },
+  "Head": {
+    "Note": "this internal API may be changed any time",
+    "RequestArguments": {
+      "method": "GET",
+      "resource": "PowerMeter/readable"
+    },
+    "Status": {
+      "Code": 0,
+      "ErrorDetail": {
+        "Nodes": []
+      },
+      "Reason": "",
+      "UserMessage": ""
+    },
+    "Timestamp": "2026-10-16T15:17:23+00:00"
+  },
+  "_provenance": {
+    "synthetic": false,
+    "source": "fronius-probe",
+    "confidence": "VERIFIED (hardware)",
+    "firmware": "1.19.7-1",
+    "captured_at": "2026-10-16T15:17:23Z",
+    "http_status": 200,
+    "digest_required": false,
+    "content_type": "text/javascript",
+    "note": "Reference installation: no Fronius Smart Meter installed, so Body.Data is an empty object. The device answers this path with Content-Type text/javascript, not application/json."
+  }
+}

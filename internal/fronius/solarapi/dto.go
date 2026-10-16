@@ -39,17 +39,20 @@ type PowerFlowData struct {
 // Field names aligned on the protocol names (P_PV, E_Day…) so that any tag
 // divergence jumps out when rereading.
 type SiteData struct {
-	Mode                   string   `json:"Mode"`
-	P_PV                   *float64 `json:"P_PV"`
-	P_Grid                 *float64 `json:"P_Grid"`
-	P_Load                 *float64 `json:"P_Load"`
-	P_Akku                 *float64 `json:"P_Akku"`
-	E_Day                  *float64 `json:"E_Day"`
-	E_Year                 *float64 `json:"E_Year"`
-	E_Total                *float64 `json:"E_Total"`
-	Rel_Autonomy           *float64 `json:"rel_Autonomy"`
-	Rel_SelfConsumption    *float64 `json:"rel_SelfConsumption"`
-	Meter_Location_Current *int     `json:"Meter_Location_Current"`
+	Mode                string   `json:"Mode"`
+	P_PV                *float64 `json:"P_PV"`
+	P_Grid              *float64 `json:"P_Grid"`
+	P_Load              *float64 `json:"P_Load"`
+	P_Akku              *float64 `json:"P_Akku"`
+	E_Day               *float64 `json:"E_Day"`
+	E_Year              *float64 `json:"E_Year"`
+	E_Total             *float64 `json:"E_Total"`
+	Rel_Autonomy        *float64 `json:"rel_Autonomy"`
+	Rel_SelfConsumption *float64 `json:"rel_SelfConsumption"`
+	// Meter_Location is the meter position reported by the device. Captured on
+	// firmware 1.19.7-1 as the string "unknown"; the earlier [HYPOTHESIS]
+	// guessed an integer field named `Meter_Location_Current`.
+	Meter_Location *string `json:"Meter_Location"`
 }
 
 // InverterPF is the measurement of an inverter, indexed by its number ("1", "2"…).

@@ -9,6 +9,26 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **First hardware capture and fixture promotion.** Two
+  `cmd/fronius-probe` runs against a real GEN24 (`http://192.0.2.10`, one
+  without credentials, one with) captured the five allowlisted paths on firmware
+  `1.19.7-1`. **No authentication is required on this installation**: all five
+  paths answered `200 OK` with no `Authorization` header ever constructed
+  (`digest_required: false` for each), so the Digest transport remains implemented
+  and tested but unused by this device; `FRONIUS_DEVICE_USER` /
+  `FRONIUS_DEVICE_PASSWORD` are not needed here. The real
+  `GetPowerFlowRealtimeData.fcgi` payload promotes
+  `test/fixtures/solarapi/powerflow_produce_only.json` (`synthetic: false`,
+  `confidence: "VERIFIED (hardware)"`); the four redacted internal captures
+  promote `test/fixtures/internalapi/status_version.json`,
+  `status_activeevents.json`, `components_powermeter_readable.json` and
+  `components_batterymanagementsystem_readable.json`. The capture confirms the
+  firmware key `swrevisions.GEN24` = `1.19.7-1`, a **single-phase** installation
+  (`numberOfPhases` = 1), **no model key**, and **no Smart Meter and no battery**
+  (`Body.Data` empty on both component paths, returned as
+  `Content-Type: text/javascript`). `docs/SOURCES.md` records the provenance and
+  `docs/UNKNOWNS.md` is updated: #1, #2, #3, #4, #5 and #11 are resolved, #13 is
+  added. No path was added to the allowlist.
 - 2026-10-16 — **Documentation: extraction of method / arguments / DTO of the internal
   read-only paths.** `docs/ENDPOINTS.md` gains a table per path
   (54 paths, 56 rows): method, URL arguments, envelope (`Default` /
@@ -122,6 +142,18 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-16 — **`GetPowerFlowRealtimeData` DTO** (`internal/fronius/solarapi/dto.go`).
+  The hardware capture contradicts the retired `[HYPOTHESIS]` on the meter-location
+  field: it is **`Meter_Location`**, a **string** (`"unknown"`), not
+  `Meter_Location_Current`, an **integer**. The field is **renamed and retyped**;
+  the simulator, the tests and the fixtures are aligned. Corollary observed on this
+  firmware: `E_Day` and `E_Year` come back **null** on both `Site` and the
+  inverter, while `E_Total` is a number — the "energy of the day" and "energy of
+  the year" KPIs are therefore **absent** on the reference installation, never
+  zero (the model keeps `*float64` ⇒ `nil`, never `0`; residual unknown #13, and
+  the `/status/powerflow` option is an open decision). The extra keys the capture
+  reveals (`BackupMode`, `BatteryStandby`, `Smartloads`, `Version`) are tolerated
+  and ignored (no `DisallowUnknownFields`).
 - 2026-10-16 — **Severity and identity of the device events**
   (`internal/detect`). The extraction of the bundle establishes that `severity` is an
   **integer** (1 error, 2 warning, 3 information — `getEventLevel`,
