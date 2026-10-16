@@ -61,11 +61,11 @@
 
 ## 4 — Persistance et API Go
 
-- [ ] Définir schéma SQLite : measurements, aggregates, events, system_status
-- [ ] Ajouter migrations versionnées et WAL
-- [ ] Implémenter upsert idempotent et déduplication
+- [x] Définir schéma SQLite : measurements, aggregates, events, system_status
+- [x] Ajouter migrations versionnées et WAL
+- [x] Implémenter upsert idempotent et déduplication
 - [ ] Agréger minutes/heures/jours avec règles explicites
-- [ ] Gérer fuseaux et changement d’heure Europe/Brussels
+- [x] Gérer fuseaux et changement d’heure Europe/Brussels
 - [ ] Définir rétention et purge programmée
 - [ ] Implémenter sauvegarde/restauration testée
 - [ ] Implémenter `/api/v1/health` et `/api/v1/system`
@@ -169,3 +169,18 @@
   blanche réduite au seul GET Solar API). Décision de modèle : `Capability.Reason` porte un
   motif d'indisponibilité quand la capacité est indisponible, une réserve quand elle est
   disponible mais non vérifiée (`production.*`), jamais les deux.
+- 2026-10-16 — Étape 7 : `internal/storage`. Écart au plan assumé et documenté :
+  `modernc.org/sqlite v1.60.1` (version épinglée par le plan) déclare
+  `go 1.26.0`, donc `go.mod` porte `go 1.26.0` au lieu de `go 1.24` — garder la
+  version épinglée du pilote prime sur la directive de langage, et le toolchain
+  1.26 est disponible localement. Conséquence : les idiomes Go 1.26
+  (`new(expr)`, `for range n`) sont désormais applicables et ont été adoptés
+  (`fptr`/`iptr` de `cmd/fronius-sim` et `pf`/`pi` des tests supprimés).
+  Tables : `samples` (WITHOUT ROWID, clé `(ts_utc, source)`), `events`,
+  `collector_runs`, `collector_state`, `schema_migrations`. Les agrégats
+  matérialisés (`aggregates`) restent reportés en phase 3 par l'ADR 0006 ; la
+  purge existe (`PurgeBefore`) mais n'est pas programmée. Trois anomalies
+  détectées par les tests et corrigées : découpage des instructions de migration
+  avant retrait des commentaires (un `;` dans un commentaire cassait la
+  migration), double mise à l'échelle du début de bucket, et deux fixtures de
+  test qui ne franchissaient pas réellement minuit local.

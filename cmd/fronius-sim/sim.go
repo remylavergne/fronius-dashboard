@@ -220,9 +220,6 @@ type statusJSON struct {
 	UserMessage string `json:"UserMessage"`
 }
 
-func fptr(v float64) *float64 { return &v }
-func iptr(v int) *int         { return &v }
-
 // loadW modélise une consommation de base déterministe, utilisée uniquement
 // lorsque --with-meter est actif.
 func (g *generator) loadW(t time.Time) float64 {
@@ -238,11 +235,11 @@ func (g *generator) buildEnvelope(t time.Time, withMeter bool, statusCode int, r
 
 	site := siteJSON{
 		Mode:                 "produce-only",
-		PPV:                  fptr(snap.PowerW),
-		EDay:                 fptr(snap.EDayWh),
-		EYear:                fptr(snap.EYearWh),
-		ETotal:               fptr(snap.ETotalWh),
-		MeterLocationCurrent: iptr(0),
+		PPV:                  new(snap.PowerW),
+		EDay:                 new(snap.EDayWh),
+		EYear:                new(snap.EYearWh),
+		ETotal:               new(snap.ETotalWh),
+		MeterLocationCurrent: new(0),
 	}
 
 	if withMeter {
@@ -251,25 +248,25 @@ func (g *generator) buildEnvelope(t time.Time, withMeter bool, statusCode int, r
 		grid := round1(pv - load)
 
 		selfConsumed := math.Min(pv, load)
-		site.PLoad = fptr(load)
-		site.PGrid = fptr(grid)
+		site.PLoad = new(load)
+		site.PGrid = new(grid)
 		// Un ratio dont le dénominateur est nul est indéfini : on émet null
 		// plutôt qu'un zéro inventé, conformément à l'invariant du modèle.
 		if pv > 0 {
-			site.RelSelfConsumption = fptr(round1(100 * selfConsumed / pv))
+			site.RelSelfConsumption = new(round1(100 * selfConsumed / pv))
 		}
 		if load > 0 {
-			site.RelAutonomy = fptr(round1(100 * selfConsumed / load))
+			site.RelAutonomy = new(round1(100 * selfConsumed / load))
 		}
 		// P_Akku reste null : le simulateur ne modélise aucune batterie.
 	}
 
 	inv := inverterJSON{
 		DT:     1,
-		P:      fptr(snap.PowerW),
-		EDay:   fptr(snap.EDayWh),
-		EYear:  fptr(snap.EYearWh),
-		ETotal: fptr(snap.ETotalWh),
+		P:      new(snap.PowerW),
+		EDay:   new(snap.EDayWh),
+		EYear:  new(snap.EYearWh),
+		ETotal: new(snap.ETotalWh),
 	}
 
 	return envelope{

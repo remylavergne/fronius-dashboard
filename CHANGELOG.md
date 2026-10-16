@@ -41,3 +41,17 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   provenance, vérifications exécutées sur le bundle, schéma Solar API supposé),
   `docs/ENDPOINTS.md` (classification READ/MUTATION/DANGEROUS des 79 chemins
   inventoriés + liste blanche phase 1) et les ADR 0001 à 0007.
+- 2026-10-16 — Persistance SQLite (`internal/storage`) : dépendance unique
+  `modernc.org/sqlite v1.60.1` (pur Go, `CGO_ENABLED=0` vérifié), migrations
+  embarquées et versionnées (`schema_migrations`), WAL + `busy_timeout` 5000 ms
+  + `synchronous=NORMAL`, upsert idempotent sur `(ts_utc, source)`, buckets
+  alignés sur l'epoch, énergie journalière par `MAX(E_Day)` en fuseau local avec
+  gestion des journées de 23 h et 25 h, événements, cycles de collecte, état du
+  collecteur et purge de rétention.
+
+### Changed
+
+- 2026-10-16 — `go.mod` passe à `go 1.26.0` : `modernc.org/sqlite v1.60.1`
+  déclare lui-même `go 1.26.0`, la directive `go 1.24` prévue au plan n'est donc
+  pas réalisable avec ce pilote épinglé. Le toolchain Go 1.26.0 est utilisé
+  (détection automatique).

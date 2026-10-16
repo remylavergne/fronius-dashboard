@@ -8,14 +8,6 @@ import (
 	"fronius-supervisor/internal/fronius/solarapi"
 )
 
-// pf retourne un pointeur vers v.
-//
-// La forme Go 1.26 `new(expr)` n'est pas disponible ici : le module cible
-// go 1.24 (voir go.mod), donc l'aide locale reste nécessaire.
-func pf(v float64) *float64 { return &v }
-
-func pi(v int) *int { return &v }
-
 func envelope(ts string, site solarapi.SiteData, inverters map[string]solarapi.InverterPF) solarapi.PowerFlowEnvelope {
 	env := solarapi.PowerFlowEnvelope{
 		Head: solarapi.Head{
@@ -33,11 +25,11 @@ func TestFromPowerFlowDeviceTimestamp(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 	site := solarapi.SiteData{
 		Mode:                   "produce-only",
-		P_PV:                   pf(1902.4),
-		E_Day:                  pf(12345.6),
-		E_Year:                 pf(4800000),
-		E_Total:                pf(12000000),
-		Meter_Location_Current: pi(0),
+		P_PV:                   new(1902.4),
+		E_Day:                  new(12345.6),
+		E_Year:                 new(float64(4800000)),
+		E_Total:                new(float64(12000000)),
+		Meter_Location_Current: new(0),
 	}
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", site, nil), now)
 
@@ -71,7 +63,7 @@ func TestFromPowerFlowDeviceTimestamp(t *testing.T) {
 
 func TestFromPowerFlowTimestampFallback(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
-	site := solarapi.SiteData{P_PV: pf(100)}
+	site := solarapi.SiteData{P_PV: new(float64(100))}
 
 	cases := []struct {
 		name string
@@ -108,8 +100,8 @@ func TestFromPowerFlowNeverInventsZero(t *testing.T) {
 	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
 	site := solarapi.SiteData{
 		Mode:   "produce-only",
-		P_PV:   pf(0), // explicitement nul (nuit)
-		P_Grid: pf(0), // explicitement nul (compteur présent, échange nul)
+		P_PV:   new(float64(0)), // explicitement nul (nuit)
+		P_Grid: new(float64(0)), // explicitement nul (compteur présent, échange nul)
 		// P_Load, P_Akku, rel_* absents → null dans le protocole
 	}
 	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", site, nil), now)
@@ -155,10 +147,10 @@ func TestFromPowerFlowEmptyResponseIsMissing(t *testing.T) {
 func TestFromPowerFlowInverters(t *testing.T) {
 	now := time.Now().UTC()
 	inverters := map[string]solarapi.InverterPF{
-		"2": {DT: 1, P: pf(10), E_Day: pf(1)},
-		"1": {DT: 1, P: pf(20), E_Day: pf(2), E_Year: pf(3), E_Total: pf(4)},
+		"2": {DT: 1, P: new(float64(10)), E_Day: new(float64(1))},
+		"1": {DT: 1, P: new(float64(20)), E_Day: new(float64(2)), E_Year: new(float64(3)), E_Total: new(float64(4))},
 	}
-	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", solarapi.SiteData{P_PV: pf(30)}, inverters), now)
+	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", solarapi.SiteData{P_PV: new(float64(30))}, inverters), now)
 
 	if len(got.Inverters) != 2 {
 		t.Fatalf("len(Inverters) = %d", len(got.Inverters))
@@ -176,7 +168,7 @@ func TestFromPowerFlowInverters(t *testing.T) {
 }
 
 func TestFromPowerFlowNoInverters(t *testing.T) {
-	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", solarapi.SiteData{P_PV: pf(1)}, nil), time.Now())
+	got := FromPowerFlow(envelope("2026-10-16T09:17:43+02:00", solarapi.SiteData{P_PV: new(float64(1))}, nil), time.Now())
 	if got.Inverters != nil {
 		t.Fatalf("Inverters = %+v, attendu nil", got.Inverters)
 	}
