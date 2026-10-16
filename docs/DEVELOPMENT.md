@@ -22,6 +22,23 @@ make dev-api     # froniusd : API sur 127.0.0.1:8080 + collecteur
 make dev-web     # interface Vite sur 127.0.0.1:5173
 ```
 
+Pour exercer l'authentification Digest, démarrer le simulateur avec un compte et
+`froniusd` avec les identifiants correspondants :
+
+```bash
+go run ./cmd/fronius-sim --api-user sim --api-password simpass --with-meter
+
+# le mot de passe du simulateur est « simpass », lu sans le laisser dans
+# l'historique du shell
+export FRONIUS_DEVICE_USER=sim
+read -rs FRONIUS_DEVICE_PASSWORD && export FRONIUS_DEVICE_PASSWORD
+go run ./cmd/froniusd
+```
+
+Aucun exemple de cette documentation n'écrit de mot de passe après un `=` : la
+CI refuse toute ligne de ce type, et l'historique du shell est un journal comme
+un autre.
+
 `make seed` remplit la base avec 7 jours d'historique du simulateur
 (`froniusd --backfill-days 7`). Le simulateur doit tourner, et l'adresse doit
 être locale : le remplissage d'historique refuse une cible non locale sans
@@ -64,7 +81,15 @@ Variables principales :
 | `FRONIUS_RETENTION_DAYS` | `0` | `0` = conservation illimitée |
 | `FRONIUS_STALE_AFTER` | `30s` | seuil de péremption affiché |
 | `FRONIUS_WEB_DIR` | *(vide)* | assets statiques servis par `froniusd` |
+| `FRONIUS_DEVICE_USER` | *(vide)* | utilisateur des chemins internes de l'appareil |
+| `FRONIUS_DEVICE_PASSWORD` | *(vide)* | mot de passe Digest, du type `secret.String` (masqué partout sauf au calcul de `HA1`) |
+| `FRONIUS_DETECT_INTERVAL` | `60s` | cadence de détection (identité, compteur, batterie, événements ; minimum 5 s) |
 | `FRONIUS_LOG_LEVEL` / `_FORMAT` | `info` / `text` | journalisation |
+
+Les deux identifiants vont ensemble : n'en définir qu'un est refusé au
+démarrage. Ils sont lus par `froniusd` et `fronius-probe`, jamais par le
+frontend ni par l'API REST. Le client officiel interroge ces mêmes chemins toutes
+les 5 s ; 60 s suffisent ici, une identité et une présence changeant rarement.
 
 ## Tests
 
@@ -80,12 +105,23 @@ Organisation :
 - `internal/config` : défauts, surcharges, valeurs invalides, garde d'écoute ;
 - `internal/fronius{,/solarapi}` : refus des méthodes non-GET ; cartographie des
   erreurs HTTP, JSON et délais ; fixtures de contrat ;
+- `internal/fronius/digest` : vecteur RFC 2617, forme exacte de l'en-tête, nombre
+  de requêtes par cas (défi frais, nonce en cache, nonce périmé, 401 sans défi,
+  401 persistant), compteur `nc`, concurrence ;
+- `internal/fronius/internalapi` : liste blanche (refus hors liste, zéro requête
+  émise), extraction tolérante de l'identité, enveloppe `Cgi`, corps illisible
+  jamais confondu avec une absence ;
+- `internal/secret` : masquage dans `fmt`, `slog` et JSON ;
+- `internal/detect` : trois états de détection, anti-duplication des événements,
+  abandon d'un chemin après un 401 sans identifiants ;
 - `internal/model` : unités, qualité, capacités, invariant « pas de zéro » ;
 - `internal/storage` : migrations idempotentes, upsert, buckets, changement
   d'heure (23 h / 25 h), purge ;
 - `internal/collector` : jitter, backoff, anti-duplication des événements,
   annulation, absence d'insertion en cas d'échec ;
-- `internal/api` : 404/405, validation des paramètres, états vides, capacités ;
+- `internal/api` : 404/405, validation des paramètres, états vides, capacités
+  dérivées de la détection, nullabilité de l'identité, hygiène (aucune route ne
+  restitue le mot de passe) ;
 - `apps/web` : formats, mapping de graphique (trous), client API (3 classes
   d'échec), fraîcheur, composants.
 

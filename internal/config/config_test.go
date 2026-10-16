@@ -35,19 +35,22 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	want := Config{
-		SolarAPIURL:   "http://127.0.0.1:8081",
-		HTTPAddr:      "127.0.0.1:8080",
-		AllowRemote:   false,
-		DBPath:        "./data/fronius.db",
-		TZ:            "Europe/Brussels",
-		PollInterval:  5 * time.Second,
-		PollJitter:    500 * time.Millisecond,
-		HTTPTimeout:   5 * time.Second,
-		RetentionDays: 0,
-		LogLevel:      "info",
-		LogFormat:     "text",
-		WebDir:        "",
-		StaleAfter:    30 * time.Second,
+		SolarAPIURL:    "http://127.0.0.1:8081",
+		HTTPAddr:       "127.0.0.1:8080",
+		AllowRemote:    false,
+		DBPath:         "./data/fronius.db",
+		TZ:             "Europe/Brussels",
+		PollInterval:   5 * time.Second,
+		PollJitter:     500 * time.Millisecond,
+		HTTPTimeout:    5 * time.Second,
+		RetentionDays:  0,
+		LogLevel:       "info",
+		LogFormat:      "text",
+		WebDir:         "",
+		StaleAfter:     30 * time.Second,
+		DeviceUser:     "",
+		DevicePassword: "",
+		DetectInterval: 60 * time.Second,
 	}
 	if got != want {
 		t.Fatalf("défauts incorrects\n got: %+v\nwant: %+v", got, want)
@@ -69,6 +72,9 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("FRONIUS_LOG_FORMAT", "JSON")
 	t.Setenv("FRONIUS_WEB_DIR", "/srv/web")
 	t.Setenv("FRONIUS_STALE_AFTER", "2m")
+	t.Setenv("FRONIUS_DEVICE_USER", "installateur")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "mot-de-passe")
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "5m")
 
 	got, err := Load()
 	if err != nil {
@@ -79,7 +85,9 @@ func TestLoadOverrides(t *testing.T) {
 		got.PollInterval != 10*time.Second || got.PollJitter != 0 ||
 		got.HTTPTimeout != 1500*time.Millisecond || got.RetentionDays != 365 ||
 		got.LogLevel != "debug" || got.LogFormat != "json" || got.WebDir != "/srv/web" ||
-		got.StaleAfter != 2*time.Minute {
+		got.StaleAfter != 2*time.Minute ||
+		got.DeviceUser != "installateur" || got.DevicePassword.Reveal() != "mot-de-passe" ||
+		got.DetectInterval != 5*time.Minute {
 		t.Fatalf("surcharges non appliquées : %+v", got)
 	}
 }
@@ -136,6 +144,103 @@ func TestLoadAccumulatesErrors(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("erreur %q ne mentionne pas %q", err, want)
 		}
+	}
+}
+
+func TestLoadRejectsPartialCredentials(t *testing.T) {
+	cases := []struct {
+		name     string
+		env      map[string]string
+		wantSubs []string
+	}{
+		{
+			name:     "utilisateur seul",
+			env:      map[string]string{"FRONIUS_DEVICE_USER": "installateur"},
+			wantSubs: []string{"FRONIUS_DEVICE_USER", "FRONIUS_DEVICE_PASSWORD"},
+		},
+		{
+			name:     "mot de passe seul",
+			env:      map[string]string{"FRONIUS_DEVICE_PASSWORD": "mot-de-passe"},
+			wantSubs: []string{"FRONIUS_DEVICE_USER", "FRONIUS_DEVICE_PASSWORD"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clearFroniusEnv(t)
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			_, err := Load()
+			if err == nil {
+				t.Fatal("une paire d'identifiants incomplète doit être refusée")
+			}
+			for _, want := range tc.wantSubs {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("erreur %q ne nomme pas %q", err, want)
+				}
+			}
+		})
+	}
+
+	// Les deux renseignés : accepté.
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DEVICE_USER", "installateur")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "mot-de-passe")
+	if _, err := Load(); err != nil {
+		t.Fatalf("une paire complète doit être acceptée : %v", err)
+	}
+}
+
+func TestDetectIntervalBounds(t *testing.T) {
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "4s")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("un intervalle de détection trop court doit être refusé")
+	}
+	if !strings.Contains(err.Error(), "FRONIUS_DETECT_INTERVAL") {
+		t.Fatalf("erreur %q ne nomme pas la variable", err)
+	}
+
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "chaque minute")
+	_, err = Load()
+	if err == nil {
+		t.Fatal("une durée illisible doit être refusée")
+	}
+	if !strings.Contains(err.Error(), "durée Go attendue") {
+		t.Fatalf("erreur %q n'explique pas le format attendu", err)
+	}
+
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "5s")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("la borne basse exacte doit être acceptée : %v", err)
+	}
+	if cfg.DetectInterval != 5*time.Second {
+		t.Fatalf("detect interval = %v", cfg.DetectInterval)
+	}
+}
+
+// TestErrorsNeverContainPassword : un message d'erreur de configuration ne doit
+// jamais citer la valeur du mot de passe, même lorsque celle-ci est en cause.
+func TestErrorsNeverContainPassword(t *testing.T) {
+	const fake = "valeur-très-secrète-42"
+
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", fake) // utilisateur absent → erreur
+	t.Setenv("FRONIUS_DETECT_INTERVAL", "1s") // seconde faute, pour un message composite
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load devait échouer")
+	}
+	if strings.Contains(err.Error(), fake) {
+		t.Fatalf("le message d'erreur a divulgué le mot de passe : %v", err)
+	}
+	if !strings.Contains(err.Error(), "FRONIUS_DEVICE_PASSWORD") {
+		t.Fatalf("le message doit nommer la variable fautive : %v", err)
 	}
 }
 

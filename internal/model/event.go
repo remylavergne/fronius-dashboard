@@ -11,7 +11,8 @@ const (
 	SeverityError   Severity = "error"
 )
 
-// Natures d'événements produites par la phase 1.
+// Natures d'événements : les unes produites localement par le collecteur, les
+// autres republiées depuis l'appareil.
 const (
 	// EventCollectorError : échec de collecte (appareil injoignable, réponse
 	// invalide, erreur applicative signalée par l'appareil).
@@ -22,11 +23,15 @@ const (
 	EventStartup = "collector_started"
 	// EventPurge : purge de rétention exécutée.
 	EventPurge = "retention_purge"
+	// EventDevice : événement signalé par l'appareil lui-même (/status/activeEvents).
+	// Sa déduplication repose sur device_events_seen (internal/storage) : le flux
+	// est republié en entier à chaque interrogation.
+	EventDevice = "device_event"
 )
 
 // Event est un événement local, conservé dans la base et exposé par
-// /api/v1/events. Aucun événement ne provient de l'onduleur en phase 1 :
-// les événements matériels exigent l'api interne (phase 2).
+// /api/v1/events. Les événements matériels (EventDevice) proviennent de
+// /status/activeEvents ; les autres sont produits localement par le collecteur.
 type Event struct {
 	TS       time.Time
 	Kind     string

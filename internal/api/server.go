@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"fronius-supervisor/internal/config"
+	"fronius-supervisor/internal/detect"
+	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/model"
 	"fronius-supervisor/internal/storage"
 )
@@ -187,6 +189,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	cfg := s.cfg
 	out := systemDTO{
 		Version:       s.version,
@@ -198,11 +201,124 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 		RetentionDays: cfg.RetentionDays,
 		APIAddr:       cfg.HTTPAddr,
 		StaleAfterS:   cfg.StaleAfter.Seconds(),
-		// Aucune source HTTP d'identité n'est confirmée en phase 1 : l'adaptateur
-		// d'API interne est nécessaire (phase 2, voir docs/UNKNOWNS.md).
-		Device: nil,
 	}
+	out.Device, out.Detection = s.deviceAndDetection(ctx)
 	s.writeData(w, http.StatusOK, out, s.baseMeta())
+}
+
+// deviceAndDetection construit l'identité et l'état des détections à partir de
+// la dernière lecture enregistrée.
+//
+// Sans ligne en base, `device` reste null (« non déterminé » n'est pas un objet
+// vide) et les quatre détections valent inconnu avec leur motif. Aucun état
+// n'est déduit d'un champ absent : les états sont ceux qui ont été lus.
+func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detectionDTO) {
+	record, hasRecord, err := s.store.Device(ctx)
+	if err != nil {
+		s.log.Error("lecture de l'état de l'appareil impossible", "error", err)
+		return nil, detectionFrom(storage.DeviceRecord{}, false, "")
+	}
+
+	state, err := s.store.State(ctx)
+	if err != nil {
+		s.log.Error("lecture de l'état du collecteur impossible", "error", err)
+		state = map[string]string{}
+	}
+
+	out := detectionFrom(record, hasRecord, state[detect.StateLastError])
+	if !hasRecord {
+		return nil, out
+	}
+	return &deviceDTO{
+		Model:        nullableString(record.Model),
+		Firmware:     nullableString(record.Firmware),
+		SerialNumber: nullableString(record.SerialNumber),
+		Source:       record.Source,
+		ReadAtUTC:    formatTime(record.ReadAtUTC),
+	}, out
+}
+
+// detectionFrom traduit un enregistrement en DTO de détection.
+func detectionFrom(record storage.DeviceRecord, hasRecord bool, lastError string) *detectionDTO {
+	out := &detectionDTO{LastError: lastError}
+	if !hasRecord {
+		unknown := detectionResourceDTO{State: string(model.StateUnknown), Reason: detect.ReasonNoReadYet}
+		out.Meter = unknown
+		out.Battery = unknown
+		out.InternalAPI = unknown
+		out.DeviceEvents = unknown
+		return out
+	}
+
+	readAt := formatTime(record.ReadAtUTC)
+	out.ReadAtUTC = &readAt
+	out.Meter = detectionResourceDTO{
+		State:  string(record.MeterState),
+		Source: record.MeterSource,
+		Reason: record.MeterReason,
+	}
+	out.Battery = detectionResourceDTO{
+		State:  string(record.BatteryState),
+		Source: record.BatterySource,
+		Reason: record.BatteryReason,
+	}
+	out.InternalAPI = detectionResourceDTO{
+		State:  string(record.IdentityState),
+		Source: record.Source,
+		Reason: record.IdentityReason,
+	}
+	out.DeviceEvents = detectionResourceDTO{
+		State:  string(record.DeviceEventsState),
+		Source: internalapi.ActiveEventsPath,
+		Reason: record.DeviceEventsReason,
+	}
+	return out
+}
+
+// detectionForCapabilities restaure la détection telle qu'elle a été persistée :
+// les capacités et l'endpoint /system décrivent le même état, sans le recalculer.
+func (s *Server) detectionForCapabilities(ctx context.Context) model.Detection {
+	record, hasRecord, err := s.store.Device(ctx)
+	if err != nil {
+		s.log.Error("lecture de l'état de l'appareil impossible", "error", err)
+		return unknownDetection(detect.ReasonNoReadYet)
+	}
+	return detectionModel(record, hasRecord)
+}
+
+// detectionModel traduit l'enregistrement persisté en détection du modèle.
+func detectionModel(record storage.DeviceRecord, hasRecord bool) model.Detection {
+	if !hasRecord {
+		return unknownDetection(detect.ReasonNoReadYet)
+	}
+	return model.Detection{
+		Identity: model.ResourceDetection{
+			State: record.IdentityState, Source: record.Source, Reason: record.IdentityReason,
+		},
+		Meter: model.ResourceDetection{
+			State: record.MeterState, Source: record.MeterSource, Reason: record.MeterReason,
+		},
+		Battery: model.ResourceDetection{
+			State: record.BatteryState, Source: record.BatterySource, Reason: record.BatteryReason,
+		},
+		DeviceEvents: model.ResourceDetection{
+			State: record.DeviceEventsState, Source: internalapi.ActiveEventsPath, Reason: record.DeviceEventsReason,
+		},
+	}
+}
+
+func unknownDetection(reason string) model.Detection {
+	r := model.ResourceDetection{State: model.StateUnknown, Reason: reason}
+	return model.Detection{Identity: r, Meter: r, Battery: r, DeviceEvents: r}
+}
+
+// nullableString retourne nil pour une chaîne vide : « non trouvé dans la
+// réponse » doit arriver en null côté client, jamais en "".
+func nullableString(s string) *string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	return new(s)
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
@@ -366,12 +482,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 // handleCapabilities expose ce que la supervision peut restituer.
 //
-// Les trois détections matérielles valent false en phase 1 : ni la présence d'un
-// Smart Meter, ni celle d'une batterie, ni un adaptateur d'API interne ne sont
-// établis (docs/UNKNOWNS.md). Une capacité indisponible porte un motif et aucune
-// valeur numérique.
+// La décision repose sur la dernière détection persistée (internal/detect) :
+// « non déterminé » n'est pas « absent », et une capacité indisponible porte un
+// motif et aucune valeur numérique.
 func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
-	caps := model.Capabilities(false, false, false)
+	caps := model.Capabilities(s.detectionForCapabilities(r.Context()))
 	s.writeData(w, http.StatusOK, capabilitiesToDTO(caps), s.baseMeta())
 }
 

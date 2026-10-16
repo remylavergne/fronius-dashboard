@@ -8,7 +8,8 @@
 - [x] Importer les MD du dossier et référencer les sources originales sans publier de secrets
 - [x] Vérifier l’inventaire matériel/firmware contre l’export PDF
 - [ ] Identifier métriques effectivement renvoyées par la Solar API (échantillons anonymisés)
-- [ ] Confirmer absence de Smart Meter et batterie ; détecter dynamiquement leur présence future
+- [x] Détecter dynamiquement la présence d’un compteur et d’une batterie (absence/unknown distingués)
+- [ ] Confirmer absence de Smart Meter et batterie sur le matériel réel (sonde, à exécuter par l’utilisateur)
 - [x] Définir objectifs MVP vs phase 2 (contrôle) et critères de succès
 - [x] Choisir licence, stratégie branches, conventions de commit
 - [x] Consigner toutes les inconnues dans un registre de décisions
@@ -22,7 +23,7 @@
 - [x] Construire matrice endpoint/méthode/paramètres/rôle déclaré/rôle testé/effet de bord
 - [x] Classifier chaque endpoint READ / MUTATION / DANGEROUS
 - [x] Analyser module `ytu1` Digest, gestion nonce et cas d’erreur
-- [ ] Vérifier gestion 401/403, nonce expiré et cas d’absence d’auth
+- [x] Vérifier gestion 401/403, nonce expiré et cas d’absence d’auth
 - [x] Documenter récupération Technician et compteur sans effectuer d’essai
 - [ ] Vérifier anciens profils/gestionnaire de mots de passe si récupération encore souhaitée
 - [x] Documenter `SupportAccount`, SDP, ServiceFile comme non validés côté firmware
@@ -56,7 +57,7 @@
 - [x] Ajouter métriques collecteur et logs structurés expurgés
 - [x] Implémenter mock/simulateur Fronius et fixtures anonymisées
 - [ ] Ajouter tests de contrat à partir des réponses réelles expurgées
-- [ ] Préparer client Digest optionnel isolé, sans l’utiliser si inutile au MVP
+- [x] Préparer client Digest optionnel isolé, sans l’utiliser si inutile au MVP
 - [x] Vérifier que le frontend n’a jamais accès aux identifiants Fronius
 
 ## 4 — Persistance et API Go
@@ -240,3 +241,43 @@
   contient aucune, `localStorage` n'est jamais utilisé et aucun fichier de secrets n'est versionné
   hors `.env.example`. Décisions consignées : aucune purge périodique (redémarrage seul
   déclencheur), aucun filtrage des valeurs aberrantes tant qu'aucun cas réel n'est observé.
+
+- 2026-10-16 — Étape 14 (phase 2) : lecture authentifiée des chemins internes. Livré :
+  `internal/secret` (type `secret.String`, masqué pour `fmt`, `slog` et JSON),
+  `internal/fronius/digest` (Digest RFC 2617 : défi, en-tête, **un** retry sur 401, cache de
+  nonce, compteur décimal, `nc` unique sous concurrence), `internal/fronius/internalapi`
+  (liste blanche exécutable de quatre chemins + extraction tolérante de l’identité),
+  `internal/detect` (identité, présence, événements, anti-duplication, abandon d’un chemin
+  après un 401 sans identifiants), migration `0002_device.sql`, capacités à trois états
+  (`unknown`/`absent`/`present`), endpoints `/api/v1/system` et `/api/v1/capabilities` enrichis,
+  page Système (identité + détection), sonde étendue (5 endpoints, `--endpoint`,
+  `--password-stdin`, jamais de `--password`), documentation (SOURCES, ENDPOINTS, UNKNOWNS,
+  ARCHITECTURE, RUNBOOK, DEVELOPMENT, PROBE-READONLY) et garde CI « aucun mot de passe
+  versionné ».
+
+  Vérifications exécutées : `go vet ./...`, `CGO_ENABLED=0 go build ./...`, `go test ./... -race`
+  (tous les paquets ok) ; vecteur RFC 2617 exact ; 50 requêtes concurrentes produisant 50 `nc`
+  distincts ; simulateur protégé par Digest **et authentifié par un client tiers**
+  (`curl --digest` → 200) ; bout en bout simulateur + `froniusd` : `/api/v1/system` renvoie
+  modèle, firmware et numéro de série issus du matériel simulé, `meter.state=present`,
+  `battery.state=absent`, `device.identity` et `device.events` disponibles, `battery.soc`
+  indisponible avec son motif ; **anti-duplication vérifiée sur ~16 cycles** republiant le même
+  flux (2 lignes `device_event`, 2 clés, 1 ligne `device`) ; sans identifiants, les quatre états
+  passent `unknown` avec un motif nommant les variables d’environnement, **quatre 401 au premier
+  cycle et plus aucun ensuite** ; aucune trace du mot de passe dans le journal de `froniusd`
+  (0 occurrence) ni dans le corps d’aucune des sept routes ; la recherche du motif
+  « `FRONIUS_DEVICE_PASSWORD` suivi d’une valeur » est sans résultat, y compris
+  pour la garde CI elle-même (le motif n’est jamais écrit en clair dans le dépôt :
+  il ferait échouer cette même garde).
+
+  Deux écarts au plan, assumés et documentés : (1) la table `device` stocke les **états à trois
+  valeurs et leur cause** (`*_state`, `*_reason`) au lieu de booléens — un booléen ne peut pas
+  distinguer « absent » de « non déterminé », et l’interface aurait affiché « aucun Smart Meter
+  détecté » après un simple 401 ; (2) `internal/secret` implémente `GoString` en plus de
+  `String`, sans quoi `%#v` contournait le masquage.
+
+  Non livré, laissé ouvert : exécution de la sonde contre le matériel réel et promotion des
+  fixtures (appartient à l’utilisateur, voir `docs/PROBE-READONLY.md`), noms réels des clés
+  `modelName`/`firmwareVersion`, forme de `/status/activeEvents`, lecture de l’état de charge
+  de la batterie, filtres d’événements par date/sévérité dans l’interface, OpenAPI, export CSV,
+  tests E2E, captures d’écran.

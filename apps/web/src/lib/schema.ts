@@ -78,13 +78,45 @@ export const healthSchema = z.object({
 })
 export type Health = z.infer<typeof healthSchema>
 
+/**
+ * Identité de l'appareil.
+ *
+ * Les trois champs d'identité sont nullables : une réponse qui ne nomme pas le
+ * modèle produit `null`, jamais `""` ni « inconnu ». `read_at_utc` est
+ * l'horodatage de la lecture dont ces valeurs proviennent.
+ */
 export const deviceSchema = z.object({
-  model: z.string(),
-  firmware: z.string(),
-  serial_number: z.string(),
+  model: z.string().nullable(),
+  firmware: z.string().nullable(),
+  serial_number: z.string().nullable(),
   source: z.string(),
+  read_at_utc: timestamp,
 })
 export type Device = z.infer<typeof deviceSchema>
+
+/**
+ * État d'une détection : `unknown`, `absent` ou `present`.
+ *
+ * `unknown` n'est pas `absent` : le premier signifie qu'aucune conclusion n'a
+ * été tirée (401, 404, panne réseau), le second que l'appareil a répondu et ne
+ * signale pas le composant.
+ */
+export const detectionResourceSchema = z.object({
+  state: z.string(),
+  source: z.string(),
+  reason: z.string(),
+})
+export type DetectionResource = z.infer<typeof detectionResourceSchema>
+
+export const detectionSchema = z.object({
+  read_at_utc: timestamp.nullable(),
+  meter: detectionResourceSchema,
+  battery: detectionResourceSchema,
+  internal_api: detectionResourceSchema,
+  device_events: detectionResourceSchema,
+  last_error: z.string(),
+})
+export type Detection = z.infer<typeof detectionSchema>
 
 export const systemSchema = z.object({
   version: z.string(),
@@ -97,6 +129,7 @@ export const systemSchema = z.object({
   api_addr: z.string(),
   stale_after_s: z.number(),
   device: deviceSchema.nullable(),
+  detection: detectionSchema.nullable(),
 })
 export type System = z.infer<typeof systemSchema>
 

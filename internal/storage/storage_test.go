@@ -64,8 +64,8 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := first.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("comptage des migrations: %v", err)
 	}
-	if version != 1 || rows != 1 {
-		t.Fatalf("schema_migrations = (version=%d, lignes=%d), attendu (1, 1)", version, rows)
+	if version != 2 || rows != 2 {
+		t.Fatalf("schema_migrations = (version=%d, lignes=%d), attendu (2, 2)", version, rows)
 	}
 	// Le mode WAL doit être actif (preuve que la DSN a bien été appliquée).
 	var journalMode string
@@ -89,7 +89,7 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 	if err := second.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&rows); err != nil {
 		t.Fatalf("comptage après second Open: %v", err)
 	}
-	if rows != 1 {
+	if rows != 2 {
 		t.Fatalf("migrations rejouées : %d lignes", rows)
 	}
 	// Les tables restent utilisables.
@@ -686,5 +686,152 @@ func TestSplitStatements(t *testing.T) {
 		if strings.Contains(stmt, "aucune") {
 			t.Fatalf("un fragment de commentaire a survécu : %q", stmt)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Migration 0002 : identité, détection, anti-duplication
+// ---------------------------------------------------------------------------
+
+func deviceRecord(ts time.Time, modelName string) DeviceRecord {
+	return DeviceRecord{
+		ReadAtUTC:         ts,
+		Source:            "/status/version",
+		Model:             modelName,
+		Firmware:          "1.24.3-sim",
+		SerialNumber:      "SIMULATED-0001",
+		IdentityState:     model.StatePresent,
+		MeterState:        model.StatePresent,
+		MeterSource:       "/components/PowerMeter/readable",
+		BatteryState:      model.StateAbsent,
+		BatterySource:     "/components/BatteryManagementSystem/readable",
+		DeviceEventsState: model.StatePresent,
+	}
+}
+
+func TestDeviceIsASingleReplacedRow(t *testing.T) {
+	s := openStore(t, brussels(t))
+	ctx := context.Background()
+
+	// Base neuve : aucune ligne, donc « non déterminé » — pas un zéro déguisé.
+	if got, ok, err := s.Device(ctx); err != nil {
+		t.Fatalf("Device: %v", err)
+	} else if ok {
+		t.Fatalf("une base neuve ne doit contenir aucune ligne : %+v", got)
+	}
+
+	first := time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC)
+	if err := s.SaveDevice(ctx, deviceRecord(first, "Primo GEN24")); err != nil {
+		t.Fatalf("SaveDevice: %v", err)
+	}
+
+	// Seconde écriture : la ligne est remplacée, pas dupliquée.
+	second := first.Add(time.Minute)
+	rec := deviceRecord(second, "Primo GEN24 3.6")
+	rec.BatteryState = model.StatePresent
+	rec.DeviceEventsState = model.StateUnknown
+	if err := s.SaveDevice(ctx, rec); err != nil {
+		t.Fatalf("SaveDevice: %v", err)
+	}
+
+	got, ok, err := s.Device(ctx)
+	if err != nil {
+		t.Fatalf("Device: %v", err)
+	}
+	if !ok {
+		t.Fatal("une ligne est attendue après deux écritures")
+	}
+	if !got.ReadAtUTC.Equal(second) || got.Model != "Primo GEN24 3.6" {
+		t.Fatalf("enregistrement = %+v", got)
+	}
+	if got.MeterState != model.StatePresent || got.BatteryState != model.StatePresent {
+		t.Fatalf("états = %+v", got)
+	}
+	// « non déterminé » doit survivre à l'aller-retour : il ne devient jamais
+	// « absent ».
+	if got.DeviceEventsState != model.StateUnknown || got.IdentityState != model.StatePresent {
+		t.Fatalf("états = %+v", got)
+	}
+	if got.SerialNumber != "SIMULATED-0001" || got.Firmware != "1.24.3-sim" {
+		t.Fatalf("identité = %+v", got)
+	}
+
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM device`).Scan(&count); err != nil {
+		t.Fatalf("comptage: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("lignes en base = %d, attendu 1", count)
+	}
+
+	// La contrainte CHECK (id = 1) interdit une seconde ligne.
+	if _, err := s.db.Exec(`INSERT INTO device (id, read_at_utc, source) VALUES (2, '2026-01-01T00:00:00.000Z', 'x')`); err == nil {
+		t.Fatal("une seconde ligne d'appareil devait être refusée")
+	}
+}
+
+func TestMarkDeviceEventSeen(t *testing.T) {
+	s := openStore(t, brussels(t))
+	ctx := context.Background()
+	ts := time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC)
+
+	fresh, err := s.MarkDeviceEventSeen(ctx, "device:ABC", ts)
+	if err != nil {
+		t.Fatalf("MarkDeviceEventSeen: %v", err)
+	}
+	if !fresh {
+		t.Fatal("une clé neuve doit être signalée comme telle")
+	}
+
+	again, err := s.MarkDeviceEventSeen(ctx, "device:ABC", ts.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("MarkDeviceEventSeen: %v", err)
+	}
+	if again {
+		t.Fatal("une clé déjà vue ne doit pas être signalée comme neuve")
+	}
+
+	other, err := s.MarkDeviceEventSeen(ctx, "device:DEF", ts)
+	if err != nil {
+		t.Fatalf("MarkDeviceEventSeen: %v", err)
+	}
+	if !other {
+		t.Fatal("une autre clé doit être neuve")
+	}
+
+	count, err := s.DeviceEventsSeenCount(ctx)
+	if err != nil {
+		t.Fatalf("DeviceEventsSeenCount: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("clés mémorisées = %d, attendu 2", count)
+	}
+}
+
+func TestPurgeRemovesSeenEventMarks(t *testing.T) {
+	s := openStore(t, brussels(t))
+	ctx := context.Background()
+	old := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	recent := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+
+	marks := map[string]time.Time{"device:ancien": old, "device:récent": recent}
+	for key, ts := range marks {
+		if _, err := s.MarkDeviceEventSeen(ctx, key, ts); err != nil {
+			t.Fatalf("MarkDeviceEventSeen: %v", err)
+		}
+	}
+
+	// Borne exclusive : la marque exactement à la borne survit.
+	limit := recent
+	if _, err := s.PurgeBefore(ctx, limit); err != nil {
+		t.Fatalf("PurgeBefore: %v", err)
+	}
+
+	count, err := s.DeviceEventsSeenCount(ctx)
+	if err != nil {
+		t.Fatalf("DeviceEventsSeenCount: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("clés conservées = %d, attendu 1 (borne haute exclusive)", count)
 	}
 }

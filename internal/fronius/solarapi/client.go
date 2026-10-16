@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -97,13 +96,13 @@ func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnve
 	start := time.Now()
 	resp, err := c.doer.Do(req)
 	if err != nil {
-		return out, classifyTransportError(ctx, PowerFlowPath, err)
+		return out, fronius.ClassifyTransport(ctx, PowerFlowPath, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
-		return out, classifyTransportError(ctx, PowerFlowPath, err)
+		return out, fronius.ClassifyTransport(ctx, PowerFlowPath, err)
 	}
 
 	c.log.Debug("solar api",
@@ -113,7 +112,7 @@ func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnve
 		"duration_ms", time.Since(start).Milliseconds())
 
 	if resp.StatusCode != http.StatusOK {
-		return out, statusError(PowerFlowPath, resp.StatusCode)
+		return out, fronius.ClassifyStatus(PowerFlowPath, resp.StatusCode)
 	}
 	if len(body) > maxBodyBytes {
 		return out, &froniuserr.Error{
@@ -155,32 +154,4 @@ func (c *Client) getPowerFlow(ctx context.Context, at *time.Time) (PowerFlowEnve
 	}
 
 	return out, nil
-}
-
-// statusError traduit les codes HTTP non 200.
-//
-// 429 est classé avec les erreurs serveur : l'appareil demande explicitement de
-// ralentir, et le collecteur applique alors son backoff.
-func statusError(endpoint string, status int) error {
-	kind := froniuserr.KindServer
-	switch status {
-	case http.StatusNotFound:
-		kind = froniuserr.KindNotFound
-	case http.StatusUnauthorized, http.StatusForbidden:
-		kind = froniuserr.KindUnauthorized
-	}
-	return &froniuserr.Error{Kind: kind, Endpoint: endpoint, HTTPStatus: status}
-}
-
-// classifyTransportError distingue l'expiration du délai des autres pannes réseau.
-func classifyTransportError(ctx context.Context, endpoint string, err error) error {
-	kind := froniuserr.KindTransport
-	var netErr net.Error
-	switch {
-	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &netErr) && netErr.Timeout():
-		kind = froniuserr.KindTimeout
-	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		kind = froniuserr.KindTimeout
-	}
-	return &froniuserr.Error{Kind: kind, Endpoint: endpoint, Err: err}
 }

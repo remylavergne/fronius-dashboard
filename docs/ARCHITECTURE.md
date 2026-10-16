@@ -8,12 +8,16 @@ API REST locale, une interface React. **Aucune écriture vers l'onduleur.**
 
 ```mermaid
 flowchart LR
-  SIM["cmd/fronius-sim<br/>simulateur Solar API"]
-  INV["Onduleur réel<br/>(phase 2)"]:::futur
+  SIM["cmd/fronius-sim<br/>simulateur Solar API<br/>+ chemins internes Digest"]
+  INV["Onduleur réel"]:::futur
   RO["fronius.ReadOnly<br/>GET uniquement"]
+  DG["digest.Transport<br/>Authorization sur 401 seulement"]
   SA["internal/fronius/solarapi<br/>client + DTO"]
-  MOD["internal/model<br/>normalisation"]
+  IA["internal/fronius/internalapi<br/>liste blanche + extraction"]
   COL["internal/collector<br/>polling 5 s + jitter"]
+  DET["internal/detect<br/>identité, présence, événements"]
+  MOD["internal/model<br/>normalisation, détection"]
+  SEC["internal/secret<br/>valeurs masquées"]
   DB[("SQLite WAL<br/>internal/storage")]
   API["internal/api<br/>REST lecture"]
   WEB["apps/web<br/>React 19"]
@@ -21,14 +25,23 @@ flowchart LR
 
   SIM --> RO
   INV -.-> RO
-  RO --> SA --> COL
+  RO --> DG
+  DG --> SA --> COL
+  DG --> IA --> DET
+  DET --> DB
   COL --> MOD --> DB
+  SEC -.-> DG
   PROBE -.-> SIM
   PROBE -.-> INV
   DB --> API --> WEB
 
   classDef futur stroke-dasharray: 4 4
 ```
+
+L'ordre `ReadOnly{Inner: digest.Transport{Inner: httpClient}}` est structurant :
+la garde est **à l'extérieur**, donc le refus des méthodes non-GET précède tout
+envoi, et l'authentification ne peut pas transformer une requête interdite en
+requête acceptable.
 
 Le simulateur et l'onduleur sont interchangeables : le client ne connaît que
 `FRONIUS_SOLARAPI_URL`. La sonde est hors du flux d'exploitation — c'est un
@@ -40,15 +53,19 @@ outil de diagnostic manuel, jamais lancé par le service ni par la CI.
 |---|---|---|
 | `cmd/fronius-sim` | Simulateur déterministe de la Solar API (courbe, pannes, `/sim/health`) | — |
 | `cmd/froniusd` | Service : config, collecteur, API, arrêt propre | tout |
-| `cmd/fronius-probe` | Sonde lecture seule, liste blanche et expurgation | `config`, `fronius` |
-| `internal/config` | Configuration par variables d'environnement, garde d'écoute | — |
-| `internal/fronius` | Garde lecture seule (`ReadOnly`) | `froniuserr` |
+| `cmd/fronius-probe` | Sonde lecture seule, liste blanche, sélection d'endpoint et expurgation | `config`, `fronius`, `digest`, `internalapi`, `secret` |
+| `internal/config` | Configuration par variables d'environnement, garde d'écoute | `secret` |
+| `internal/secret` | `secret.String` : masqué pour `fmt`, `slog` et JSON ; `Reveal()` est la seule sortie | — |
+| `internal/fronius` | Garde lecture seule (`ReadOnly`) et classification HTTP/transport partagée | `froniuserr` |
 | `internal/fronius/froniuserr` | Erreurs typées (`Kind`, `KindOf`) | — |
+| `internal/fronius/digest` | Transport Digest (RFC 2617) : défi, en-tête, un retry sur 401, cache de nonce | `fronius`, `froniuserr`, `secret` |
 | `internal/fronius/solarapi` | Client Solar API et **seul** encodage de la forme du JSON | `fronius`, `froniuserr` |
-| `internal/model` | Modèle normalisé, unités, capacités, événements | `solarapi` |
-| `internal/storage` | SQLite : migrations, séries, énergie journalière, purge | `model` |
+| `internal/fronius/internalapi` | Chemins internes : **liste blanche exécutable** et extraction tolérante | `fronius`, `froniuserr` |
+| `internal/model` | Modèle normalisé, unités, détection à trois états, capacités, événements | `solarapi` |
+| `internal/storage` | SQLite : migrations, séries, énergie journalière, identité, anti-duplication, purge | `model` |
 | `internal/collector` | Boucle de collecte, backoff, événements | `solarapi`, `model`, `storage` |
-| `internal/api` | API REST, validation, enveloppe et DTO | `model`, `storage`, `config` |
+| `internal/detect` | Boucle de détection : identité, présence, événements, états et motifs | `internalapi`, `model`, `storage` |
+| `internal/api` | API REST, validation, enveloppe et DTO | `model`, `storage`, `config`, `detect`, `internalapi` |
 
 Le sens des dépendances est acyclique et va du plus concret (les binaires) vers
 le plus abstrait (les erreurs typées). Aucun paquet interne n'importe un
@@ -67,8 +84,8 @@ le plus abstrait (les erreurs typées). Aucun paquet interne n'importe un
 | `src/i18n/*` | Dictionnaire plat FR, prêt pour EN/DE |
 
 Le frontend ne parle qu'à `/api` (relayé par le proxy Vite en développement). Il
-ne connaît ni l'adresse de l'onduleur, ni un identifiant : la phase 1 n'en
-détient aucun.
+ne connaît ni l'adresse de l'onduleur, ni un identifiant : aucun identifiant
+n'entre dans le processus Node, ni dans un bundle, ni dans une réponse HTTP.
 
 ## Invariants
 
@@ -93,9 +110,20 @@ détient aucun.
    n'existe que dans `internal/fronius/solarapi/dto.go` ; les DTO REST que dans
    `internal/api/dto.go`, reflétés par `apps/web/src/lib/schema.ts`. Toute
    dérive entre les deux est détectée par zod à l'exécution et par les tests.
-6. **Pas de secret dans le dépôt ni dans le frontend.** La phase 1 n'utilise que
-   la Solar API, sans authentification. Toute donnée d'authentification future
-   restera dans l'environnement du backend.
+6. **Pas de secret dans le dépôt, dans un journal ou dans le frontend.** Les
+   identifiants de l'appareil vivent dans l'environnement de `froniusd` et de
+   `fronius-probe`, sous le type `secret.String` : toute mise en forme
+   (`fmt`, `slog`, JSON) produit `<redacted>`, et seul le calcul de `HA1` appelle
+   `Reveal()`. La CI refuse un `FRONIUS_DEVICE_PASSWORD` non vide versionné.
+7. **L'en-tête `Authorization` n'est émis qu'en réponse à un 401.** Jamais
+   préemptivement, jamais vers un hôte autre que celui de `FRONIUS_SOLARAPI_URL`
+   (`digest.ErrForeignHost`), jamais vers le frontend. C'est la règle du client
+   officiel (`callGet$`), et elle est ce qui permet aux mêmes chemins de
+   fonctionner avec ou sans authentification.
+8. **« Absent » n'est pas « non déterminé ».** Chaque ressource matérielle porte
+   l'un de trois états (`unknown`, `absent`, `present`), persisté tel quel,
+   exposé par `/api/v1/system` et utilisé par `model.Capabilities`. Une lecture
+   qui échoue produit `unknown` avec son motif — jamais `absent`.
 
 ## Décisions structurantes
 
@@ -113,6 +141,13 @@ rétention et agrégation (0006), packaging (0007).
 - **L'API REST n'a aucune authentification** : elle est confinée à la boucle
   locale par `config.CheckListenAddress` tant que `FRONIUS_ALLOW_REMOTE=1` n'est
   pas défini (ADR 0005).
-- **Pas d'adaptateur d'API interne** : ni identité de l'onduleur, ni événements
-  matériels, ni détection de batterie ou de compteur. Ces capacités sont
-  marquées indisponibles, pas simulées.
+- **Les clés d'identité autres que `serialNumber` sont des candidats.** Le modèle
+  et la version de firmware de `/status/version` ne sont pas nommés dans la
+  partie lisible du bundle : leur extraction repose sur des listes ordonnées, à
+  confirmer par capture (voir `docs/UNKNOWNS.md`).
+- **La forme de `/status/activeEvents` n'est pas établie.** La lecture, la
+  déduplication et la conservation du JSON brut (borné) ne dépendent pas des
+  noms de champs ; seul le libellé affiché et la sévérité peuvent changer.
+- **`battery.soc` reste indisponible même batterie détectée** : la présence d'un
+  composant ne prouve pas qu'une mesure d'état de charge existe côté API, et
+  l'annoncer disponible sans source serait l'inverse de l'invariant 2.

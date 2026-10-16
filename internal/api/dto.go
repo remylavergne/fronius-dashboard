@@ -7,7 +7,9 @@
 //   - une valeur absente est sérialisée en `null`, jamais en 0 ;
 //   - les horodatages sont en UTC, à la milliseconde, suffixés `Z`.
 //
-// Aucun secret ne figure dans ces structures : la phase 1 n'en détient aucun.
+// Aucun secret ne figure dans ces structures : les identifiants de l'appareil
+// vivent dans le type secret.String du côté de froniusd, ne sont jamais
+// sérialisés, et aucune de ces réponses ne peut les restituer (test dédié).
 package api
 
 import (
@@ -237,28 +239,50 @@ type collectorHealthDTO struct {
 	SamplesTotal   int64  `json:"samples_total"`
 }
 
-// systemDTO décrit l'application de supervision. `device` restera null tant que
-// l'adaptateur d'API interne n'existe pas : la Solar API ne fournit ni modèle,
+// systemDTO décrit l'application de supervision. `device` reste null tant
+// qu'aucune lecture d'identité n'a abouti : la Solar API ne fournit ni modèle,
 // ni version de firmware, ni numéro de série (voir docs/UNKNOWNS.md).
 type systemDTO struct {
-	Version       string     `json:"version"`
-	GoVersion     string     `json:"go_version"`
-	SolarAPIURL   string     `json:"solarapi_url"`
-	PollIntervalS float64    `json:"poll_interval_s"`
-	TZ            string     `json:"tz"`
-	DBPath        string     `json:"db_path"`
-	RetentionDays int        `json:"retention_days"`
-	APIAddr       string     `json:"api_addr"`
-	StaleAfterS   float64    `json:"stale_after_s"`
-	Device        *deviceDTO `json:"device"`
+	Version       string        `json:"version"`
+	GoVersion     string        `json:"go_version"`
+	SolarAPIURL   string        `json:"solarapi_url"`
+	PollIntervalS float64       `json:"poll_interval_s"`
+	TZ            string        `json:"tz"`
+	DBPath        string        `json:"db_path"`
+	RetentionDays int           `json:"retention_days"`
+	APIAddr       string        `json:"api_addr"`
+	StaleAfterS   float64       `json:"stale_after_s"`
+	Device        *deviceDTO    `json:"device"`
+	Detection     *detectionDTO `json:"detection"`
 }
 
-// deviceDTO restera absent de la phase 1 (aucune source HTTP confirmée).
+// deviceDTO est l'identité de l'appareil telle qu'elle a été lue.
+//
+// Les trois champs d'identité sont nullables : une chaîne vide en base signifie
+// « non trouvé dans la réponse » et devient `null`, jamais "" ni « inconnu ».
 type deviceDTO struct {
-	Model        string `json:"model"`
-	Firmware     string `json:"firmware"`
-	SerialNumber string `json:"serial_number"`
-	Source       string `json:"source"`
+	Model        *string `json:"model"`
+	Firmware     *string `json:"firmware"`
+	SerialNumber *string `json:"serial_number"`
+	Source       string  `json:"source"`
+	ReadAtUTC    string  `json:"read_at_utc"`
+}
+
+// detectionDTO expose l'état des quatre détections internes.
+type detectionDTO struct {
+	ReadAtUTC    *string              `json:"read_at_utc"`
+	Meter        detectionResourceDTO `json:"meter"`
+	Battery      detectionResourceDTO `json:"battery"`
+	InternalAPI  detectionResourceDTO `json:"internal_api"`
+	DeviceEvents detectionResourceDTO `json:"device_events"`
+	LastError    string               `json:"last_error"`
+}
+
+// detectionResourceDTO est l'état d'une détection : unknown, absent ou present.
+type detectionResourceDTO struct {
+	State  string `json:"state"`
+	Source string `json:"source"`
+	Reason string `json:"reason"`
 }
 
 func formatTime(t time.Time) string {

@@ -1,9 +1,12 @@
 // Package fronius contient les primitives partagées par les clients de
 // l'onduleur.
 //
-// Invariant de la phase 1 : l'application ne modifie jamais la configuration
-// du matériel. Tous les clients sont construits derrière ReadOnly, qui refuse
-// toute méthode autre que GET avant même d'ouvrir une connexion.
+// Invariant : l'application ne modifie jamais la configuration du matériel.
+// Tous les clients sont construits derrière ReadOnly, qui refuse toute méthode
+// autre que GET avant même d'ouvrir une connexion. L'ordre de composition est
+// volontairement ReadOnly{Inner: digest.Transport{…}} : la garde est à
+// l'extérieur, donc l'authentification ne peut pas transformer une requête
+// interdite en requête acceptable.
 package fronius
 
 import (

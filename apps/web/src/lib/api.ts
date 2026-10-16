@@ -3,7 +3,8 @@
  *
  * Le frontend ne s'adresse qu'à `/api` (relayé vers `froniusd` par le proxy
  * Vite en développement). Il ne connaît ni l'adresse de l'onduleur, ni un
- * identifiant quelconque : la phase 1 n'en possède aucun.
+ * identifiant quelconque : les identifiants de l'appareil restent dans
+ * l'environnement du service et ne traversent jamais cette frontière.
  */
 import type { ZodType } from 'zod'
 import { errorEnvelopeSchema } from './schema'

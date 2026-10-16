@@ -16,14 +16,32 @@ dans `references/fronius-original.js`) complété par la lecture des modules
 - Tout ce qui n'est pas `READ` est **hors périmètre** et n'est jamais appelé par
   l'application, la sonde ou les tests.
 
-## Liste blanche de la phase 1
+## Liste blanche exécutable
 
-| Chemin | Méthode | Classification | Preuve |
-|---|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | `[OBSERVÉ-CONVERSATION]` « répond » ; **absent du bundle** ; méthode GET imposée par `internal/fronius/readonly.go` |
+Cinq entrées, et aucune autre : c'est la table figée dans
+`internal/fronius/internalapi/allowlist.go` (quatre chemins internes) et dans le
+client Solar API (un chemin). `cmd/fronius-probe` n'accepte rien d'autre
+(`--list`, `--endpoint`).
 
-C'est le **seul** endpoint que la phase 1 appelle. `cmd/fronius-probe` n'accepte
-rien d'autre (`--list`).
+| Chemin | Méthode | Classification | Enveloppe | Preuve |
+|---|---|---|---|---|
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | GET | READ | — | `[OBSERVÉ-CONVERSATION]` « répond » ; **absent du bundle** ; méthode GET imposée par `internal/fronius/readonly.go` |
+| `/status/version` | GET | READ | `Default` | `[SOURCE-JS]` l. 76042 (registre pollé, module `aYRN`) et l. 183050 (voie **sans** en-tête, module `yTJA`) ; `[VÉRIFIÉ]` sur le simulateur |
+| `/status/activeEvents` | GET | READ | `Default` | `[SOURCE-JS]` l. 76030 (intervalle 10 000 ms) ; `[VÉRIFIÉ]` sur le simulateur. Forme du corps non établie |
+| `/components/PowerMeter/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76031 + l. 75958 ; `[VÉRIFIÉ]` sur le simulateur |
+| `/components/BatteryManagementSystem/readable` | GET | READ | `Cgi` (`Body.Data`) | `[SOURCE-JS]` l. 76032 ; `[VÉRIFIÉ]` sur le simulateur |
+
+Note : ces chemins sont atteints par **deux voies** dans le client officiel — avec
+en-tête `Authorization` (module `aYRN`) et sans (module `yTJA`). Le classement
+`READ` porte sur l'effet, pas sur l'authentification : aucun des quatre n'a
+d'effet persistant observé.
+
+## Chemins explicitement écartés
+
+| Chemin | Raison |
+|---|---|
+| `/config/meter`, `/config/batteries` | Lecture plausible, mais leur littéral et leur verbe sont hors de la zone lisible du bundle (module `rCKn`) : les appeler reviendrait à inventer un contrat. La présence du compteur et de la batterie est donc déduite de `Body.Data` des chemins `Cgi`, sans lire ces configurations. |
+| `/status/events`, `/status/devices`, `/status/common`, `/components/DataManager/readable` | Inventoriés, lisibles, mais hors du besoin de la phase 2 : ne pas appeler ce dont on n'a pas besoin réduit la surface. |
 
 ## `/commands/` (35 chemins)
 
@@ -105,12 +123,12 @@ puissance ou aux interfaces de contrôle.
 
 | Chemin | Classification | Motif |
 |---|---|---|
-| `/components/BatteryManagementSystem/readable` | READ | Lecture d'état |
+| `/components/BatteryManagementSystem/readable` | READ | **appelé** : présence d'une batterie déduite de `Body.Data` |
 | `/components/DataManager/readable` | READ | Lecture d'état |
 | `/components/Ohmpilot/readable` | READ | Lecture d'état |
-| `/components/PowerMeter/readable` | READ | Lecture d'état ; candidat `[À-TESTER]` pour détecter la présence d'un Smart Meter |
+| `/components/PowerMeter/readable` | READ | **appelé** : présence d'un Smart Meter déduite de `Body.Data` |
 | `/components/cache/readable` | READ | Lecture d'état |
-| `/status/activeEvents` | READ | Lecture d'événements |
+| `/status/activeEvents` | READ | **appelé** : événements actifs de l'appareil |
 | `/status/capabilities` | READ | Lecture des capacités |
 | `/status/common` | READ | Lecture d'état ; candidat `[À-TESTER]` pour l'identité de l'appareil |
 | `/status/deviceDB` | READ | Lecture de la base d'appareils |
@@ -124,7 +142,7 @@ puissance ou aux interfaces de contrôle.
 | `/status/powerflow` | READ | Interrogé toutes les 5 000 ms par le client officiel `[SOURCE-JS]` |
 | `/status/powerflowcontroller` | READ | Lecture d'état |
 | `/status/registrationData` | READ | Lecture d'état |
-| `/status/version` | READ | Candidat `[À-TESTER]` pour l'identité (modèle, firmware) |
+| `/status/version` | READ | **appelé** : identité (`serialNumber`, `numberOfPhases`, `devicegroup`) |
 | `/update/start` | **DANGEROUS** | Déclenche une mise à jour de firmware |
 
 ## Matrice endpoint / méthode / paramètres / rôle déclaré / rôle testé / effet de bord
@@ -139,9 +157,13 @@ rejoué sur le matériel.
 
 | Chemin | Méthode | Paramètres | Rôle déclaré | Rôle testé | Effet de bord |
 |---|---|---|---|---|---|
-| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | `GET` (imposé par la garde) | aucun | aucun (pas d'authentification connue) `[À-TESTER]` | **aucun** ; la sonde est livrée mais n'a pas encore été exécutée sur le matériel | aucun : lecture seule |
-| `/status/*` (20 chemins) | inconnu `[À-TESTER]` | inconnu | rôles d'affichage Angular `[SOURCE-JS]`, non prouvés | aucun | aucun attendu (lecture d'état) |
-| `/components/*/readable` (5 chemins) | inconnu `[À-TESTER]` | inconnu | idem | aucun | aucun attendu |
+| `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` | `GET` (imposé par la garde) | aucun | aucun (pas d'authentification connue) `[À-TESTER]` | **simulateur** : 200 sans en-tête ; **matériel** : non exécuté | aucun : lecture seule |
+| `/status/version` | `GET` (imposé par la garde) | aucun | Digest « Customer » `[SOURCE-JS]` — également lu sans en-tête par le module `yTJA` | **simulateur** : 401 sans en-tête puis 200 après Digest ; `curl --digest` accepté (client tiers) | aucun : lecture d'identité |
+| `/status/activeEvents` | `GET` (imposé par la garde) | aucun | idem | idem | aucun : lecture d'événements |
+| `/components/PowerMeter/readable` | `GET` (imposé par la garde) | aucun | idem | idem | aucun : lecture d'état |
+| `/components/BatteryManagementSystem/readable` | `GET` (imposé par la garde) | aucun | idem | idem | aucun : lecture d'état |
+| `/status/*` restants (16 chemins) | inconnu `[À-TESTER]` | inconnu | rôles d'affichage Angular `[SOURCE-JS]`, non prouvés | aucun | aucun attendu (lecture d'état) |
+| `/components/*/readable` restants (3 chemins) | inconnu `[À-TESTER]` | inconnu | idem | aucun | aucun attendu |
 | `/config/*` en lecture (24 chemins) | `GET` observé sur 4 chemins | inconnu | Digest « Customer » `[OBSERVÉ-CONVERSATION]` | 4 chemins : `/config/common`, `/config/modbus`, `/config/meter`, `/config/iomapping` → HTTP 200 ; `/config/powerlimits`, `/config/setup/*` → 200 `{}` | aucun (lecture) |
 | `/config/*` en écriture (24 chemins) | inconnu (POST/PUT probable) | inconnu | inconnu | **aucun** | modification de configuration ; `DANGEROUS` pour `gridcode`, `pcc`, `powerlimits`, `modbus`, `setup/*` |
 | `/commands/*` en lecture (8 chemins : `ConnectedPowermeter`, `GetAutoTestReport`, `GetSDPFile`, `GetServiceState`, `GetUTCTime`, `GetUpdateStatus`, `InverterRollbackStatus`, `StandbyState`, `ListGridcodes`, `ListOhmpilots`) | `GET` probable | `user` pour certains | `passwordUser` ou compte de service `[SOURCE-JS]` | **aucun** | aucun attendu |
@@ -150,11 +172,12 @@ rejoué sur le matériel.
 | `/commands/License`, `LicenseExchangeData`, `ServiceFile` | inconnu | inconnu | inconnu | **aucun** | indéterminé ⇒ traité comme une écriture |
 | `/update/start` | inconnu | inconnu | inconnu | **aucun** | mise à jour de firmware de l'appareil |
 
-Ce que cette matrice établit : **un seul endpoint est appelé**, en `GET`, sans
-paramètre et sans effet de bord. Tout le reste est inventorié pour être
-explicitement évité. Les cellules « inconnu » ne sont pas des autorisations
-implicites : ce sont des inconnues à lever par la phase 2 (voir
-`docs/UNKNOWNS.md`).
+Ce que cette matrice établit : **cinq chemins sont appelés**, tous en `GET`, sans
+paramètre, sans effet de bord observé, et sans aucune entrée `MUTATION` ou
+`DANGEROUS` dans la liste blanche exécutable. Les 79 autres chemins recensés dans
+ce document restent inventoriés pour être explicitement évités. Les cellules
+« inconnu » ne sont pas des autorisations implicites : ce sont des inconnues
+(voir `docs/UNKNOWNS.md`).
 
 ## Règle applicable
 
@@ -165,4 +188,6 @@ une requête non-GET est rejetée avant d'atteindre le transport, et la vérific
 ne doit rien trouver hors du message d'erreur de la garde et de ses tests.
 
 Les endpoints `READ` marqués `[À-TESTER]` ne seront appelés qu'après une revue
-explicite et une confirmation de l'utilisateur, dans le cadre de la phase 2.
+explicite et une confirmation de l'utilisateur. L'ajout d'une entrée à
+`internal/fronius/internalapi/allowlist.go` est une décision de ce type : un
+chemin non listé n'est pas appelable, quel que soit le code appelant.

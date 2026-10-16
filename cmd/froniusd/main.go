@@ -26,7 +26,10 @@ import (
 	"fronius-supervisor/internal/api"
 	"fronius-supervisor/internal/collector"
 	"fronius-supervisor/internal/config"
+	"fronius-supervisor/internal/detect"
 	"fronius-supervisor/internal/fronius"
+	"fronius-supervisor/internal/fronius/digest"
+	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/fronius/solarapi"
 	"fronius-supervisor/internal/model"
 	"fronius-supervisor/internal/storage"
@@ -77,8 +80,22 @@ func run(backfillDays int, forceBackfill bool) error {
 	}()
 
 	// Tous les clients passent par la garde lecture seule : une requête non-GET
-	// est refusée avant d'atteindre le réseau.
-	client, err := solarapi.New(cfg.SolarAPIURL, fronius.ReadOnly{Inner: &http.Client{}}, cfg.HTTPTimeout, logger)
+	// est refusée avant d'atteindre le réseau. Le transport Digest est placé
+	// sous cette garde et sous les deux clients : il n'ajoute d'en-tête
+	// Authorization qu'en réponse à un 401, et jamais vers un autre hôte.
+	digestTransport, err := digest.New(&http.Client{}, cfg.SolarAPIURL,
+		digest.Credentials{Username: cfg.DeviceUser, Password: cfg.DevicePassword}, logger)
+	if err != nil {
+		return err
+	}
+	guarded := fronius.ReadOnly{Inner: digestTransport}
+
+	client, err := solarapi.New(cfg.SolarAPIURL, guarded, cfg.HTTPTimeout, logger)
+	if err != nil {
+		return err
+	}
+
+	internalClient, err := internalapi.New(cfg.SolarAPIURL, guarded, cfg.HTTPTimeout, logger)
 	if err != nil {
 		return err
 	}
@@ -122,6 +139,24 @@ func run(backfillDays int, forceBackfill bool) error {
 		defer wg.Done()
 		if err := col.Run(ctx); err != nil {
 			logger.Error("collecteur arrêté sur erreur", "error", err)
+		}
+	}()
+
+	// Le détecteur démarre toujours, avec ou sans identifiants : c'est la seule
+	// façon de savoir que l'appareil exige une authentification, et le bundle
+	// prouve que certains chemins internes répondent sans elle (module yTJA).
+	det := &detect.Detector{
+		Source:                internalClient,
+		Sink:                  store,
+		Log:                   logger,
+		Interval:              cfg.DetectInterval,
+		CredentialsConfigured: !cfg.DevicePassword.IsZero(),
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := det.Run(ctx); err != nil {
+			logger.Error("détecteur arrêté sur erreur", "error", err)
 		}
 	}()
 

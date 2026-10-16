@@ -9,6 +9,55 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Phase 2 : lecture authentifiée des chemins internes.**
+  `internal/secret` : type `secret.String` qui masque sa valeur pour `fmt`,
+  `slog` et `encoding/json`, `Reveal()` étant la seule sortie en clair.
+  `internal/fronius/digest` : transport Digest RFC 2617 conforme au client
+  officiel (défi lu d'abord dans `x-www-authenticate`, **un** seul retry sur
+  401, `nc` décimal zéro-complété incrémenté sous verrou, `algorithm=` jamais
+  émis, `cnonce` aléatoire au lieu du `"NaN"` du fabricant), en-tête jamais
+  envoyé préemptivement ni vers un hôte étranger (`ErrForeignHost`).
+  `internal/fronius/internalapi` : liste blanche exécutable de quatre chemins
+  (`/status/version`, `/status/activeEvents`, `/components/PowerMeter/readable`,
+  `/components/BatteryManagementSystem/readable`) et extraction de l'identité par
+  listes de clés candidates ordonnées. `internal/detect` : boucle de détection
+  (identité, présence, événements actifs), anti-duplication des événements dans
+  `device_events_seen`, abandon d'un chemin après un 401 reçu sans identifiants
+  configurés. Nouvelles variables `FRONIUS_DEVICE_USER`,
+  `FRONIUS_DEVICE_PASSWORD`, `FRONIUS_DETECT_INTERVAL`, refusées au démarrage si
+  la paire est incomplète.
+
+### Changed
+
+- 2026-10-16 — `internal/model` : les capacités prennent une détection à trois
+  états (`unknown`, `absent`, `present`) au lieu de trois booléens de
+  configuration. `device.identity` et `device.events` rejoignent la liste ;
+  `battery.soc` reste indisponible **même batterie détectée** (détecter un
+  composant ne prouve pas qu'une mesure d'état de charge existe côté API).
+  `internal/api` : `/api/v1/system` expose `device` (identité nullable :
+  une valeur vide devient `null`, jamais `""`) et `detection` (état et motif des
+  quatre ressources, plus `last_error`) ; `/api/v1/capabilities` dérive de la
+  détection persistée. Migration `0002_device.sql` : table `device` à ligne
+  unique (états à trois valeurs **et** leur cause), table `device_events_seen`,
+  et purge des marques d'anti-duplication avec celle des événements.
+  `cmd/fronius-probe` : liste blanche portée à cinq endpoints, `--endpoint`
+  (tout chemin hors liste est refusé), `--password-stdin`, et noms de fichiers
+  dérivés du chemin complet (les deux composants finissaient tous deux par
+  `readable` et se seraient écrasés).
+- 2026-10-16 — Interface : page Système refondue (`DevicePanel`) affichant
+  l'identité avec sa source et son âge, puis les quatre détections avec leur état
+  et leur motif ; les trois états sont traduits distinctement (« présent »,
+  « absent », « non déterminé »), et un champ absent s'affiche en tiret — jamais
+  `0`, jamais « inconnu ».
+
+### Security
+
+- 2026-10-16 — Garde CI : `git grep` refuse toute ligne `FRONIUS_DEVICE_PASSWORD`
+  non vide dans le dépôt ; aucun exemple de documentation n'écrit de mot de passe
+  après un `=` (saisie par `read -rs` ou `--password-stdin`). Aucun identifiant
+  n'est journalisé (vérifié sur le journal de `froniusd` : 0 occurrence) ni
+  restitué par l'une des sept routes de l'API (test dédié).
+
 - 2026-10-16 — Socle du dépôt : `.gitignore`, licence MIT, `CHANGELOG.md`,
   `.env.example`, `Makefile`, arborescence `docs/` et correction du chemin
   `references/` dans `AGENTS.md`.

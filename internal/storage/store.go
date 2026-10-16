@@ -191,9 +191,9 @@ func (s *Store) TimeSeries(ctx context.Context, q TimeSeriesQuery) ([]Bucket, er
 //
 // Le maximum est pris par heure UTC puis par date locale : les maxima horaires
 // sont invariants d'offset, donc le résultat reste correct lors des passages à
-// l'heure d'été ou d'hiver (journées de 23 h et 25 h). Prendre le maximum par
-// date évite qu'une remise à zéro du compteur à minuit ne soit interprétée
-// comme une énergie négative.
+// l'été ou à l'hiver (journées de 23 h et 25 h). Prendre le maximum par date
+// évite qu'une remise à zéro du compteur à minuit ne soit interprétée comme une
+// énergie négative.
 func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEnergy, error) {
 	const sqlQ = `
 		SELECT strftime('%Y-%m-%dT%H', ts_utc) AS hour_utc, MAX(energy_day_wh)
@@ -398,6 +398,160 @@ func (s *Store) State(ctx context.Context) (map[string]string, error) {
 	return out, nil
 }
 
+// DeviceRecord est l'état d'identité et de détection de l'appareil.
+//
+// Les quatre états de détection sont conservés tels quels (et non aplatis en
+// booléens) : « non déterminé » n'est pas « absent ».
+//
+// Une chaîne vide signifie « non trouvé dans la réponse » : la conversion en
+// null est faite à la frontière de l'API (internal/api/dto.go), jamais ici.
+type DeviceRecord struct {
+	ReadAtUTC    time.Time
+	Source       string
+	Model        string
+	Firmware     string
+	SerialNumber string
+	// Chaque état porte sa cause : « non déterminé » sans motif n'est pas
+	// exploitable, et reconstituer la cause à la lecture serait l'inventer.
+	IdentityState      model.DetectionState
+	IdentityReason     string
+	MeterState         model.DetectionState
+	MeterSource        string
+	MeterReason        string
+	BatteryState       model.DetectionState
+	BatterySource      string
+	BatteryReason      string
+	DeviceEventsState  model.DetectionState
+	DeviceEventsReason string
+}
+
+// SaveDevice enregistre l'état de l'appareil. L'écriture est idempotente : la
+// ligne unique (id = 1) est remplacée, jamais dupliquée.
+func (s *Store) SaveDevice(ctx context.Context, d DeviceRecord) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO device (
+			id, read_at_utc, source, model, firmware, serial_number,
+			identity_state, identity_reason,
+			meter_state, meter_source, meter_reason,
+			battery_state, battery_source, battery_reason,
+			device_events_state, device_events_reason)
+		 VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT(id) DO UPDATE SET
+			read_at_utc = excluded.read_at_utc,
+			source = excluded.source,
+			model = excluded.model,
+			firmware = excluded.firmware,
+			serial_number = excluded.serial_number,
+			identity_state = excluded.identity_state,
+			identity_reason = excluded.identity_reason,
+			meter_state = excluded.meter_state,
+			meter_source = excluded.meter_source,
+			meter_reason = excluded.meter_reason,
+			battery_state = excluded.battery_state,
+			battery_source = excluded.battery_source,
+			battery_reason = excluded.battery_reason,
+			device_events_state = excluded.device_events_state,
+			device_events_reason = excluded.device_events_reason`,
+		formatTS(d.ReadAtUTC), d.Source, d.Model, d.Firmware, d.SerialNumber,
+		string(d.IdentityState), d.IdentityReason,
+		string(d.MeterState), d.MeterSource, d.MeterReason,
+		string(d.BatteryState), d.BatterySource, d.BatteryReason,
+		string(d.DeviceEventsState), d.DeviceEventsReason)
+	if err != nil {
+		return fmt.Errorf("écriture de l'état de l'appareil: %w", err)
+	}
+	return nil
+}
+
+// Device retourne l'état enregistré. Le second retour vaut false si aucune
+// lecture d'identité n'a encore abouti : « non déterminé » n'est pas un
+// enregistrement vide.
+func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT read_at_utc, source, model, firmware, serial_number,
+		        identity_state, identity_reason,
+		        meter_state, meter_source, meter_reason,
+		        battery_state, battery_source, battery_reason,
+		        device_events_state, device_events_reason
+		 FROM device WHERE id = 1`)
+
+	var (
+		readAt, source, modelName, firmware, serial          string
+		identityState, meterState, batteryState, eventsState string
+		identityReason, meterReason, batteryReason           string
+		eventsReason, meterSource, batterySource             string
+	)
+	if err := row.Scan(&readAt, &source, &modelName, &firmware, &serial,
+		&identityState, &identityReason,
+		&meterState, &meterSource, &meterReason,
+		&batteryState, &batterySource, &batteryReason,
+		&eventsState, &eventsReason); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DeviceRecord{}, false, nil
+		}
+		return DeviceRecord{}, false, fmt.Errorf("lecture de l'état de l'appareil: %w", err)
+	}
+	parsed, err := parseTS(readAt)
+	if err != nil {
+		return DeviceRecord{}, false, err
+	}
+	return DeviceRecord{
+		ReadAtUTC:          parsed,
+		Source:             source,
+		Model:              modelName,
+		Firmware:           firmware,
+		SerialNumber:       serial,
+		IdentityState:      model.DetectionState(identityState),
+		IdentityReason:     identityReason,
+		MeterState:         model.DetectionState(meterState),
+		MeterSource:        meterSource,
+		MeterReason:        meterReason,
+		BatteryState:       model.DetectionState(batteryState),
+		BatterySource:      batterySource,
+		BatteryReason:      batteryReason,
+		DeviceEventsState:  model.DetectionState(eventsState),
+		DeviceEventsReason: eventsReason,
+	}, true, nil
+}
+
+// MarkDeviceEventSeen mémorise la clé d'un événement matériel.
+//
+// Le second retour vaut true si la clé est neuve (l'événement doit être
+// enregistré), false si elle était déjà connue (il a déjà été vu : aucune
+// écriture). C'est le mécanisme d'anti-duplication des événements de l'appareil,
+// dont le flux est republié en entier à chaque interrogation.
+func (s *Store) MarkDeviceEventSeen(ctx context.Context, key string, seenAt time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO device_events_seen (key, seen_at_utc) VALUES (?,?)
+		 ON CONFLICT(key) DO NOTHING`,
+		key, formatTS(seenAt))
+	if err != nil {
+		return false, fmt.Errorf("marquage de l'événement %q: %w", key, err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("comptage des lignes marquées: %w", err)
+	}
+	return affected > 0, nil
+}
+
+// DeviceEventsSeenCount retourne le nombre de clés d'événements matériels
+// mémorisées.
+func (s *Store) DeviceEventsSeenCount(ctx context.Context) (int64, error) {
+	var n int64
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM device_events_seen`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("comptage des événements matériels vus: %w", err)
+	}
+	return n, nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // PurgeBefore supprime les données antérieures à t.
 //
 // La purge porte sur les mesures, les événements et les cycles de collecte.
@@ -425,6 +579,12 @@ func (s *Store) PurgeBefore(ctx context.Context, t time.Time) (int64, error) {
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM collector_runs WHERE started_utc < ?`, limit); err != nil {
 		return 0, fmt.Errorf("purge des cycles de collecte: %w", err)
+	}
+	// Les marques d'anti-duplication suivent les événements qu'elles
+	// dédupliquent : une marque qui survivrait à son événement empêcherait
+	// définitivement de le revoir, pour un gain nul.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM device_events_seen WHERE seen_at_utc < ?`, limit); err != nil {
+		return 0, fmt.Errorf("purge des marques d'événements matériels: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("validation de la purge: %w", err)

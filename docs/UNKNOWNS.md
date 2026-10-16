@@ -8,14 +8,16 @@ dans `docs/SOURCES.md`.
 | # | Inconnue | Décision provisoire | Ce qui la lèverait |
 |---|---|---|---|
 | 1 | Forme du JSON de `GetPowerFlowRealtimeData` | `[HYPOTHÈSE]` encodée dans `dto.go`, décodage tolérant, fixtures marquées synthétiques | une capture réelle par `cmd/fronius-probe` et la promotion des fixtures |
-| 2 | Authentification de la Solar API sur le firmware 1.19.7-1 | `[À-TESTER]` : le client n'en envoie aucune | une réponse 401/403 de la sonde ⇒ phase 2 prioritaire |
-| 3 | Source HTTP de l'identité de l'onduleur | `device: null`, capacité `device.identity` indisponible | `GetInverterInfo` / `GetLoggerInfo` / `/status/version` (phase 2) |
-| 4 | Présence d'un Fronius Smart Meter | considérée non prouvée ⇒ `grid.import_export`, `load.consumption`, `autoconsumption.ratio` indisponibles, **aucun calcul** | `GetMeterRealtimeData` ou `/components/PowerMeter/readable` en GET |
-| 5 | Présence d'une batterie | non prouvée ⇒ `battery.soc` indisponible | `GetStorageRealtimeData` en GET ; le PDF mentionne `Battery Operation` **actif** sans inventaire matériel |
-| 6 | Matrice de permissions par endpoint et par rôle | inconnue ⇒ un seul endpoint appelé, GET, sans paramètre | API interne (phase 2) avec un compte de test ; voir `docs/ENDPOINTS.md` |
+| 2 | Authentification **de la Solar API** sur le firmware 1.19.7-1 | `[À-TESTER]` : le client n'en envoie aucune ; les chemins internes, eux, sont authentifiés après un 401 | une réponse 401/403 de la sonde sur le chemin Solar API |
+| 3 | **Source partielle** de l'identité de l'onduleur | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur : `/status/version` est la source nommée, **seul `serialNumber` est un champ prouvé** (avec `numberOfPhases` et `devicegroup`) ; `modelName`/`firmwareVersion` sont des candidats. `device: null` tant qu'aucune lecture n'a abouti ; `device.identity` indisponible avec motif sinon | une capture réelle : confirmer les noms des clés de modèle et de firmware, puis les placer en tête des listes candidates |
+| 4 | Présence d'un Fronius Smart Meter | détectée par l'enveloppe `Cgi` de `/components/PowerMeter/readable` : `Body.Data` non vide ⇒ présent, vide ⇒ absent, illisible ⇒ **non déterminé** (jamais « absent »). Aucun champ nommé n'est utilisé | une capture réelle de `/components/PowerMeter/readable` |
+| 5 | Présence d'une batterie | même règle que #4 sur `/components/BatteryManagementSystem/readable` ; `battery.soc` reste indisponible **même batterie détectée**, faute de preuve qu'une mesure d'état de charge existe côté API | une capture réelle, puis la lecture de l'état de charge (phase ultérieure) |
+| 6 | Matrice de permissions par endpoint et par rôle | la **liste blanche du code** (`internal/fronius/internalapi/allowlist.go`) est la seule autorisation exécutable : quatre chemins internes, `READ`, GET ; les 79 autres sont inventoriés pour être évités | un compte de test et des captures ; voir `docs/ENDPOINTS.md` |
 | 7 | Récupération d'un accès Technician | aucun secret ni moyen autonome confirmé ; **aucune tentative** | procédure officielle du fabricant, documentation de l'installateur |
-| 8 | Sémantique de l'en-tête non standard `x-www-authenticate` | `[SOURCE-JS]` : un seul retry sur 401 ; non testé sur matériel | test contrôlé en phase 2, avec accord explicite |
-| 9 | Détection dynamique du matériel | absente : la configuration ne porte pas ces flags, les capacités valent `false` | lectures de détection en phase 2, puis injection dans `model.Capabilities` |
+| 8 | En-tête de défi non standard `x-www-authenticate` | `[SOURCE-JS]` + `[VÉRIFIÉ]` simulateur **et** client tiers : un seul retry sur 401, défi lu d'abord dans l'en-tête non standard, `www-authenticate` en repli | l'appareil réel, pour confirmer qu'il utilise bien l'en-tête non standard |
+| 9 | Détection dynamique du matériel | **implémentée** : `internal/detect` interroge les quatre chemins, la détection est persistée puis injectée dans `model.Capabilities(detection)` | la levée de #3, #4 et #5 par capture matérielle |
+| 11 | Forme de `/status/activeEvents` | lecture seule établie ; les clés `code`, `state`, `severity`, `level`, `message`, `text` sont des **candidats**. Le JSON brut est conservé (borné à 2 048 octets) et la déduplication repose sur `code`, puis `state`, puis l'empreinte SHA-256 du JSON — donc aucune information n'est perdue | une capture réelle : elle indiquera les clés de message et de sévérité |
+| 12 | Signature du défi Digest (`cnonce="NaN"`) | non reproduite : le client officiel émet `NaN` par un bug de conversion ; nous émettons un `cnonce` aléatoire de 16 caractères hexadécimaux | si l'appareil refuse malgré tout, remplacer par la constante `"NaN"` (repli documenté dans `CHANGELOG.md`) |
 | 10 | Valeurs aberrantes de l'appareil | **aucun filtrage** : une valeur reçue est enregistrée telle quelle ; seules les valeurs *absentes* sont distinguées | un besoin réel observé (dérive, pic, compteur qui recule) et une règle explicite |
 
 ## 1. Forme du JSON de la Solar API
@@ -37,32 +39,31 @@ changent pas : elles sont déjà en unités SI de base (W, Wh, %).
 
 ## 2. Authentification de la Solar API
 
-**Établi.** `[OBSERVÉ-CONVERSATION]` : l'endpoint « répond ». Le mécanisme
-d'authentification interne du fabricant (Digest MD5, en-tête de défi non
-standard `x-www-authenticate`, un seul retry sur 401, module `xeXE` ré-exporté
-par `ytu1`) a été relu dans le bundle, mais rien ne prouve qu'il s'applique à la
-Solar API.
+**Établi.** `[OBSERVÉ-CONVERSATION]` : l'endpoint « répond ». Rien ne prouve
+qu'une authentification s'applique au chemin Solar API : dans le client officiel,
+ce chemin n'existe même pas. Les chemins **internes**, eux, sont atteints par
+deux voies (avec et sans en-tête), ce qui est établi et implémenté.
 
-**Décision.** Ne construire aucune authentification en phase 1 : elle serait du
-code mort, et le projet interdit d'inventer des identifiants.
-
-**Repli.** Si la sonde renvoie 401/403 : remonter la phase 2 (adaptateur Digest
-isolé), avec les identifiants **exclusivement** dans l'environnement du backend,
-jamais dans le frontend ni dans le dépôt. Le simulateur sait déjà produire un
-défi (`--fault 401`) pour développer cette voie sans matériel.
+**Décision.** Le transport Digest est composé devant les deux clients, mais il
+envoie toujours la requête **nue** d'abord : si le chemin Solar API n'exige rien,
+aucun en-tête n'est ajouté et le comportement reste celui de la phase 1.
 
 ## 3. Identité de l'onduleur
 
 **Établi.** L'export PDF fournit modèle, version de firmware et numéro de série
-`[SOURCE-PDF]`, mais **aucun endpoint** ne les expose aujourd'hui : ni le bundle,
-ni la Solar API telle qu'implémentée ici.
+`[SOURCE-PDF]`. Côté HTTP, `/status/version` est la source nommée par le client
+officiel (deux modules distincts l'appellent), et **trois champs seulement** y
+sont prouvés : `serialNumber`, `numberOfPhases`, `devicegroup`.
 
-**Décision.** `GET /api/v1/system` renvoie `device: null`, et l'interface
-l'explique au lieu de combler avec les valeurs du PDF — celles-ci décrivent un
-instant, pas une mesure.
+**Décision.** L'identité est lue par `internal/detect` et persistée dans la table
+`device`. `modelName` et `firmwareVersion` — candidats non prouvés — sont
+extraits par liste ordonnée de clés, et une clé absente donne `null`, jamais
+`""` ni « inconnu ». Sans lecture aboutie, `GET /api/v1/system` renvoie
+`device: null` et une détection `unknown` avec son motif : le PDF n'est jamais
+recopié, il décrit un instant, pas une mesure.
 
-**Ce qui la lèverait.** `GetInverterInfo`, `GetLoggerInfo` ou `/status/version`
-en GET (phase 2), puis comparaison avec l'export PDF.
+**Ce qui la lèverait.** Une capture réelle de `/status/version` par
+`cmd/fronius-probe --endpoint /status/version`.
 
 ## 4 et 5. Smart Meter et batterie
 
@@ -71,17 +72,17 @@ Fronius Smart Meter ou d'une batterie. Le PDF déclare `Battery Operation` et
 `Full Backup` **actifs** : ce sont des fonctionnalités logicielles déclarées,
 pas un inventaire matériel. L'Ethernet est `disconnected`.
 
-**Décision.** Traiter les deux comme absents et **interdire tout calcul** de
-consommation, d'import/export, d'autoconsommation et d'état de charge. Ces
-capacités sont indisponibles avec un motif explicite, et aucune carte
-correspondante n'apparaît dans l'interface — les cartes ne sont pas écrites en
-dur, elles dérivent de `/api/v1/capabilities`.
+**Décision.** La présence est **détectée** par l'enveloppe `Cgi` : `Body.Data`
+non vide ⇒ présent, vide ou absent ⇒ absent, corps illisible ⇒ erreur de décodage
+donc **non déterminé**. Les trois états sont persistés tels quels
+(`meter_state`, `battery_state`) : un 401 ne peut pas devenir « aucun Smart Meter
+détecté ». Tout calcul de consommation, d'import/export et d'autoconsommation
+reste interdit sans compteur détecté, et `battery.soc` reste indisponible même
+batterie détectée. Aucune carte correspondante n'est écrite en dur dans
+l'interface : elles dérivent de `/api/v1/capabilities`.
 
-**Ce qui la lèverait.** Une lecture de détection en GET
-(`GetMeterRealtimeData`, `GetStorageRealtimeData`, `/components/PowerMeter/readable`,
-`/components/BatteryManagementSystem/readable`), puis l'injection du résultat
-dans `model.Capabilities(hasMeter, hasBattery, hasInternalAPI)`. La signature
-existe déjà : il ne manque que la détection.
+**Ce qui la lèverait.** Une capture réelle des deux chemins `readable` — et, pour
+l'état de charge, une source de mesure qui reste à établir.
 
 ## 6. Matrice de permissions
 
@@ -91,8 +92,9 @@ conditionnent l'affichage. Aucun rôle serveur n'est prouvé. `docs/ENDPOINTS.md
 classe les 79 chemins en READ / MUTATION / DANGEROUS **par intention et usage
 dans le JS**.
 
-**Décision.** Un seul endpoint appelé (Solar API, GET, sans paramètre). Tout le
-reste est inventorié pour être évité, jamais pour être autorisé. Une cellule
+**Décision.** La liste blanche du code est la seule autorisation exécutable :
+quatre chemins internes plus le chemin Solar API, tous `READ`, tous en GET. Tout
+le reste est inventorié pour être évité, jamais pour être autorisé. Une cellule
 « inconnu » n'est pas une permission implicite.
 
 ## 7. Récupération Technician
@@ -113,11 +115,16 @@ antérieurs.
 
 ## 9. Détection dynamique du matériel
 
-**Décision.** `model.Capabilities(hasMeter, hasBattery, hasInternalAPI)` prend
-les trois détections en paramètres ; l'API les appelle aujourd'hui avec `false`
-et l'assume explicitement (`internal/api/server.go`). Aucun flag de
+**Décision.** `model.Capabilities(detection)` prend une détection à trois états
+par ressource (`unknown`, `absent`, `present`) ; l'API la construit à partir de
+la dernière lecture persistée (`internal/detect`, table `device`). Aucun flag de
 configuration ne permet de forcer ces valeurs : cela créerait une capacité
-« disponible » sans mesure derrière.
+« disponible » sans mesure derrière, ou une « absence » sans lecture.
+
+**Règle de trafic.** Une lecture qui reçoit un 401 alors qu'aucun identifiant
+n'est configuré fait abandonner **ce chemin** jusqu'au redémarrage, avec le motif
+qui nomme les deux variables d'environnement. Un état inconnu n'est pas une
+absence, mais il n'y a pas lieu de réémettre un 401 toutes les minutes.
 
 ## 10. Valeurs aberrantes
 

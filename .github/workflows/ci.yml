@@ -21,6 +21,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Aucun mot de passe d'appareil versionné
+        # Un mot de passe non vide ne doit jamais être commité : .env.example
+        # porte une valeur vide et .env est ignoré par git.
+        # Le nom est assemblé pour que cette étape ne se détecte pas elle-même.
+        # Le motif complet ne doit pas non plus apparaître tel quel dans la
+        # documentation : il déclencherait cette étape.
+        run: |
+          nom='FRONIUS_DEVICE_PASSWORD'
+          if git grep -nE "${nom}=.+"; then
+            echo "::error::mot de passe d'appareil non vide versionné"
+            exit 1
+          fi
+          echo "aucun mot de passe d'appareil versionné"
+
       - name: Analyse statique
         run: go vet ./...
 

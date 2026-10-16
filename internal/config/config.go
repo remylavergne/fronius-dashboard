@@ -1,8 +1,10 @@
 // Package config charge la configuration de froniusd depuis l'environnement.
 //
-// La phase 1 n'utilise aucun fichier de configuration : toutes les valeurs
-// viennent de variables d'environnement préfixées FRONIUS_ (voir .env.example
-// et docs/DEVELOPMENT.md). Aucune valeur secrète n'est lue ici.
+// Aucun fichier de configuration n'est utilisé : toutes les valeurs viennent de
+// variables d'environnement préfixées FRONIUS_ (voir .env.example et
+// docs/DEVELOPMENT.md). Les identifiants de l'appareil (FRONIUS_DEVICE_USER,
+// FRONIUS_DEVICE_PASSWORD) sont lus ici et conservés dans un secret.String :
+// aucun autre paquet ne les reçoit en clair.
 package config
 
 import (
@@ -14,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"fronius-supervisor/internal/secret"
 )
 
 // Valeurs par défaut.
@@ -29,20 +33,30 @@ const (
 	defaultLogLevel     = "info"
 	defaultLogFormat    = "text"
 	minPollInterval     = 1 * time.Second
-	authADRPath         = "docs/adr/0005-authentification-et-acces-distant.md"
-	allowRemoteEnvVar   = "FRONIUS_ALLOW_REMOTE"
-	solarAPIURLEnvVar   = "FRONIUS_SOLARAPI_URL"
-	httpAddrEnvVar      = "FRONIUS_HTTP_ADDR"
-	dbPathEnvVar        = "FRONIUS_DB_PATH"
-	tzEnvVar            = "FRONIUS_TZ"
-	pollIntervalEnvVar  = "FRONIUS_POLL_INTERVAL"
-	pollJitterEnvVar    = "FRONIUS_POLL_JITTER"
-	httpTimeoutEnvVar   = "FRONIUS_HTTP_TIMEOUT"
-	retentionDaysEnvVar = "FRONIUS_RETENTION_DAYS"
-	logLevelEnvVar      = "FRONIUS_LOG_LEVEL"
-	logFormatEnvVar     = "FRONIUS_LOG_FORMAT"
-	webDirEnvVar        = "FRONIUS_WEB_DIR"
-	staleAfterEnvVar    = "FRONIUS_STALE_AFTER"
+	// defaultDetectInterval : le client officiel interroge les chemins internes
+	// toutes les 5 000 ms (module aYRN du bundle) ; 60 s suffisent pour une
+	// identité et une présence qui changent rarement.
+	defaultDetectInterval = 60 * time.Second
+	minDetectInterval     = 5 * time.Second
+	authADRPath           = "docs/adr/0005-authentification-et-acces-distant.md"
+	allowRemoteEnvVar     = "FRONIUS_ALLOW_REMOTE"
+	solarAPIURLEnvVar     = "FRONIUS_SOLARAPI_URL"
+	httpAddrEnvVar        = "FRONIUS_HTTP_ADDR"
+	dbPathEnvVar          = "FRONIUS_DB_PATH"
+	tzEnvVar              = "FRONIUS_TZ"
+	pollIntervalEnvVar    = "FRONIUS_POLL_INTERVAL"
+	pollJitterEnvVar      = "FRONIUS_POLL_JITTER"
+	httpTimeoutEnvVar     = "FRONIUS_HTTP_TIMEOUT"
+	retentionDaysEnvVar   = "FRONIUS_RETENTION_DAYS"
+	logLevelEnvVar        = "FRONIUS_LOG_LEVEL"
+	logFormatEnvVar       = "FRONIUS_LOG_FORMAT"
+	webDirEnvVar          = "FRONIUS_WEB_DIR"
+	staleAfterEnvVar      = "FRONIUS_STALE_AFTER"
+	// Les identifiants de l'appareil sont lus par froniusd et fronius-probe,
+	// jamais par le frontend ni par l'API REST.
+	deviceUserEnvVar     = "FRONIUS_DEVICE_USER"
+	devicePasswordEnvVar = "FRONIUS_DEVICE_PASSWORD"
+	detectIntervalEnvVar = "FRONIUS_DETECT_INTERVAL"
 )
 
 // Config est la configuration effective de l'application.
@@ -60,6 +74,12 @@ type Config struct {
 	LogFormat     string        // FRONIUS_LOG_FORMAT        défaut text (ou json)
 	WebDir        string        // FRONIUS_WEB_DIR           défaut "" (pas de statique)
 	StaleAfter    time.Duration // FRONIUS_STALE_AFTER       défaut 30s
+	// Identité de l'appareil : les deux variables ci-dessous sont lues ensemble
+	// ou pas du tout (voir validate). Le mot de passe ne quitte jamais ce type
+	// sans Reveal().
+	DeviceUser     string        // FRONIUS_DEVICE_USER       défaut ""
+	DevicePassword secret.String // FRONIUS_DEVICE_PASSWORD   défaut ""
+	DetectInterval time.Duration // FRONIUS_DETECT_INTERVAL   défaut 60s
 }
 
 // Load lit l'environnement et retourne la configuration validée.
@@ -75,11 +95,17 @@ func Load() (Config, error) {
 		LogLevel:     strings.ToLower(env(logLevelEnvVar, defaultLogLevel)),
 		LogFormat:    strings.ToLower(env(logFormatEnvVar, defaultLogFormat)),
 		WebDir:       env(webDirEnvVar, ""),
+		DeviceUser:   env(deviceUserEnvVar, ""),
 		AllowRemote:  false,
 		PollInterval: defaultPollInterval,
 		PollJitter:   defaultPollJitter,
 		HTTPTimeout:  defaultHTTPTimeout,
 		StaleAfter:   defaultStaleAfter,
+
+		DetectInterval: defaultDetectInterval,
+	}
+	if v, ok := lookup(devicePasswordEnvVar); ok {
+		c.DevicePassword = secret.New(v)
 	}
 
 	var errs []error
@@ -101,6 +127,7 @@ func Load() (Config, error) {
 		{pollJitterEnvVar, &c.PollJitter},
 		{httpTimeoutEnvVar, &c.HTTPTimeout},
 		{staleAfterEnvVar, &c.StaleAfter},
+		{detectIntervalEnvVar, &c.DetectInterval},
 	}
 	for _, tgt := range durationTargets {
 		v, ok := lookup(tgt.key)
@@ -149,6 +176,17 @@ func (c Config) validate() []error {
 	if c.RetentionDays < 0 {
 		errs = append(errs, fmt.Errorf("%s=%d : doit être positif ou nul (0 = conservation illimitée)", retentionDaysEnvVar, c.RetentionDays))
 	}
+	if c.DetectInterval < minDetectInterval {
+		errs = append(errs, fmt.Errorf("%s=%v : minimum %v", detectIntervalEnvVar, c.DetectInterval, minDetectInterval))
+	}
+	// Identifiants partiels : les deux variables vont ensemble. Le message ne
+	// cite que les noms de variables, jamais la valeur du mot de passe.
+	if c.DeviceUser == "" && !c.DevicePassword.IsZero() {
+		errs = append(errs, fmt.Errorf("%s est défini mais %s est vide : les deux vont ensemble", devicePasswordEnvVar, deviceUserEnvVar))
+	}
+	if c.DeviceUser != "" && c.DevicePassword.IsZero() {
+		errs = append(errs, fmt.Errorf("%s est défini mais %s est vide : les deux vont ensemble", deviceUserEnvVar, devicePasswordEnvVar))
+	}
 
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":
@@ -184,8 +222,10 @@ func (c Config) Location() (*time.Location, error) {
 }
 
 // CheckListenAddress refuse une écoute non locale tant que l'accès distant n'a
-// pas été explicitement autorisé : l'API de la phase 1 n'a aucune
-// authentification (voir authADRPath).
+// pas été explicitement autorisé : l'API REST n'a aucune authentification
+// (voir authADRPath). Les identifiants de l'appareil ne changent rien à ce
+// point : ils authentifient la supervision vers l'onduleur, pas le client vers
+// l'API.
 func (c Config) CheckListenAddress() error {
 	if c.AllowRemote {
 		return nil

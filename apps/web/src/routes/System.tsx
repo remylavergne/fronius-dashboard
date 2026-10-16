@@ -1,4 +1,5 @@
 import { ApiAlert } from '@/components/ApiAlert'
+import { DevicePanel } from '@/components/DevicePanel'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -10,9 +11,10 @@ import { useHealth, useSystem } from '@/lib/queries'
 /**
  * État de la supervision : collecteur, base, identité de l'onduleur.
  *
- * La section « onduleur » reste vide en phase 1 : aucun endpoint confirmé ne
- * fournit modèle, firmware ou numéro de série. C'est dit explicitement plutôt
- * que comblé par une valeur déduite.
+ * L'identité et les détections matérielles proviennent des chemins internes de
+ * l'appareil (phase 2) et sont rendues par DevicePanel : une information non lue
+ * est affichée comme « non déterminée » avec son motif, jamais comblée par une
+ * valeur déduite.
  */
 export function SystemPage() {
   const { t } = useT()
@@ -95,27 +97,7 @@ export function SystemPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">{t('system.device')}</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {systemData.device ? (
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs">{t('system.device')}</dt>
-                <dd className="text-foreground">{systemData.device.model}</dd>
-              </div>
-              <div>
-                <dt className="text-xs">Firmware</dt>
-                <dd className="text-foreground">{systemData.device.firmware}</dd>
-              </div>
-            </dl>
-          ) : (
-            <p>{t('system.deviceUnknown')}</p>
-          )}
-        </CardContent>
-      </Card>
+      <DevicePanel device={systemData.device} detection={systemData.detection} />
 
       <Card>
         <CardHeader>

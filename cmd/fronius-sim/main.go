@@ -23,8 +23,13 @@ import (
 
 const powerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 
-// faultModes liste les pannes injectables.
-var faultModes = []string{"", "500", "503", "401", "404", "timeout", "invalid_json", "empty", "status7"}
+// faultModes liste les pannes injectables. Les six dernières ne concernent que
+// les chemins internes (authentification Digest) ; les neuf premières
+// s'appliquent à tous les endpoints.
+var faultModes = []string{
+	"", "500", "503", "401", "404", "timeout", "invalid_json", "empty", "status7",
+	faultNoChallenge, faultStandardOnly, faultNoQop, faultOpaque, faultStaleNonce, faultBadDigest,
+}
 
 type options struct {
 	addr      string
@@ -34,6 +39,14 @@ type options struct {
 	withMeter bool
 	tz        string
 	logLevel  string
+
+	// Chemins internes (authentification Digest).
+	apiUser               string
+	apiPassword           string
+	withBattery           bool
+	deviceEvents          int
+	emitStandardChallenge bool
+	challengeRealm        string
 }
 
 type simulator struct {
@@ -42,6 +55,7 @@ type simulator struct {
 	log          *slog.Logger
 	requests     atomic.Int64
 	faultTimeout time.Duration // durée du faux timeout, surchargeable en test
+	auth         *digestAuth
 }
 
 func main() {
@@ -53,6 +67,12 @@ func main() {
 	flag.BoolVar(&opt.withMeter, "with-meter", false, "simule un Fronius Smart Meter (P_Grid, P_Load, rel_* renseignés ; P_Akku reste null)")
 	flag.StringVar(&opt.tz, "tz", "Europe/Brussels", "fuseau local de l'installation")
 	flag.StringVar(&opt.logLevel, "log-level", "info", "niveau de log (debug, info, warn, error)")
+	flag.StringVar(&opt.apiUser, "api-user", "", "utilisateur des chemins internes ; vide = aucune authentification exigée")
+	flag.StringVar(&opt.apiPassword, "api-password", "", "mot de passe Digest des chemins internes")
+	flag.BoolVar(&opt.withBattery, "with-battery", false, "simule une batterie (/components/BatteryManagementSystem/readable)")
+	flag.IntVar(&opt.deviceEvents, "device-events", 1, "nombre d'événements actifs simulés dans /status/activeEvents")
+	flag.BoolVar(&opt.emitStandardChallenge, "emit-standard-challenge", false, "émet aussi le défi Digest dans l'en-tête standard www-authenticate (pour curl --digest)")
+	flag.StringVar(&opt.challengeRealm, "challenge-realm", "Webinterface area", "realm du défi Digest")
 	flag.Parse()
 	opt.fault = *fault
 
@@ -68,6 +88,15 @@ func run(opt options) error {
 	}
 	if opt.nominalW < 0 {
 		return fmt.Errorf("--nominal-w doit être positif, reçu %v", opt.nominalW)
+	}
+	if opt.deviceEvents < 0 {
+		return fmt.Errorf("--device-events doit être positif ou nul, reçu %d", opt.deviceEvents)
+	}
+	if strings.TrimSpace(opt.challengeRealm) == "" {
+		return fmt.Errorf("--challenge-realm ne peut pas être vide")
+	}
+	if opt.apiUser == "" && opt.apiPassword != "" {
+		return fmt.Errorf("--api-password est défini sans --api-user : les deux vont ensemble")
 	}
 
 	loc, err := time.LoadLocation(opt.tz)
@@ -90,7 +119,9 @@ func run(opt options) error {
 	}
 	logger.Info("fronius-sim démarré",
 		"addr", opt.addr, "seed", opt.seed, "nominal_w", opt.nominalW,
-		"tz", opt.tz, "fault", opt.fault, "with_meter", opt.withMeter)
+		"tz", opt.tz, "fault", opt.fault, "with_meter", opt.withMeter,
+		"with_battery", opt.withBattery, "device_events", opt.deviceEvents,
+		"auth_required", opt.apiUser != "", "challenge_realm", opt.challengeRealm)
 
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
@@ -104,6 +135,7 @@ func newSimulator(opt options, loc *time.Location, log *slog.Logger) *simulator 
 		opt:          opt,
 		log:          log,
 		faultTimeout: 30 * time.Second,
+		auth:         newDigestAuth(),
 	}
 }
 
@@ -112,7 +144,50 @@ func (s *simulator) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(powerFlowPath, s.logged(s.handlePowerFlow))
 	mux.HandleFunc("/sim/health", s.logged(s.handleHealth))
+	s.registerInternal(mux)
 	return mux
+}
+
+// genericFault applique les pannes communes à tous les endpoints et retourne
+// true lorsque la requête a été traitée.
+//
+// « status7 » en est exclue : cette panne modifie l'enveloppe Solar API, elle
+// n'a pas de sens sur un endpoint interne.
+func (s *simulator) genericFault(w http.ResponseWriter, r *http.Request, fault string) bool {
+	switch fault {
+	case "timeout":
+		// Dort puis ferme sans réponse.
+		select {
+		case <-time.After(s.faultTimeout):
+		case <-r.Context().Done():
+		}
+		return true
+	case "401":
+		w.Header().Set(nonStandardChallengeHeader,
+			`Digest realm="Webinterface area", nonce="sim-nonce-1", qop="auth"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return true
+	case "404":
+		http.NotFound(w, r)
+		return true
+	case "500":
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return true
+	case "503":
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return true
+	case "empty":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		return true
+	case "invalid_json":
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Corps tronqué : décodage JSON impossible côté client.
+		_, _ = w.Write([]byte(`{"Body":{"Data":{"Site":{"P_PV":`))
+		return true
+	}
+	return false
 }
 
 type statusWriter struct {
@@ -165,37 +240,7 @@ func (s *simulator) handlePowerFlow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.requests.Add(1)
 
-	switch fault := s.faultFor(r); fault {
-	case "timeout":
-		// Dort puis ferme sans réponse.
-		select {
-		case <-time.After(s.faultTimeout):
-		case <-r.Context().Done():
-		}
-		return
-	case "401":
-		w.Header().Set("x-www-authenticate",
-			`Digest realm="Webinterface area", nonce="sim-nonce-1", qop="auth"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	case "404":
-		http.NotFound(w, r)
-		return
-	case "500":
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	case "503":
-		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
-		return
-	case "empty":
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		return
-	case "invalid_json":
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		// Corps tronqué : décodage JSON impossible côté client.
-		_, _ = w.Write([]byte(`{"Body":{"Data":{"Site":{"P_PV":`))
+	if s.genericFault(w, r, s.faultFor(r)) {
 		return
 	}
 

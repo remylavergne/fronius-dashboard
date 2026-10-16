@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"fronius-supervisor/internal/config"
+	"fronius-supervisor/internal/detect"
+	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/model"
+	"fronius-supervisor/internal/secret"
 	"fronius-supervisor/internal/storage"
 )
 
@@ -240,7 +243,7 @@ func TestHealth(t *testing.T) {
 	_ = srv
 }
 
-func TestSystemExposesNoDeviceAndNoSecret(t *testing.T) {
+func TestSystemWithoutDeviceRow(t *testing.T) {
 	_, httpSrv, _ := newTestServer(t, nil)
 
 	_, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/system")
@@ -250,8 +253,9 @@ func TestSystemExposesNoDeviceAndNoSecret(t *testing.T) {
 	if err := json.Unmarshal(env.Data, &sys); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
+	// Aucune ligne d'appareil : « non déterminé » n'est pas un objet vide.
 	if sys.Device != nil {
-		t.Fatalf("device doit rester null en phase 1 : %+v", sys.Device)
+		t.Fatalf("device doit être null sans lecture aboutie : %+v", sys.Device)
 	}
 	if sys.SolarAPIURL != "http://127.0.0.1:8081" || sys.TZ != "Europe/Brussels" ||
 		sys.PollIntervalS != 5 || sys.StaleAfterS != 30 || sys.APIAddr != "127.0.0.1:8080" {
@@ -262,11 +266,212 @@ func TestSystemExposesNoDeviceAndNoSecret(t *testing.T) {
 	}
 	decodeMeta(t, env)
 
-	// Aucun mot de passe, jeton ou identifiant ne doit apparaître.
-	lower := strings.ToLower(string(body))
-	for _, forbidden := range []string{"password", "secret", "token", "authorization", "credential"} {
-		if strings.Contains(lower, forbidden) {
-			t.Fatalf("la réponse système contient %q : %s", forbidden, body)
+	if sys.Detection == nil {
+		t.Fatal("detection doit toujours être présente")
+	}
+	for name, res := range map[string]detectionResourceDTO{
+		"compteur": sys.Detection.Meter, "batterie": sys.Detection.Battery,
+		"api interne": sys.Detection.InternalAPI, "événements": sys.Detection.DeviceEvents,
+	} {
+		if res.State != string(model.StateUnknown) {
+			t.Fatalf("%s : état = %q, attendu unknown", name, res.State)
+		}
+		if res.Reason == "" {
+			t.Fatalf("%s : un état non déterminé doit porter un motif", name)
+		}
+	}
+	if sys.Detection.ReadAtUTC != nil {
+		t.Fatalf("read_at_utc doit être null sans lecture : %v", *sys.Detection.ReadAtUTC)
+	}
+}
+
+func TestSystemWithDeviceRow(t *testing.T) {
+	_, httpSrv, store := newTestServer(t, nil)
+	ctx := context.Background()
+	readAt := time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC)
+
+	record := storage.DeviceRecord{
+		ReadAtUTC:          readAt,
+		Source:             internalapi.VersionPath,
+		Model:              "Fronius Primo GEN24 3.6 Plus",
+		Firmware:           "1.24.3",
+		SerialNumber:       "SIMULATED-0001",
+		IdentityState:      model.StatePresent,
+		MeterState:         model.StatePresent,
+		MeterSource:        internalapi.PowerMeterPath,
+		BatteryState:       model.StatePresent,
+		BatterySource:      internalapi.BatteryPath,
+		DeviceEventsState:  model.StateAbsent,
+		DeviceEventsReason: "corps illisible",
+	}
+	if err := store.SaveDevice(ctx, record); err != nil {
+		t.Fatalf("SaveDevice: %v", err)
+	}
+	if err := store.SetState(ctx, detect.StateLastError, "detect_last_error factice"); err != nil {
+		t.Fatalf("SetState: %v", err)
+	}
+
+	_, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/system")
+	env := decodeEnvelope(t, body)
+	var sys systemDTO
+	if err := json.Unmarshal(env.Data, &sys); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if sys.Device == nil {
+		t.Fatal("device doit être renseigné après une lecture")
+	}
+	if sys.Device.Model == nil || *sys.Device.Model != "Fronius Primo GEN24 3.6 Plus" {
+		t.Fatalf("model = %v", sys.Device.Model)
+	}
+	if sys.Device.Firmware == nil || *sys.Device.Firmware != "1.24.3" {
+		t.Fatalf("firmware = %v", sys.Device.Firmware)
+	}
+	if sys.Device.SerialNumber == nil || *sys.Device.SerialNumber != "SIMULATED-0001" {
+		t.Fatalf("serial_number = %v", sys.Device.SerialNumber)
+	}
+	if sys.Device.ReadAtUTC != "2026-10-16T07:00:00.000Z" {
+		t.Fatalf("read_at_utc = %q", sys.Device.ReadAtUTC)
+	}
+	if sys.Device.Source != internalapi.VersionPath {
+		t.Fatalf("source = %q", sys.Device.Source)
+	}
+
+	d := sys.Detection
+	if d == nil {
+		t.Fatal("detection manquante")
+	}
+	if d.Meter.State != "present" || d.Meter.Reason != "" {
+		t.Fatalf("compteur = %+v", d.Meter)
+	}
+	if d.Battery.State != "present" {
+		t.Fatalf("batterie = %+v", d.Battery)
+	}
+	// « absent » n'est pas « non déterminé » : l'état et le motif diffèrent.
+	if d.DeviceEvents.State != "absent" || d.DeviceEvents.Reason != "corps illisible" {
+		t.Fatalf("événements = %+v", d.DeviceEvents)
+	}
+	if d.InternalAPI.State != "present" {
+		t.Fatalf("api interne = %+v", d.InternalAPI)
+	}
+	if d.LastError != "detect_last_error factice" {
+		t.Fatalf("last_error = %q", d.LastError)
+	}
+	if d.ReadAtUTC == nil || *d.ReadAtUTC != "2026-10-16T07:00:00.000Z" {
+		t.Fatalf("detection.read_at_utc = %v", d.ReadAtUTC)
+	}
+
+	// Les capacités suivent la même détection.
+	_, _, capBody := doRequest(t, httpSrv, http.MethodGet, "/api/v1/capabilities")
+	capEnv := decodeEnvelope(t, capBody)
+	var caps []capabilityDTO
+	if err := json.Unmarshal(capEnv.Data, &caps); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	byID := map[string]capabilityDTO{}
+	for _, c := range caps {
+		byID[c.ID] = c
+	}
+	for _, id := range []string{"grid.import_export", "load.consumption", "autoconsumption.ratio"} {
+		if !byID[id].Available {
+			t.Fatalf("%s doit être disponible avec un compteur détecté (motif %q)", id, byID[id].Reason)
+		}
+	}
+	if byID["device.identity"].Available != true {
+		t.Fatalf("device.identity doit être disponible (motif %q)", byID["device.identity"].Reason)
+	}
+	if byID["device.events"].Available {
+		t.Fatalf("device.events ne doit pas être disponible sur un état « absent » (motif %q)", byID["device.events"].Reason)
+	}
+	battery := byID["battery.soc"]
+	if battery.Available {
+		t.Fatal("battery.soc ne doit jamais être disponible en phase 2")
+	}
+	if battery.Reason != model.ReasonBatteryReadout {
+		t.Fatalf("battery.soc : motif = %q", battery.Reason)
+	}
+	if byID["device.identity"].Reason != "" {
+		t.Fatalf("device.identity : réserve inattendue %q", byID["device.identity"].Reason)
+	}
+}
+
+// TestSystemDeviceEmptyStringsBecomeNull : une chaîne vide en base n'est pas une
+// valeur : elle arrive en null, jamais « » ni « inconnu ».
+func TestSystemDeviceEmptyStringsBecomeNull(t *testing.T) {
+	_, httpSrv, store := newTestServer(t, nil)
+
+	// Identité lue mais aucun champ d'identité trouvé dans la réponse.
+	if err := store.SaveDevice(context.Background(), storage.DeviceRecord{
+		ReadAtUTC:         time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC),
+		Source:            internalapi.VersionPath,
+		IdentityState:     model.StatePresent,
+		MeterState:        model.StateAbsent,
+		BatteryState:      model.StateAbsent,
+		DeviceEventsState: model.StateAbsent,
+	}); err != nil {
+		t.Fatalf("SaveDevice: %v", err)
+	}
+
+	_, _, body := doRequest(t, httpSrv, http.MethodGet, "/api/v1/system")
+	env := decodeEnvelope(t, body)
+	var sys systemDTO
+	if err := json.Unmarshal(env.Data, &sys); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if sys.Device == nil {
+		t.Fatal("device doit être présent")
+	}
+	if sys.Device.Model != nil || sys.Device.Firmware != nil || sys.Device.SerialNumber != nil {
+		t.Fatalf("les champs vides doivent être null : %+v", sys.Device)
+	}
+	raw := string(body)
+	for _, forbidden := range []string{`"model":""`, `"firmware":""`, `"serial_number":""`, "inconnu"} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("la réponse contient %s : %s", forbidden, raw)
+		}
+	}
+}
+
+// TestNoRouteLeaksDeviceCredentials : aucune route ne doit restituer la valeur du
+// mot de passe, même lorsque la configuration en porte un.
+func TestNoRouteLeaksDeviceCredentials(t *testing.T) {
+	const fake = "mot-de-passe-factice-42"
+
+	_, httpSrv, store := newTestServer(t, func(c *config.Config) {
+		c.DeviceUser = "installateur"
+		c.DevicePassword = secret.New(fake)
+	})
+	if err := store.SaveDevice(context.Background(), storage.DeviceRecord{
+		ReadAtUTC:         time.Date(2026, 10, 16, 7, 0, 0, 0, time.UTC),
+		Source:            internalapi.VersionPath,
+		Model:             "Primo",
+		IdentityState:     model.StatePresent,
+		MeterState:        model.StatePresent,
+		BatteryState:      model.StateAbsent,
+		DeviceEventsState: model.StatePresent,
+	}); err != nil {
+		t.Fatalf("SaveDevice: %v", err)
+	}
+
+	routes := []string{
+		"/api/v1/health",
+		"/api/v1/system",
+		"/api/v1/live",
+		"/api/v1/timeseries?from=2026-10-14T00:00:00Z&to=2026-10-16T00:00:00Z",
+		"/api/v1/energy/daily",
+		"/api/v1/events",
+		"/api/v1/capabilities",
+	}
+	if len(routes) != 7 {
+		t.Fatalf("le test doit couvrir les sept routes, %d listées", len(routes))
+	}
+	for _, route := range routes {
+		code, _, body := doRequest(t, httpSrv, http.MethodGet, route)
+		if code != http.StatusOK {
+			t.Fatalf("%s : status = %d", route, code)
+		}
+		if strings.Contains(string(body), fake) {
+			t.Fatalf("%s divulgue le mot de passe : %s", route, body)
 		}
 	}
 }
@@ -667,11 +872,15 @@ func TestCapabilitiesEndpoint(t *testing.T) {
 			t.Fatalf("%s : qualité %q", c.ID, c.Quality)
 		}
 	}
-	if unavailable < 4 {
-		t.Fatalf("capacités indisponibles = %d, attendu au moins 4", unavailable)
+	// Sans aucune lecture d'identité aboutie, les six capacités liées au
+	// matériel ou aux chemins internes sont indisponibles : grid.import_export,
+	// load.consumption, autoconsumption.ratio, battery.soc, device.identity,
+	// device.events. Les quatre autres sont disponibles.
+	if unavailable != 6 {
+		t.Fatalf("capacités indisponibles = %d, attendu 6", unavailable)
 	}
-	if len(caps) != 9 {
-		t.Fatalf("capacités = %d, attendu 9", len(caps))
+	if len(caps) != 10 {
+		t.Fatalf("capacités = %d, attendu 10", len(caps))
 	}
 
 	// Les tableaux vides sont sérialisés en [] et non null.
