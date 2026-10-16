@@ -22,6 +22,11 @@ make dev-api     # froniusd: API on 127.0.0.1:8080 + collector
 make dev-web     # Vite interface on 127.0.0.1:5173
 ```
 
+To run the daemon against the **real inverter** rather than the simulator, replace
+`make dev-api` with `make dev-device DEVICE=http://<inverter>`: a whole-page `404`
+on the Device detail page is the signature of a daemon still pointed at the
+simulator (`docs/RUNBOOK.md` § Device detail).
+
 To exercise Digest authentication, start the simulator with an account and
 `froniusd` with the matching credentials:
 
@@ -56,6 +61,7 @@ frontend never has the inverter address.
 | `make test-perf` | criterion of ADR 0006: one year of measurements (≈6.3 M rows) and < 200 ms per request; slow, on demand |
 | `make lint` | `go vet ./...` then `oxlint` |
 | `make fmt` | `go fmt ./...` |
+| `make dev-device` | run `froniusd` against the **inverter** instead of the simulator (`make dev-device DEVICE=http://<inverter>`; refuses an empty `DEVICE`), which is the packaged form of `FRONIUS_SOLARAPI_URL=<inverter> go run ./cmd/froniusd` |
 | `make seed` | 7 days of simulated history |
 | `make backup` | consistent snapshot of the database (`FRONIUS_BACKUP=path` to choose the file); may run while `froniusd` runs |
 | `make restore` | replace the database from a backup (`FRONIUS_BACKUP=path`, stop `froniusd` first) |

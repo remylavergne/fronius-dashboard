@@ -70,6 +70,12 @@ production, and the API publishes them on a page of their own
 - The **system**, **network**, **devices** and **emrs** families are read by
   `internal/detect`, on the detection cycle (`FRONIUS_DETECT_INTERVAL`): they
   change rarely, and a snapshot of them belongs with the identity read.
+- The **cache** family (`/components/cache/readable`) is read by the same
+  detector, on the same cycle: `4 897` bytes and `99` values on the reference
+  device, so a register dump on every `5 s` collection cycle would be waste. The
+  device names its own registers (44 of the 81 carry a `_F32` / `_U64` / `_U16`
+  suffix), leaves the other 37 bare (`<id>`), and **no unit is derived from a
+  name**: the device states a name and a type, not a unit.
 
 The two cadences are why each family carries its **own** read instant
 (`read_at`): the snapshot is not live, and a reader must not present a slow
@@ -91,12 +97,12 @@ never read (**absent from the list**).
 | `internal/fronius/froniuserr` | Typed errors (`Kind`, `KindOf`) | — |
 | `internal/fronius/digest` | Digest transport (RFC 2617): challenge, header, one retry on 401, nonce cache | `fronius`, `froniuserr`, `secret` |
 | `internal/fronius/solarapi` | Solar API client and the **only** encoding of the JSON shape | `fronius`, `froniuserr` |
-| `internal/fronius/internalapi` | Internal paths: **executable allowlist** and tolerant extraction | `fronius`, `froniuserr` |
-| `internal/model` | Normalized model, units, three-state detection, capabilities, events, and the device detail snapshots (the five families) | `solarapi` |
+| `internal/fronius/internalapi` | Internal paths: **executable allowlist** (nine paths) and tolerant extraction | `fronius`, `froniuserr` |
+| `internal/model` | Normalized model, units, three-state detection, capabilities, events, and the device detail snapshots (the six families) | `solarapi` |
 | `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, the recorded survey (`source_probe`), the device detail (`device_detail`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
 | `internal/collector` | Collection loop, backoff, events, and the inverter detail snapshot (`InverterRealtime`, once per cycle) | `solarapi`, `model`, `storage` |
-| `internal/detect` | Detection loop: identity, presence, events, states and reasons, and the system/network/devices/emrs detail families | `internalapi`, `model`, `storage` |
+| `internal/detect` | Detection loop: identity, presence, events, states and reasons, and the system/network/devices/emrs/cache detail families | `internalapi`, `model`, `storage` |
 | `internal/sources` | Machine-readable catalogue of every known source: transport (`solar_api` / `internal_api`), state, field-level status, proofs and capability join; served by `GET /api/v1/sources` | — |
 | `internal/api` | REST API, validation, envelope and DTO; the read routes include `/api/v1/detail` (the device detail families) | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
 

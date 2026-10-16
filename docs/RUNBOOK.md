@@ -22,6 +22,13 @@ FRONIUS_WEB_DIR=apps/web/dist ./bin/froniusd
 # then http://127.0.0.1:8080/ (SPA fallback to index.html for known routes)
 ```
 
+Against the **real inverter** instead of the simulator (see § Device detail for
+the incident this closes):
+
+```bash
+make dev-device DEVICE=http://<inverter>
+```
+
 Development backfill:
 
 ```bash
@@ -151,7 +158,14 @@ The readings come on **two cadences**, because they answer two different needs:
   `GET` per cycle**, the cost of a fresh electrical detail the flow endpoint does
   not carry;
 - the **system**, **network**, **devices** and **emrs** families are read by the
-  detector on its own cycle (`FRONIUS_DETECT_INTERVAL`): they change rarely.
+  detector on its own cycle (`FRONIUS_DETECT_INTERVAL`): they change rarely;
+- the **cache** family (`/components/cache/readable`) is read by the same
+  detector, on the same cycle: `4 897` bytes and `99` values on the reference
+  device, so it is not read on every `5 s` collection cycle. The page renders it
+  as the **Cache block**: the node's attributes as a list, then its registers in
+  a collapsible table — the 44 the device names and the 37 bare `<id>` it leaves
+  unnamed, each with the value as the device wrote it. **No unit is shown for a
+  register**: the device states a name and a type suffix, not a unit.
 
 Each family therefore carries **its own** read instant (`read_at`), and the page
 shows it. The endpoint serves a **snapshot**, never a live read: opening the page
@@ -180,11 +194,18 @@ restart:
 
 ```bash
 curl -s localhost:8080/api/v1/system | jq -r .data.solarapi_url
-# the inverter itself: no credential is needed for the five detail paths
+# the inverter itself: no credential is needed for the six detail paths
 FRONIUS_SOLARAPI_URL=http://192.0.2.10 ./bin/froniusd
+# or, from the repository, the packaged form of the same thing:
+make dev-device DEVICE=http://192.0.2.10
 ```
 
-These five paths answered `200` **without** a header on the reference
+`make dev-device` exists for exactly this incident: a whole-page `404` on the
+Device detail page is the signature of a daemon pointed at the development
+simulator, and the target runs `froniusd` against `DEVICE` instead of the
+simulator.
+
+These six paths answered `200` **without** a header on the reference
 installation (§ Surveying every catalogued path): a `404` on all of them is a
 wrong source, never missing authentication — that would be a `401`.
 

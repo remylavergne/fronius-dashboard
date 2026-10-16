@@ -246,6 +246,7 @@ export const en = {
   'detail.family.network': 'Network',
   'detail.family.devices': 'Devices',
   'detail.family.emrs': 'EMRS',
+  'detail.family.cache': 'Cache',
 
   'detail.inverter.state': 'State',
   'detail.inverter.statusCode': 'Status code',
@@ -267,6 +268,16 @@ export const en = {
 
   'detail.network.fdmp': 'Connected to FDMP',
   'detail.network.interfaces': 'Interfaces',
+
+  'detail.cache.note':
+    'The device names its own registers: the suffix (F32, U64…) is the type marker it appends itself, and the <id> entries are registers it does not name.',
+  'detail.cache.node': 'Node',
+  'detail.cache.attributes': 'Attributes',
+  'detail.cache.registers': 'registers',
+  'detail.cache.named': 'named',
+  'detail.cache.none': 'No register was read for this family.',
+  'detail.cache.col.register': 'Register',
+  'detail.cache.col.kind': 'Type marker',
 
   'detail.col.label': 'Label',
   'detail.col.key': 'Key',

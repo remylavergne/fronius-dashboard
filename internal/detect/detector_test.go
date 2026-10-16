@@ -37,6 +37,8 @@ type fakeReader struct {
 	devicesErr error
 	emrs       []internalapi.EmrsPin
 	emrsErr    error
+	cache      []internalapi.CacheNode
+	cacheErr   error
 
 	mu           sync.Mutex
 	versionCalls int
@@ -91,6 +93,10 @@ func (f *fakeReader) Devices(context.Context) ([]internalapi.DeviceEntry, error)
 
 func (f *fakeReader) Emrs(context.Context) ([]internalapi.EmrsPin, error) {
 	return f.emrs, f.emrsErr
+}
+
+func (f *fakeReader) Cache(context.Context) ([]internalapi.CacheNode, error) {
+	return f.cache, f.cacheErr
 }
 
 func (f *fakeReader) calls() (int, int, int) {

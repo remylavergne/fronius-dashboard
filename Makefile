@@ -3,7 +3,7 @@ GO ?= go
 PNPM ?= pnpm
 WEB := apps/web
 
-.PHONY: help build test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-web seed backup restore clean
+.PHONY: help build test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-device dev-web seed backup restore clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -39,6 +39,10 @@ dev-sim: ## Start the Fronius simulator (127.0.0.1:8081)
 
 dev-api: ## Start froniusd (API 127.0.0.1:8080 + collector)
 	$(GO) run ./cmd/froniusd
+
+dev-device: ## Run froniusd against the inverter (make dev-device DEVICE=http://192.0.2.10)
+	@test -n "$(DEVICE)" || { echo 'usage: make dev-device DEVICE=http://<inverter>'; exit 2; }
+	FRONIUS_SOLARAPI_URL=$(DEVICE) $(GO) run ./cmd/froniusd
 
 dev-web: ## Start the Vite development server (127.0.0.1:5173)
 	$(PNPM) --dir $(WEB) dev

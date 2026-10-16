@@ -76,6 +76,7 @@
 - [x] Publish the source catalogue: machine-readable register of every endpoint and field, served by /api/v1/sources
 - [x] Run a read-only survey of every catalogued path and record its outcome (class, shape, firmware) in `source_probe`, merged into `/api/v1/sources`
 - [x] Read and publish the device detail families (inverter, system, network, devices, emrs) served by `GET /api/v1/detail` — a snapshot per family in `device_detail` (migration `0008_detail.sql`), the inverter family with the collector, the four diagnostics with the detector, so each family carries its own read instant; the five new readings documented in `docs/ENDPOINTS.md` § Executable allowlist and `docs/SOURCES.md` § Endpoint inventory
+- [x] Read and publish the cache family (`/components/cache/readable`) served by `GET /api/v1/detail` as the sixth family — read by `internal/detect` on the detection cycle (a `4 897`-byte register dump per `5 s` cycle would be waste), stored in `device_detail` and rendered by the Device detail page's **Cache block**; the allowlist grows from eight to nine internal paths (`Cgi` envelope, `Digest: true` per the registry while the device answers `200` without a header), the device's own 44 named registers and 37 bare `<id>` are kept verbatim, and **no unit is derived from a name** (`docs/UNKNOWNS.md` #14 keeps the bare ids open)
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
@@ -90,7 +91,8 @@
 - [x] Build the 24h power curve with tooltips, units and period selection
 - [ ] Build daily/weekly/monthly/yearly aggregates
 - [ ] Add period comparisons and production calendar
-- [x] Add inverter state, firmware, network and available diagnostics — the "Device detail" page (`/detail`) shows the five families with their read instant, their availability and their reason; the Overview carries the **inverter state chip**; the firmware and the identity stay on the System page
+- [x] Add inverter state, firmware, network and available diagnostics — the "Device detail" page (`/detail`) shows the device detail families with their read instant, their availability and their reason; the Overview carries the **inverter state chip**; the firmware and the identity stay on the System page
+- [x] Display the cache family — the "Device detail" page's **Cache block**: the node's attributes as a list and its registers in a collapsible table, the 44 the device names with its own type suffix and the 37 bare `<id>` shown as they are, **no unit derived from a name**
 - [ ] Add events and filters by date/severity
 - [x] Add collector health page and last refresh
 - [ ] Add settings page and read-only connectivity test
@@ -593,3 +595,43 @@
   firmware, network and available diagnostics" (phase 5). No deviation from the
   plan; the reads are `GET` only and each addition to the allowlist is justified
   by the survey (ADR 0008).
+
+- 2026-10-16 — Step 23 (phase 4/5): the readable cache. The survey of step 21
+  observed `/components/cache/readable` answering `200` with `4 897` bytes and
+  `99` values, and this step reads and publishes it. **Allowlist**: the internal
+  list grows from **eight to nine** paths — `READ`, envelope `Cgi` (its
+  `Body.Data` is keyed by node id), `Digest: true` per the polled registry while
+  the device answered it `200` without a header — justified by the survey like
+  the other additions (ADR 0008). **Cadence**: read by `internal/detect` on the
+  detection cycle (`FRONIUS_DETECT_INTERVAL`), not by the collector: at `4 897`
+  bytes a register dump on every `5 s` collection cycle would be waste. **Shape**
+  (firmware `1.19.7-1`): one node (`393216`) with ten attributes (`[ENABLE]`,
+  `[VISIBLE]`, `createTS`, `note`, `inverter.devicetype`,
+  `inverter.devicetree`, `inverter.nodetype`, `inverter.pmc.0`/`1`/`2`) and 81
+  registers — 44 named by the device with its own type suffix (`_F32` ×27,
+  `_U64` ×11, `_U16` ×6, e.g. `PV_VOLTAGE_MEAN_01_F32`,
+  `ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_01_U64`) and 37 bare `<id>` identifiers the
+  device names nowhere. `internal/fronius/internalapi/cache.go` (+
+  `cache_test.go`) keeps the device's vocabulary: the key verbatim, name and
+  type suffix split out as `name`/`kind`, the value as the device wrote it
+  (`json.RawMessage`, so a 64-bit counter is not rounded through a float64), the
+  bare ids kept as `<id>` with no invented name, channels ordered named first;
+  **no unit is derived from a name**. Models: `internal/model/detail.go` — the
+  sixth family `cache` (`CacheDetail`/`CacheNodeDetail`/`CacheAttribute`/
+  `CacheChannel`), stored in `device_detail` like the others and published by
+  `GET /api/v1/detail`. Catalogue: `internalapi.cache` moves from `candidate` to
+  **`called`**, with the note that no unit is asserted; **no fixture is
+  promoted**. `cmd/fronius-sim` serves the cache shape too. Frontend: the Device
+  detail page's **Cache block** (attributes list + collapsible registers table).
+  Also in this change, outside the cache: `make dev-device
+  DEVICE=http://<inverter>` runs `froniusd` against the inverter instead of the
+  simulator — a whole-page `404` on the Device detail page is the signature of a
+  daemon pointed at the development simulator. Documentation:
+  `docs/ARCHITECTURE.md` (the cache family, its cadence, the package rows),
+  `docs/ENDPOINTS.md` (allowlist at nine internal paths, the matrix),
+  `docs/SOURCES.md` (the observed shape under Hardware captures and the endpoint
+  inventory), `docs/UNKNOWNS.md` (#14: the bare ids), `docs/RUNBOOK.md` (the
+  Cache block, `make dev-device`), `docs/DEVELOPMENT.md` (the `make dev-device`
+  row), `CHANGELOG.md`. Boxes ticked at this step: "Read and publish the cache
+  family" (phase 4) and "Display the cache family" (phase 5). No deviation from
+  the plan; the read is `GET` only.

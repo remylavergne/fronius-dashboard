@@ -9,6 +9,41 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Readable cache.** The application reads the internal
+  `/components/cache/readable` and publishes what the device puts in its own
+  register cache. The internal allowlist grows from **eight to nine** paths: the
+  entry is `READ`, envelope `Cgi` (its `Body.Data` is keyed by node id),
+  `Digest: true` per the polled registry while the reference device answered it
+  `200` without a header. It is read by the **detector** on its slow cycle —
+  `4 897` bytes and `99` values per read, so a register dump on every `5 s`
+  collection cycle would be waste (the survey of 2026-10-16 is the evidence).
+  Observed shape (firmware `1.19.7-1`): one node (`393216`) with **ten
+  attributes** (`[ENABLE]`, `[VISIBLE]`, `createTS`, `note`,
+  `inverter.devicetype`, `inverter.devicetree`, `inverter.nodetype`,
+  `inverter.pmc.0`/`1`/`2`) and **81 registers** — **44 named by the device**
+  with its own type suffix (`_F32` ×27, `_U64` ×11, `_U16` ×6, e.g.
+  `PV_VOLTAGE_MEAN_01_F32`, `ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_01_U64`) and
+  **37 bare `<id>` identifiers** the device names nowhere. The extraction keeps
+  the device's vocabulary: the key verbatim, the name and the type suffix split
+  out as `name`/`kind`, the value as the device wrote it (`json.RawMessage`, so a
+  64-bit counter is not rounded through a float64), the bare ids kept as `<id>`
+  with no invented name, and channels ordered named first. **No unit is derived
+  from a name**: the device states a name and a type suffix, not a unit, and a
+  guessed unit would be a fabricated measurement. Published by `GET /api/v1/detail`
+  as the sixth family `cache` (`internal/model/detail.go`: `CacheDetail` /
+  `CacheNodeDetail` / `CacheAttribute` / `CacheChannel`), stored in
+  `device_detail` like the others, and rendered by the Device detail page's
+  **Cache block** (attributes list + a collapsible registers table). The source
+  catalogue moves `internalapi.cache` from `candidate` to **`called`**, keeping
+  the note that no unit is asserted, and **no fixture is promoted**.
+  `internal/fronius/internalapi/cache.go` + `cache_test.go` carry the extraction
+  (the 64-bit counter kept exact, the bare identifier kept bare). The 37 bare ids
+  are a **new open unknown** (`docs/UNKNOWNS.md` #14): nothing observed explains
+  them. Also added: `make dev-device DEVICE=http://<inverter>` runs `froniusd`
+  against the inverter instead of the simulator — a whole-page `404` on the
+  Device detail page is the signature of a daemon pointed at the development
+  simulator (`docs/RUNBOOK.md` § Device detail).
+
 - 2026-10-16 — **Device detail.** The application reads five more paths and
   publishes what the device says about **itself**, beyond its production. Solar
   API: `GET /solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData`

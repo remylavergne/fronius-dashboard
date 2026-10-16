@@ -58,7 +58,12 @@ const (
 	// (docs/SOURCES.md § First survey of the reference installation). Each
 	// answers a bare JSON body: the polled registry reads them with the Default
 	// envelope, not the Cgi one.
-	CommonPath  = "/status/common"
+	CommonPath = "/status/common"
+	// CachePath is the readable cache: the internal register set the
+	// manufacturer's own interface reads. It is served with the Cgi envelope
+	// (Body.Data keyed by node id). The survey of 2026-10-16 observed it
+	// answering 200 with 4897 bytes and 99 values.
+	CachePath   = "/components/cache/readable"
 	NetworkPath = "/status/network"
 	DevicesPath = "/status/devices"
 	EmrsPath    = "/status/emrs"
@@ -102,6 +107,14 @@ var allowlist = []Endpoint{
 		Digest:   true,
 		Purpose:  "presence of a battery",
 		Evidence: "bundle: polled registry l. 76032 with Cgi envelope (module aYRN). Captured 2026-10-16 on firmware 1.19.7-1 (empty Body.Data: no battery). Verified by cmd/fronius-sim.",
+	},
+	{
+		Path:     CachePath,
+		Class:    ClassRead,
+		Envelope: EnvelopeCgi,
+		Digest:   true,
+		Purpose:  "the readable cache: the internal register set, named by the device itself",
+		Evidence: "bundle: polled registry l. 76033 (module aYRN, Cgi envelope). Surveyed 2026-10-16 on firmware 1.19.7-1: 200 without Authorization, 4897 bytes, 99 values — one node (393216) with ten attributes and 81 channels, 44 of them named with a type suffix (F32, U64, U16) and 37 bare `<id>` identifiers. Read by the detector each cycle and published by GET /api/v1/detail.",
 	},
 	{
 		Path:     CommonPath,

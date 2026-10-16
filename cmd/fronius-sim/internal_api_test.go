@@ -497,7 +497,7 @@ func TestInternalPathMethodAndUnknownPath(t *testing.T) {
 	// /status/network, /status/devices, /status/emrs): this list holds the ones
 	// that remain outside it.
 	for _, path := range []string{
-		"/status/events", "/status/powerflow", "/components/cache/readable",
+		"/status/events", "/status/powerflow", "/components/Ohmpilot/readable",
 		"/components/DataManager/readable",
 	} {
 		if code, _, _ := get(t, srv, path, nil); code != http.StatusNotFound {

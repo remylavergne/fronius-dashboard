@@ -17,7 +17,7 @@ import (
 // hide the rest. Nothing is recorded as an empty value — an unavailable family
 // carries its reason, and a family never read is simply absent.
 func (d *Detector) readDetail(ctx context.Context, now time.Time) {
-	details := make([]storage.Detail, 0, 4)
+	details := make([]storage.Detail, 0, 5)
 
 	if v, err := d.Source.System(ctx); err != nil {
 		details = append(details, unavailable(model.FamilySystem, now, err))
@@ -52,6 +52,26 @@ func (d *Detector) readDetail(ctx context.Context, now time.Time) {
 			})
 		}
 		details = append(details, marshalDetail(model.FamilyDevices, now, model.DevicesDetail{Devices: entries}))
+	}
+
+	if v, err := d.Source.Cache(ctx); err != nil {
+		details = append(details, unavailable(model.FamilyCache, now, err))
+	} else {
+		nodes := make([]model.CacheNodeDetail, 0, len(v))
+		for _, node := range v {
+			attributes := make([]model.CacheAttribute, 0, len(node.Attributes))
+			for _, a := range node.Attributes {
+				attributes = append(attributes, model.CacheAttribute{Key: a.Key, Value: a.Value})
+			}
+			channels := make([]model.CacheChannel, 0, len(node.Channels))
+			for _, ch := range node.Channels {
+				channels = append(channels, model.CacheChannel{
+					Key: ch.Key, Name: ch.Name, Kind: ch.Kind, Type: ch.Type, Value: ch.Value,
+				})
+			}
+			nodes = append(nodes, model.CacheNodeDetail{ID: node.ID, Attributes: attributes, Channels: channels})
+		}
+		details = append(details, marshalDetail(model.FamilyCache, now, model.CacheDetail{Nodes: nodes}))
 	}
 
 	if v, err := d.Source.Emrs(ctx); err != nil {

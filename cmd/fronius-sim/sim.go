@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -47,6 +48,11 @@ type generator struct {
 	baseTotalWh    float64
 	installDate    time.Time
 
+	// dayCache memoises the production of a complete local day. The server
+	// handles requests concurrently (the collector and the detector poll at the
+	// same time), so the map needs its own guard: an unguarded map read racing a
+	// write is a fatal error in Go, not a slow path.
+	cacheMu  sync.Mutex
 	dayCache map[string]float64
 }
 
@@ -124,12 +130,22 @@ func (g *generator) nextDay(d time.Time) time.Time {
 // or 25 h depending on the daylight-saving change).
 func (g *generator) dayEnergyWh(date time.Time) float64 {
 	key := date.Format("2006-01-02")
-	if v, ok := g.dayCache[key]; ok {
+
+	g.cacheMu.Lock()
+	v, ok := g.dayCache[key]
+	g.cacheMu.Unlock()
+	if ok {
 		return v
 	}
-	v := g.solarSecondsBetween(date, g.nextDay(date))
-	g.dayCache[key] = v
-	return v
+
+	// Computed outside the lock: several requests may compute the same day at
+	// once, which costs one integration and never a wrong answer.
+	computed := g.solarSecondsBetween(date, g.nextDay(date))
+
+	g.cacheMu.Lock()
+	g.dayCache[key] = computed
+	g.cacheMu.Unlock()
+	return computed
 }
 
 // sumDaysWh sums the local days of [from, to[.

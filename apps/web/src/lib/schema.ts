@@ -606,6 +606,63 @@ export const detailEntriesDataSchema = z.object({
 export type DetailEntriesData = z.infer<typeof detailEntriesDataSchema>
 
 /**
+ * One attribute of a cache node. The device labels these itself, so both the
+ * label and the value stay the text the device answered — a `createTS` is not a
+ * timestamp this interface may reformat.
+ */
+export const detailCacheAttributeSchema = z.object({
+  key: z.string(),
+  value: z.string().nullish(),
+})
+export type DetailCacheAttribute = z.infer<typeof detailCacheAttributeSchema>
+
+/**
+ * One register of a cache node.
+ *
+ * `key` is the device's own identifier and is kept verbatim. A register the
+ * device named carries the type suffix the device itself appends (`_F32`,
+ * `_U64`…), published separately as `kind`; a register it identifies only by a
+ * bare `<id>` has neither `name` nor `kind` (`omitempty` on the Go side) and is
+ * displayed as it stands.
+ *
+ * `value` is the device's own JSON value, left as it arrived, and `type` names
+ * its JSON type (`int`, `float`, `bool`, `string`, `null`): an energy counter is
+ * exact, so rounding it here would invent a number the device did not report.
+ * No unit exists in the cache, and none is ever displayed.
+ */
+export const detailCacheChannelSchema = z.object({
+  key: z.string(),
+  name: z.string().nullish(),
+  kind: z.string().nullish(),
+  /** The device's own JSON type; absent or unknown falls back to the value's shape. */
+  type: z.string().nullish(),
+  value: z.unknown(),
+})
+export type DetailCacheChannel = z.infer<typeof detailCacheChannelSchema>
+
+/** One node of the readable cache: an identifier, its attributes, its registers. */
+export const detailCacheNodeSchema = z.object({
+  /** The device's node identifier (393216 on the reference unit). */
+  id: z.string(),
+  attributes: z.array(detailCacheAttributeSchema).nullish(),
+  channels: z.array(detailCacheChannelSchema).nullish(),
+})
+export type DetailCacheNode = z.infer<typeof detailCacheNodeSchema>
+
+/**
+ * The readable cache: the inverter's internal register set, grouped by node —
+ * the richest diagnostic the device exposes, and the one it names itself.
+ *
+ * `nodes` may be absent or `null`: the same "nothing was read" as an empty list,
+ * never a table of blanks. The backend orders the channels (named first, then
+ * the bare identifiers) and this shape preserves that order.
+ */
+export const detailCacheDataSchema = z.object({
+  nodes: z.array(detailCacheNodeSchema).nullish(),
+})
+export type DetailCacheData = z.infer<typeof detailCacheDataSchema>
+
+/**
  * One family by its name. `undefined` means the collector never read it: a fact
  * of its own, rendered as such — never as an unavailable family, never as zeros.
  */

@@ -43,8 +43,8 @@ func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 	list := Allowlist()
 	// Four paths the application needs, four diagnostics the survey of
 	// 2026-10-16 justified: every addition is a documented decision.
-	if len(list) != 8 {
-		t.Fatalf("allowlist = %d entries, want 8", len(list))
+	if len(list) != 9 {
+		t.Fatalf("allowlist = %d entries, want 9", len(list))
 	}
 	want := map[string]Envelope{
 		VersionPath:      EnvelopeDefault,
@@ -53,6 +53,7 @@ func TestAllowlistIsReadOnlyGetEndpoints(t *testing.T) {
 		BatteryPath:      EnvelopeCgi,
 		// The diagnostics of the survey: all four answer a bare body, which is
 		// the Default envelope of the polled registry.
+		CachePath:   EnvelopeCgi,
 		CommonPath:  EnvelopeDefault,
 		NetworkPath: EnvelopeDefault,
 		DevicesPath: EnvelopeDefault,
@@ -102,7 +103,6 @@ func TestAllowlistRejectsEverythingElse(t *testing.T) {
 		// allowed; these four remain outside the list.
 		"/status/powerflow",
 		"/commands/GetUTCTime",
-		"/components/cache/readable",
 		"/components/DataManager/readable",
 		"/status/version/../events",
 		"",

@@ -293,10 +293,11 @@ nor the method, nor the permissions.
 | `/status/activeEvents` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76030 (10,000 ms interval); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, root array). Fields read listed in `docs/ENDPOINTS.md` |
 | `/components/PowerMeter/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76035 (envelope `Cgi`); `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no meter**). Presence deduced from `Body.Data` |
 | `/components/BatteryManagementSystem/readable` | GET | none (captured) | **called** (phase 2): `[SOURCE-JS]` l. 76032; `[VERIFIED]` on the simulator and **on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `Content-Type: text/javascript`, `Body.Data` empty ⇒ **no battery**). Presence deduced from `Body.Data` |
-| `/status/common` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76041 (`aYRN` registry, envelope `Default`); `[VERIFIED]` on the simulator and **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `349` bytes, `10` fields). Read by `internal/detect` on the detection cycle; the four families are published by `GET /api/v1/detail` |
+| `/status/common` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76041 (`aYRN` registry, envelope `Default`); `[VERIFIED]` on the simulator and **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `349` bytes, `10` fields). Read by `internal/detect` on the detection cycle; the detection-cycle families are published by `GET /api/v1/detail` |
 | `/status/network` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76028 (`aYRN` registry, envelope `Default`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `768` bytes, `38` fields). One entry per interface |
 | `/status/devices` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76027 (`aYRN` registry, envelope `Default`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `65` bytes) — a bare JSON array (`type`, `status`, `statusMessage`) |
 | `/status/emrs` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76029 (`aYRN` registry, envelope `Default`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `214` bytes, `8` fields) — four pins (`pin1`…`pin4`) |
+| `/components/cache/readable` | GET | internal | **called** (device detail): `[SOURCE-JS]` l. 76033 (`aYRN` registry, envelope `Cgi`); **surveyed on hardware** (2026-10-16, `200 OK`, `digest_required: false`, `4 897` bytes, `99` values) — one node, ten attributes, 81 registers (44 named by the device with its own type suffix, 37 bare `<id>`). Read by `internal/detect` on the detection cycle, published as the `cache` family of `GET /api/v1/detail`; **no unit is derived from a name** and **no fixture is promoted** (§ Hardware captures) |
 | `/config/meter`, `/config/batteries` | `GET` (l. 161422) | Digest "after 401" | **off-list** by scope choice: literal and verb **observed** (l. 161471 and 161462; module `rCKn`), the opposite claim having been corrected |
 | `/config/*` (24 paths) | GET | Digest "Customer" | `[OBSERVED-CONVERSATION]` for a few (`/config/common`, `/config/modbus`, `/config/meter`, `/config/iomapping`: 200; `/config/powerlimits`, `/config/setup/*`: 200 `{}`); phase 2. The captured `/status/*` and `/components/*` paths need **no** Digest (§ Hardware captures) |
 | `/commands/*` | GET/POST | Digest depending on the command | `[SOURCE-JS]`; several are mutations — **out of scope**, never called |
@@ -602,11 +603,25 @@ Field-level facts observed in the report:
   plus `isFDMPConnected`.
 - **`/status/devices`** (4) carries an array whose elements have `status`,
   `statusMessage`, `type`.
-- **`/components/cache/readable`** (99) is the internal signal cache:
-  `[ENABLE]`, `[VISIBLE]`, `createTS`, `devicetree`, `devicetype`, `nodetype`,
-  `note`, indexes `0`, `1`, `2`, and many opaque numeric channel ids
-  (`<1090584584>: int`). Recognisable only with the channel mapping of the
-  manufacturer's bundle: not displayable as it stands.
+- **`/components/cache/readable`** (99) is the internal signal cache, **now read
+  by the application** (the `cache` family of the device detail, rendered by the
+  Cache block). One node (`393216`) with **ten attributes** — `[ENABLE]`,
+  `[VISIBLE]`, `createTS`, `note`, `inverter.devicetype`,
+  `inverter.devicetree`, `inverter.nodetype`, `inverter.pmc.0` / `1` / `2` —
+  and **81 registers**: **44 named by the device** with its own type suffix
+  (`_F32` ×27, `_U64` ×11, `_U16` ×6 — e.g. `PV_VOLTAGE_MEAN_01_F32`,
+  `DCLINK_VOLTAGE_MEAN_F32`, `ISO_RESISTANCE_MEAN_F32`,
+  `MODULE_TEMPERATURE_MEAN_01_F32`, `FANCONTROL_PERCENT_01_F32`,
+  `ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_01_U64`) and **37 bare `<id>`
+  identifiers** (e.g. `<1090584584>`), which the device leaves unnamed. The
+  extraction keeps the device's vocabulary: the key verbatim, the name and the
+  type suffix split out as `name`/`kind`, the value as the device wrote it (a
+  64-bit counter is not rounded through a float64), and the bare ids keep their
+  `<id>` form with no invented name. **No unit is derived from a name**: the
+  device states a name and a type suffix, not a unit, and a guessed unit would
+  be a fabricated measurement. **No fixture is promoted** for this answer: it is
+  read live by `internal/detect` on the detection cycle, and its shape is pinned
+  by the survey record, not by a versioned file.
 
 What the run settles:
 

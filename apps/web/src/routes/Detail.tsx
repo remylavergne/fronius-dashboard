@@ -1,5 +1,6 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { ApiAlert } from '@/components/ApiAlert'
 import { EmptyState } from '@/components/EmptyState'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +12,7 @@ import type { TranslationKey } from '@/i18n'
 import { formatDateTime, formatKWh, formatW } from '@/lib/format'
 import { useDetail } from '@/lib/queries'
 import {
+  detailCacheDataSchema,
   detailDevicesDataSchema,
   detailEntriesDataSchema,
   detailInverterDataSchema,
@@ -26,16 +28,24 @@ import type {
   DetailInverterState,
   DetailMeasurement,
 } from '@/lib/schema'
+import { cn } from '@/lib/utils'
 
 /** Dash of an absent value: never a zero, never a blank cell. */
 const MISSING = '—'
+
+/**
+ * Readable decimal of a cache `float`. Grouped like every other number of the
+ * interface, and capped so a long binary tail does not swamp the cell. An `int`
+ * never goes through it: a counter is displayed as the digits that arrived.
+ */
+const cacheFloat = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 6 })
 
 /**
  * Families this page renders with a shape of its own, in display order. A family
  * the backend adds later, and which is not listed here, still renders — through
  * the generic `entries` shape.
  */
-const KNOWN_FAMILIES = ['inverter', 'system', 'network', 'devices', 'emrs'] as const
+const KNOWN_FAMILIES = ['inverter', 'system', 'network', 'devices', 'emrs', 'cache'] as const
 type KnownFamily = (typeof KNOWN_FAMILIES)[number]
 
 const FAMILY_TITLES: Record<KnownFamily, TranslationKey> = {
@@ -44,6 +54,7 @@ const FAMILY_TITLES: Record<KnownFamily, TranslationKey> = {
   network: 'detail.family.network',
   devices: 'detail.family.devices',
   emrs: 'detail.family.emrs',
+  cache: 'detail.family.cache',
 }
 
 /** Text of a measurement value: base units, a dash when the device reported none. */
@@ -415,6 +426,151 @@ function DevicesBody({ family, title }: { family: DetailFamily; title: string })
   )
 }
 
+/**
+ * Cache: the inverter's internal register set — the richest diagnostic the
+ * device exposes, and the one it names itself.
+ *
+ * The attributes come first (the device labels those), then the registers,
+ * inside a disclosure: they number 81 on the reference unit, and open they would
+ * bury the rest of the page. The registers keep the order the backend sent
+ * (named ones first, then the bare `<id>` identifiers), a bare identifier is
+ * displayed verbatim — no name is invented for it — and the type suffix carries
+ * a subdued badge, never a translation. No unit is appended: the cache has none.
+ */
+function CacheBody({ family, title }: { family: DetailFamily; title: string }) {
+  const { t } = useT()
+  const [expanded, setExpanded] = useState(false)
+  const registersId = useId()
+  const data = parseDetailFamilyData(family, detailCacheDataSchema)
+  if (!data) {
+    return <Unreadable />
+  }
+
+  const nodes = data.nodes ?? []
+  if (nodes.length === 0) {
+    return <NoRows />
+  }
+
+  const channels = nodes.flatMap((node) => node.channels ?? [])
+  // A register the device names is the readable half of the cache: the count of
+  // them, next to the total, is what tells a full node from a mostly opaque one.
+  const named = channels.filter((channel) => (channel.name ?? '') !== '').length
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">{t('detail.cache.note')}</p>
+
+      {nodes.map((node, nodeIndex) => {
+        const attributes = node.attributes ?? []
+        return (
+          <div key={`${node.id}-${String(nodeIndex)}`} className="space-y-1">
+            <p className="font-mono text-xs text-muted-foreground">
+              {`${t('detail.cache.node')} ${node.id}`}
+            </p>
+            {attributes.length > 0 ? (
+              <>
+                <p className="text-sm font-medium">{t('detail.cache.attributes')}</p>
+                <ul className="space-y-0.5 text-sm">
+                  {attributes.map((attribute, index) => (
+                    <li
+                      key={`${attribute.key}-${String(index)}`}
+                      className="flex flex-wrap items-baseline gap-1.5"
+                    >
+                      <span className="font-mono text-xs break-all">{attribute.key}</span>
+                      <span aria-hidden="true" className="text-muted-foreground">
+                        ·
+                      </span>
+                      <span className="break-all">{attribute.value ?? MISSING}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        )
+      })}
+
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={registersId}
+        onClick={() => setExpanded((value) => !value)}
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <ChevronDown aria-hidden="true" className={cn('size-3.5 transition-transform', expanded && 'rotate-180')} />
+        {`${String(channels.length)} ${t('detail.cache.registers')} · ${String(named)} ${t('detail.cache.named')}`}
+      </button>
+
+      {/*
+        The registers stay in the document and are hidden by the `hidden`
+        attribute: `aria-controls` therefore always names an element that exists,
+        and whether they are disclosed stays readable through `aria-expanded`.
+      */}
+      <div id={registersId} hidden={!expanded}>
+        {channels.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t('detail.cache.none')}</p>
+        ) : (
+          nodes.map((node, nodeIndex) => {
+            const registers = node.channels ?? []
+            if (registers.length === 0) {
+              return null
+            }
+            return (
+              <Table key={`${node.id}-${String(nodeIndex)}`}>
+                <TableCaption className="sr-only">
+                  {`${title} — ${t('detail.cache.node')} ${node.id}`}
+                </TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">{t('detail.cache.col.register')}</TableHead>
+                    <TableHead scope="col">{t('detail.cache.col.kind')}</TableHead>
+                    <TableHead scope="col" className="text-right">
+                      {t('detail.col.value')}
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* The order is the backend's: this page never reorders it. */}
+                  {registers.map((channel, index) => (
+                    <TableRow key={`${channel.key}-${String(index)}`}>
+                      <TableCell className="font-mono text-xs break-all">
+                        {channel.name ? channel.name : channel.key}
+                      </TableCell>
+                      <TableCell>
+                        {channel.kind ? (
+                          <Badge variant="outline" className="font-mono text-muted-foreground">
+                            {channel.kind}
+                          </Badge>
+                        ) : (
+                          MISSING
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {/*
+                          The device's own `type` decides: a `float` becomes a
+                          readable decimal, every other type goes through the
+                          scalar rule — an `int` keeps the digits it arrived
+                          with (a counter is exact), a `null` is a dash. No unit
+                          is appended, since the cache carries none.
+                        */}
+                        {channel.type === 'float' &&
+                        typeof channel.value === 'number' &&
+                        Number.isFinite(channel.value)
+                          ? cacheFloat.format(channel.value)
+                          : scalarText(channel.value, t('detail.yes'), t('detail.no'))}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** Generic families (EMRS, and any family the backend adds): the flat path table. */
 function EntriesBody({ family, title }: { family: DetailFamily; title: string }) {
   const { t } = useT()
@@ -471,6 +627,7 @@ export function DetailPage() {
   const network = findDetailFamily(payload, 'network')
   const devices = findDetailFamily(payload, 'devices')
   const emrs = findDetailFamily(payload, 'emrs')
+  const cache = findDetailFamily(payload, 'cache')
 
   return (
     <div className="space-y-6">
@@ -515,6 +672,9 @@ export function DetailPage() {
           </Block>
           <Block title={t(FAMILY_TITLES.emrs)} family={emrs}>
             {emrs ? <EntriesBody family={emrs} title={t(FAMILY_TITLES.emrs)} /> : null}
+          </Block>
+          <Block title={t(FAMILY_TITLES.cache)} family={cache}>
+            {cache ? <CacheBody family={cache} title={t(FAMILY_TITLES.cache)} /> : null}
           </Block>
           {/* A family this build does not know yet still renders, generically. */}
           {extraFamilies.map((family) => (

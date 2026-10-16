@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -506,4 +508,52 @@ func TestInverterRealtimeAnswersTheObservedShapes(t *testing.T) {
 			t.Errorf("status = %d, want 404: a collection nobody observed must not be made up", status)
 		}
 	})
+}
+
+// TestTheSimulatorServesConcurrentReads: the collector and the detector poll at
+// the same time, and the generators behind them share a memoised day cache.
+//
+// The test is a race-detector harness first: without the guard on that cache,
+// two overlapping requests (one on the flow endpoint, one on a cache-style
+// internal path) make Go abort the whole process with "concurrent map read and
+// map write" — which is exactly what happened the first time the device detail
+// asked for /components/cache/readable while the collector was collecting.
+func TestTheSimulatorServesConcurrentReads(t *testing.T) {
+	sim := testSim(t, baseOpts())
+	srv := httptest.NewServer(sim.Handler())
+	defer srv.Close()
+
+	paths := []string{
+		powerFlowPath,
+		"/components/cache/readable",
+		"/status/common",
+		"/status/network",
+	}
+
+	const readers = 8
+	var wg sync.WaitGroup
+	errs := make(chan string, readers*len(paths))
+	for i := range readers {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			path := paths[i%len(paths)]
+			for range 5 {
+				code, _, body := get(t, srv, path, nil)
+				if code != http.StatusOK {
+					errs <- fmt.Sprintf("%s: status %d", path, code)
+					return
+				}
+				if len(body) == 0 {
+					errs <- path + ": empty body"
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for msg := range errs {
+		t.Error(msg)
+	}
 }

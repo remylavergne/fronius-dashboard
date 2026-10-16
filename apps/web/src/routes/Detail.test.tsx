@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { formatDateTime } from '@/lib/format'
-import { detailEnvelopeSchema } from '@/lib/schema'
+import { detailCacheDataSchema, detailEnvelopeSchema, parseDetailFamilyData } from '@/lib/schema'
 import type { Detail, DetailFamily } from '@/lib/schema'
 import { DetailPage } from './Detail'
 
@@ -21,6 +22,7 @@ const SYSTEM_READ_AT = '2026-10-16T19:28:00Z'
 const NETWORK_READ_AT = '2026-10-16T19:26:00Z'
 const DEVICES_READ_AT = '2026-10-16T19:24:00Z'
 const EMRS_READ_AT = '2026-10-16T19:22:00Z'
+const CACHE_READ_AT = '2026-10-16T19:20:00Z'
 
 function mockDetail(payload: Detail | undefined) {
   detailMock.mockReturnValue({
@@ -115,10 +117,57 @@ const emrsFamily: DetailFamily = {
   },
 }
 
+/**
+ * The cache as the device answers it: the node and its attributes first, then
+ * two named registers, then the bare identifier — the order the backend sends.
+ */
+const cacheFamily: DetailFamily = {
+  family: 'cache',
+  available: true,
+  reason: '',
+  read_at: CACHE_READ_AT,
+  data: {
+    nodes: [
+      {
+        id: '393216',
+        attributes: [
+          { key: 'createTS', value: '1603034125' },
+          { key: 'inverter.devicetype', value: 'Primo' },
+        ],
+        channels: [
+          {
+            key: 'ACBRIDGE_POWERACTIVE_MEAN_01_F32',
+            name: 'ACBRIDGE_POWERACTIVE_MEAN_01',
+            kind: 'F32',
+            type: 'float',
+            value: 1234.5,
+          },
+          {
+            key: 'PV_ENERGYACTIVE_ACTIVE_SUM_01_U64',
+            name: 'PV_ENERGYACTIVE_ACTIVE_SUM_01',
+            kind: 'U64',
+            type: 'int',
+            value: 15089627579,
+          },
+          { key: '<1090584584>', type: 'int', value: 0 },
+        ],
+      },
+    ],
+  },
+}
+
 function fullPayload(): Detail {
   return {
     read_at: READ_AT,
-    families: [inverterFamily, systemFamily, networkFamily, devicesFamily, emrsFamily],
+    families: [inverterFamily, systemFamily, networkFamily, devicesFamily, emrsFamily, cacheFamily],
+  }
+}
+
+/** A payload carrying the cache family alone, with the `data` a test chooses. */
+function cachePayload(data: unknown): Detail {
+  return {
+    read_at: CACHE_READ_AT,
+    families: [{ family: 'cache', available: true, reason: '', read_at: CACHE_READ_AT, data }],
   }
 }
 
@@ -151,6 +200,11 @@ describe('DetailPage available families', () => {
     expect(
       within(screen.getByRole('article', { name: 'EMRS' })).getByText(
         `Last read: ${formatDateTime(EMRS_READ_AT)}`,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('article', { name: 'Cache' })).getByText(
+        `Last read: ${formatDateTime(CACHE_READ_AT)}`,
       ),
     ).toBeInTheDocument()
   })
@@ -278,7 +332,7 @@ describe('DetailPage family states', () => {
 
     render(<DetailPage />)
 
-    for (const title of ['System', 'Network', 'Devices', 'EMRS']) {
+    for (const title of ['System', 'Network', 'Devices', 'EMRS', 'Cache']) {
       const block = screen.getByRole('article', { name: title })
       expect(within(block).getByText('Never read by the collector')).toBeInTheDocument()
       expect(within(block).queryByRole('table')).not.toBeInTheDocument()
@@ -295,7 +349,7 @@ describe('DetailPage family states', () => {
     render(<DetailPage />)
 
     expect(screen.getByText('Never read')).toBeInTheDocument()
-    expect(screen.getAllByText('Never read by the collector')).toHaveLength(5)
+    expect(screen.getAllByText('Never read by the collector')).toHaveLength(6)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
@@ -393,6 +447,203 @@ describe('DetailPage family states', () => {
   })
 })
 
+describe('DetailPage cache family', () => {
+  it('renders the node, its attributes and a disclosure collapsed by default', async () => {
+    const user = userEvent.setup()
+    mockDetail(fullPayload())
+
+    render(<DetailPage />)
+
+    const cache = screen.getByRole('article', { name: 'Cache' })
+    // The device's own labels, and the values it answered, as they arrived.
+    expect(within(cache).getByText('Node 393216')).toBeInTheDocument()
+    expect(within(cache).getByText('createTS')).toBeInTheDocument()
+    expect(within(cache).getByText('1603034125')).toBeInTheDocument()
+    expect(within(cache).getByText('inverter.devicetype')).toBeInTheDocument()
+    // The attributes are in the order the device sent them: this page sorts nothing.
+    const labels = within(cache).getAllByText(/^(createTS|inverter\.devicetype)$/)
+    expect(labels.map((cell) => cell.textContent)).toEqual(['createTS', 'inverter.devicetype'])
+    // What a bare `<id>` is, and where the type marker comes from: said in words.
+    expect(
+      within(cache).getByText(/the <id> entries are registers it does not name/),
+    ).toBeInTheDocument()
+
+    const toggle = within(cache).getByRole('button', { name: '3 registers · 2 named' })
+    const controls = toggle.getAttribute('aria-controls')
+
+    // Keyboard-reachable, closed, and naming an element that exists.
+    expect(toggle.tagName).toBe('BUTTON')
+    toggle.focus()
+    expect(toggle).toHaveFocus()
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById(controls ?? '')).not.toBeNull()
+    expect(within(cache).queryByRole('table')).not.toBeInTheDocument()
+
+    await user.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const registers = document.getElementById(controls ?? '')
+    expect(registers).not.toBeNull()
+    // The registers are inside the element `aria-controls` names.
+    const table = within(registers as HTMLElement).getByRole('table')
+    expect(within(table).getByRole('columnheader', { name: 'Register' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Type marker' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Value' })).toBeInTheDocument()
+
+    // The order is the backend's: named registers first, then the bare identifier.
+    const names = within(table).getAllByText(
+      /^(ACBRIDGE_POWERACTIVE_MEAN_01|PV_ENERGYACTIVE_ACTIVE_SUM_01|<1090584584>)$/,
+    )
+    expect(names.map((cell) => cell.textContent)).toEqual([
+      'ACBRIDGE_POWERACTIVE_MEAN_01',
+      'PV_ENERGYACTIVE_ACTIVE_SUM_01',
+      '<1090584584>',
+    ])
+    // The suffix is the device's own marker, displayed as it arrived.
+    expect(within(table).getByText('F32')).toBeInTheDocument()
+    expect(within(table).getByText('U64')).toBeInTheDocument()
+  })
+
+  it('renders a bare identifier verbatim, inventing neither a name nor a marker', async () => {
+    const user = userEvent.setup()
+    mockDetail(fullPayload())
+
+    render(<DetailPage />)
+
+    const cache = screen.getByRole('article', { name: 'Cache' })
+    await user.click(within(cache).getByRole('button', { name: '3 registers · 2 named' }))
+
+    const bare = within(cache).getByRole('row', { name: /1090584584/ })
+    expect(within(bare).getByText('<1090584584>')).toBeInTheDocument()
+    // The device gives no type marker for it, so the cell carries a dash.
+    expect(within(bare).getByText('—')).toBeInTheDocument()
+    // A `0` the device really reported stays a 0, not a dash.
+    expect(within(bare).getByText('0')).toBeInTheDocument()
+    // The raw JSON type is never displayed: it only decides how a value reads.
+    expect(within(bare).queryByText('int')).not.toBeInTheDocument()
+  })
+
+  it('renders each value by the type the device declared, with no invented unit', async () => {
+    const user = userEvent.setup()
+    mockDetail(
+      cachePayload({
+        nodes: [
+          {
+            id: '393216',
+            attributes: null,
+            channels: [
+              {
+                key: 'PV_ENERGYACTIVE_ACTIVE_SUM_01_U64',
+                name: 'PV_ENERGYACTIVE_ACTIVE_SUM_01',
+                kind: 'U64',
+                type: 'int',
+                value: 15089627579,
+              },
+              {
+                key: 'ACBRIDGE_POWERACTIVE_MEAN_01_F32',
+                name: 'ACBRIDGE_POWERACTIVE_MEAN_01',
+                kind: 'F32',
+                type: 'float',
+                value: 1234.5,
+              },
+              { key: 'SOME_FLAG_U16', name: 'SOME_FLAG', kind: 'U16', type: 'bool', value: true },
+              { key: 'SOME_TEXT_STR', name: 'SOME_TEXT', kind: 'STR', type: 'string', value: 'grid lost' },
+              { key: 'SOME_EMPTY_U16', name: 'SOME_EMPTY', kind: 'U16', type: 'null', value: null },
+              { key: 'ODD_ONE_XYZ', name: 'ODD_ONE', kind: 'XYZ', type: 'octal', value: '77' },
+            ],
+          },
+        ],
+      }),
+    )
+
+    render(<DetailPage />)
+
+    const cache = screen.getByRole('article', { name: 'Cache' })
+    await user.click(within(cache).getByRole('button', { name: '6 registers · 6 named' }))
+
+    // `int`: the digits that arrived — a counter is exact, so it is neither
+    // rounded nor grouped.
+    expect(within(cache).getByText('15089627579')).toBeInTheDocument()
+    expect(within(cache).queryByText('15,089,627,579')).not.toBeInTheDocument()
+    // `float`: a readable decimal, and no unit — the cache carries none.
+    expect(within(cache).getByText('1,234.5')).toBeInTheDocument()
+    // `bool`: yes/no. `string`: as it stands.
+    expect(within(cache).getByText('yes')).toBeInTheDocument()
+    expect(within(cache).getByText('grid lost')).toBeInTheDocument()
+    // `null`: a dash, and the only one — every other cell carries a real value.
+    expect(within(cache).getAllByText('—')).toHaveLength(1)
+    // A type this build does not know falls back to the value's own shape.
+    expect(within(cache).getByText('77')).toBeInTheDocument()
+  })
+
+  it('renders a node with no attribute and no register without a table of blanks', async () => {
+    const user = userEvent.setup()
+    mockDetail(
+      cachePayload({
+        nodes: [
+          // `null` and `[]` are the same absence, and render the same way.
+          { id: '393216', attributes: null, channels: null },
+          { id: '393217', attributes: [], channels: [] },
+        ],
+      }),
+    )
+
+    render(<DetailPage />)
+
+    const cache = screen.getByRole('article', { name: 'Cache' })
+    const toggle = within(cache).getByRole('button', { name: '0 registers · 0 named' })
+    expect(within(cache).getByText('Node 393216')).toBeInTheDocument()
+    expect(within(cache).getByText('Node 393217')).toBeInTheDocument()
+    expect(within(cache).queryByText('Attributes')).not.toBeInTheDocument()
+    expect(within(cache).queryByText('—')).not.toBeInTheDocument()
+
+    await user.click(toggle)
+
+    expect(within(cache).getByText('No register was read for this family.')).toBeInTheDocument()
+    expect(within(cache).queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('renders a family whose nodes are absent, null or empty as nothing to display', () => {
+    for (const data of [{}, { nodes: null }, { nodes: [] }]) {
+      mockDetail(cachePayload(data))
+      const { unmount } = render(<DetailPage />)
+
+      const cache = screen.getByRole('article', { name: 'Cache' })
+      expect(within(cache).queryByText(/could not be read/)).not.toBeInTheDocument()
+      expect(within(cache).getByText('Nothing to display for this family.')).toBeInTheDocument()
+      expect(within(cache).queryByRole('button')).not.toBeInTheDocument()
+      expect(within(cache).queryByRole('table')).not.toBeInTheDocument()
+
+      unmount()
+    }
+  })
+
+  it('renders an unavailable family with its reason and no disclosure', () => {
+    mockDetail({
+      read_at: CACHE_READ_AT,
+      families: [
+        {
+          family: 'cache',
+          available: false,
+          reason: 'The device refused the read: no session could be opened.',
+          read_at: CACHE_READ_AT,
+          data: null,
+        },
+      ],
+    })
+
+    render(<DetailPage />)
+
+    const cache = screen.getByRole('article', { name: 'Cache' })
+    expect(within(cache).getByText('Unavailable')).toBeInTheDocument()
+    expect(
+      within(cache).getByText('The device refused the read: no session could be opened.'),
+    ).toBeInTheDocument()
+    expect(within(cache).queryByRole('button')).not.toBeInTheDocument()
+    expect(within(cache).queryByRole('table')).not.toBeInTheDocument()
+  })
+})
+
 describe('detailEnvelopeSchema tolerance', () => {
   it('accepts a payload where nothing was ever read', () => {
     expect(detailEnvelopeSchema.safeParse({ data: { families: [] }, meta: META }).success).toBe(true)
@@ -444,5 +695,61 @@ describe('detailEnvelopeSchema tolerance', () => {
     expect(detailEnvelopeSchema.safeParse({ data: { families: [{ family: 'inverter' }] }, meta: META }).success).toBe(
       false,
     )
+  })
+
+  it('accepts a cache family with null collections, a bare identifier and an unknown type', () => {
+    const result = detailEnvelopeSchema.safeParse({
+      data: {
+        families: [
+          {
+            family: 'cache',
+            available: true,
+            reason: '',
+            read_at: CACHE_READ_AT,
+            data: {
+              nodes: [
+                { id: '393216', attributes: null, channels: null },
+                {
+                  id: '393217',
+                  attributes: [],
+                  channels: [
+                    { key: '<1090584584>', type: 'int', value: 0 },
+                    { key: 'ODD_ONE_XYZ', name: 'ODD_ONE', kind: 'XYZ', type: 'octal', value: '77' },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      meta: META,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts a cache family whose nodes are absent or null', () => {
+    for (const data of [{}, { nodes: null }, { nodes: [] }]) {
+      const result = detailEnvelopeSchema.safeParse({
+        data: { families: [{ family: 'cache', available: true, reason: '', data }] },
+        meta: META,
+      })
+      expect(result.success).toBe(true)
+    }
+  })
+
+  it('still requires the key of a cache register', () => {
+    // The envelope leaves a family's `data` to the family: it is the per-family
+    // schema that rejects a register without its key, and the page then says the
+    // answer could not be read rather than rendering a nameless row.
+    const family = {
+      family: 'cache' as const,
+      available: true,
+      reason: '',
+      read_at: CACHE_READ_AT,
+      data: { nodes: [{ id: '393216', channels: [{ type: 'int', value: 1 }] }] },
+    }
+
+    expect(detailEnvelopeSchema.safeParse({ data: { families: [family] }, meta: META }).success).toBe(true)
+    expect(parseDetailFamilyData(family, detailCacheDataSchema)).toBeNull()
   })
 })

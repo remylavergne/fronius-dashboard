@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Internal paths served. The list is strictly equal to that of the client
@@ -36,6 +37,9 @@ const (
 	networkPath = "/status/network"
 	devicesPath = "/status/devices"
 	emrsPath    = "/status/emrs"
+	// cachePath is the readable cache: the internal register set, whose Body.Data
+	// is keyed by node id (Cgi envelope).
+	cachePath = "/components/cache/readable"
 )
 
 // internalPaths is the frozen list of internal paths the simulator serves. It
@@ -44,7 +48,7 @@ const (
 // the device answers.
 var internalPaths = []string{
 	versionPath, activeEventsPath, powerMeterPath, batteryPath,
-	commonPath, networkPath, devicesPath, emrsPath,
+	commonPath, networkPath, devicesPath, emrsPath, cachePath,
 }
 
 // Challenge headers.
@@ -120,6 +124,8 @@ func (s *simulator) internalHandler(path string) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, s.devicesBody())
 		case emrsPath:
 			writeJSON(w, http.StatusOK, s.emrsBody())
+		case cachePath:
+			writeJSON(w, http.StatusOK, cgiBody(s.cacheData()))
 		default:
 			http.NotFound(w, r)
 		}
@@ -149,6 +155,43 @@ func (s *simulator) commonBody() map[string]any {
 		"passwordState": map[string]any{
 			"customer":   true,
 			"technician": false,
+		},
+	}
+}
+
+// cacheData is the shape of /components/cache/readable: one node, its
+// attributes, and registers named the way the device names them — including its
+// own type suffix — beside one bare identifier, which is what the reference
+// device also answers.
+func (s *simulator) cacheData() map[string]any {
+	snap := s.gen.snapshotAt(time.Now())
+	return map[string]any{
+		"393216": map[string]any{
+			"attributes": map[string]any{
+				"createTS":            "1603034125",
+				"note":                "simulated cache",
+				"[ENABLE]":            "1",
+				"[VISIBLE]":           "1",
+				"inverter.devicetype": "Primo",
+				"inverter.devicetree": "SIMULATED",
+				"inverter.nodetype":   "inverter",
+			},
+			"channels": map[string]any{
+				"ACBRIDGE_POWERACTIVE_MEAN_01_F32":          round1(snap.PowerW),
+				"DCLINK_VOLTAGE_MEAN_F32":                   400.0,
+				"DEVICE_TEMPERATURE_AMBIENTEMEAN_F32":       21.5,
+				"FANCONTROL_PERCENT_01_F32":                 0.0,
+				"ISO_RESISTANCE_MEAN_F32":                   1200000.0,
+				"PV_CURRENT_MEAN_01_F32":                    round1(snap.PowerW / 400.0),
+				"PV_POWERACTIVE_MEAN_01_F32":                round1(snap.PowerW),
+				"PV_VOLTAGE_MEAN_01_F32":                    400.0,
+				"ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_01_U64": int64(snap.ETotalWh),
+				"COMPONENTS_MODE_ENABLE_U16":                1,
+				"DEVICE_MODE_OPERATING_REFERRAL_U16":        1,
+				// A register the device identifies only by an identifier, as the
+				// reference unit does.
+				"<1090584584>": 0,
+			},
 		},
 	}
 }

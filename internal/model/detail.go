@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"sort"
 
 	"fronius-supervisor/internal/fronius/solarapi"
@@ -25,6 +26,7 @@ const (
 	FamilyNetwork  = "network"
 	FamilyDevices  = "devices"
 	FamilyEmrs     = "emrs"
+	FamilyCache    = "cache"
 )
 
 // MeasurementDetail is one measurement of the realtime-data family: a unit and
@@ -186,4 +188,45 @@ func FromInverterRealtime(rt solarapi.InverterRealtime) InverterDetail {
 		out.Energies.TotalWh = m.Value
 	}
 	return out
+}
+
+// CacheDetail is the published snapshot of the cache family: the readable
+// register set of the device, grouped by node.
+//
+// The device names its own registers, so the names are kept verbatim — including
+// the type suffix the device itself appends (`_F32`, `_U64`, `_U16`), which is
+// published separately as `kind`. A register the device identifies only by a bare
+// `<id>` keeps that identifier: nothing observed so far explains it, and naming
+// it would be inventing a meaning.
+type CacheDetail struct {
+	Nodes []CacheNodeDetail `json:"nodes"`
+}
+
+// CacheNodeDetail is one node of the cache.
+type CacheNodeDetail struct {
+	// ID is the device's node identifier (393216 on the reference unit).
+	ID         string           `json:"id"`
+	Attributes []CacheAttribute `json:"attributes"`
+	Channels   []CacheChannel   `json:"channels"`
+}
+
+// CacheAttribute is one attribute of a node: the device labels these, so the
+// value stays the text it answered.
+type CacheAttribute struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// CacheChannel is one register.
+//
+// Value is the device's own JSON value, unparsed: an energy counter written as
+// a 64-bit integer does not survive a float64, and rounding it would be
+// inventing a number the device did not report.
+type CacheChannel struct {
+	Key   string          `json:"key"`
+	Name  string          `json:"name,omitempty"`
+	Kind  string          `json:"kind,omitempty"`
+	Type  string          `json:"type"`
+	Unit  string          `json:"unit,omitempty"`
+	Value json.RawMessage `json:"value"`
 }

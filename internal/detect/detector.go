@@ -73,6 +73,7 @@ type Reader interface {
 	Network(ctx context.Context) (internalapi.NetworkInfo, error)
 	Devices(ctx context.Context) ([]internalapi.DeviceEntry, error)
 	Emrs(ctx context.Context) ([]internalapi.EmrsPin, error)
+	Cache(ctx context.Context) ([]internalapi.CacheNode, error)
 }
 
 // Sink persists the effects of a detection. *storage.Store satisfies it.
