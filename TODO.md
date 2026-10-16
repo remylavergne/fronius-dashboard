@@ -68,7 +68,7 @@
 - [x] Aggregate minutes/hours/days with explicit rules
 - [x] Handle time zones and the Europe/Brussels daylight saving change
 - [x] Define retention and scheduled purge
-- [ ] Implement tested backup/restore
+- [x] Implement tested backup/restore
 - [x] Implement `/api/v1/health` and `/api/v1/system`
 - [x] Implement `/api/v1/live` and `/api/v1/timeseries`
 - [x] Implement `/api/v1/energy/daily` and `/api/v1/events`
@@ -114,7 +114,7 @@
 - [ ] Create a multi-stage Dockerfile and an optional compose
 - [ ] Add volumes, healthcheck, restart policy and secret management
 - [ ] Test NAS/local installation, startup and updates
-- [ ] Test backup and restore of the database
+- [x] Test backup and restore of the database
 - [x] Document installation, configuration, maintenance and troubleshooting
 - [ ] Create screenshots and a user guide
 - [ ] Verify resource consumption and network load of the inverter
@@ -359,4 +359,54 @@
   reads **from the device** is `writePermission` (l. 69202), compared field by field — unknown #6 stays
   open: a payload boolean is not a matrix, and the executable authorization remains the code allowlist.
   Recorded in `docs/ENDPOINTS.md` § Declared roles (client only) and `docs/UNKNOWNS.md` #6.
-  Remaining open boxes: `backup/restore` (tested), `OpenAPI`, the phase-5/6 interface and packaging work.
+  Remaining open boxes at that point: `backup/restore`, `OpenAPI`, the phase-5/6 interface
+  and packaging work (the backup/restore pair is delivered at step 18).
+
+- 2026-10-16 — Step 18 (phase 4/6): database backup and restore. Delivered:
+  `internal/storage/backup.go` — `Store.Backup` (a snapshot taken with SQLite's
+  `VACUUM INTO` **through the application's own connection**, so it is consistent
+  while the collector writes, compacted and standalone with no WAL sidecar to
+  carry along; built under `<dest>.partial-*` and renamed only once complete; an
+  existing destination is refused with `ErrBackupExists` rather than
+  overwritten), `Store.Restore` (the whole persisted state — `samples`, `events`,
+  `collector_runs`, `collector_state`, `device`, `device_events_seen`,
+  `agg_hour` — replaced **in one transaction**, after the attached backup passes
+  `PRAGMA integrity_check`, carries **exactly** the migration set applied here and
+  shows matching row counts before the commit; a restore that did not carry
+  everything over rolls back rather than reporting success; the aggregation
+  watermark lives in `collector_state`, so the aggregates travel with it),
+  `VerifyBackup`, `Inspect` (`mode=ro`) and `BackupInfo` (size, migration count,
+  samples, events, aggregated hours, first/last sample, written instant). New
+  command `cmd/fronius-backup` (`save -out <file> [-db <path>] [-tz <zone>]`,
+  `verify -file <file>`, `restore -from <file> -yes [-db <path>] [-tz <zone>]`),
+  the database path and timezone defaulting to `FRONIUS_DB_PATH` / `FRONIUS_TZ`;
+  `restore` refuses without `-yes` and first keeps the current database aside as
+  `<db>.pre-restore-<UTC instant>.db`. `Makefile` targets `make backup` and
+  `make restore` (`FRONIUS_BACKUP=path` to choose the file). Documentation:
+  `docs/RUNBOOK.md` (operator section: the two commands, what a snapshot holds,
+  "stop the collector first", the automatic safety copy, `verify` before trusting
+  a file, and that a snapshot may be taken while the application runs),
+  `docs/ARCHITECTURE.md` (`cmd/fronius-backup` in the package table and a new
+  invariant 10) and `docs/DEVELOPMENT.md` (the two make targets and the three
+  subcommands).
+
+  Checks run: `go test ./... -race` green, `gofmt` and `go vet ./...` clean.
+  Tests: `internal/storage/backup_test.go` (round trip read back by a second
+  store; every table carried, including the aggregate watermark and the device
+  event keys; the destination is never overwritten; a failed backup leaves
+  nothing behind; a restore replaces and does not merge; refusals of a file that
+  is not a database, of a database with another schema and of an absent file) and
+  `cmd/fronius-backup/main_test.go` (the three subcommands through `main1`;
+  refusal without `-yes`; save over an existing file; verify on junk; usage
+  errors). Verified live against a database written by a **running** `froniusd`
+  (simulator on 8081, WAL): `save` during collection carried **9 samples**
+  (2026-10-16T17:46:41Z → 17:46:50Z) and the event, and `verify` reported the
+  same; after the database reached **23 samples**, stopping the daemon then
+  `restore -yes` brought it back to the **9 of the snapshot** and kept
+  `live.db.pre-restore-20261016T174711Z.db` holding the **24** samples that were
+  replaced; `froniusd` restarted on the **restored** database collected again
+  (9 → 17 samples) and `/api/v1/health` answered `status: ok`, `samples: 17`.
+  Boxes checked at this step: "Implement tested backup/restore" (phase 4) and
+  "Test backup and restore of the database" (phase 6). No deviation from the
+  plan; not delivered: no scheduler — backups stay manual, though a `save` may run
+  while the service runs.

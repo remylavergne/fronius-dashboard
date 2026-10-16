@@ -126,31 +126,67 @@ broadening the application: no device-modifying command exists in this binary.
 
 ## Backup and restore
 
-The database is a SQLite file in WAL mode: it must be backed up **with** the
-SQLite method, not by a plain hot copy of the `.db-wal` files.
+`cmd/fronius-backup` is the tool for the one operation the running application
+never performs: taking the whole database away and putting it back. Three
+subcommands — **`save`**, **`verify`**, **`restore`** — exposed by two `make`
+targets. The database path and the timezone default to the application's
+configuration (`FRONIUS_DB_PATH`, `FRONIUS_TZ`), so the tool reads the same
+database as `froniusd` without repeating anything.
 
 ```bash
-# Consistent hot backup
-sqlite3 data/fronius.db ".backup '/path/backup/fronius-$(date -u +%Y%m%dT%H%M%SZ).db'"
+# Save: a consistent snapshot, may run while froniusd is running
+make backup                                            # data/fronius-<UTC instant>.db
+FRONIUS_BACKUP=/path/backup/fronius.db make backup     # choose the file
 
-# Restore: stop froniusd first
-systemctl stop froniusd 2>/dev/null || pkill -f bin/froniusd
-mv data/fronius.db data/fronius.db.before-restore
-cp /path/backup/fronius-20261016T120000Z.db data/fronius.db
-rm -f data/fronius.db-wal data/fronius.db-shm
-FRONIUS_DB_PATH=./data/fronius.db ./bin/froniusd
+# Verify: trust nothing before checking it
+go run ./cmd/fronius-backup verify -file /path/backup/fronius.db
+
+# Restore: stop froniusd FIRST
+FRONIUS_BACKUP=/path/backup/fronius.db make restore
 ```
 
-Verification after restore:
+`save` writes the snapshot with SQLite's own `VACUUM INTO` **through the
+application's connection**: it is therefore consistent even while the collector
+writes, compacted, and standalone (no `-wal`/`-shm` sidecar to carry along). The
+file is built under a temporary name (`<dest>.partial-*`) and renamed only once
+complete, and an **existing destination is refused** rather than overwritten — a
+backup quietly replaced would destroy the very copy being protected. Each of
+`save` and `verify` prints one line: size, migration count, samples (with the
+period covered), events, aggregated hours and the instant the file was written.
+
+`verify` re-opens a file read-only and runs SQLite's `integrity_check` on it —
+the cheapest way to tell a usable backup from a truncated one before relying on
+it. `save` reads its own result back for the same reason: `save` alone proves the
+copy was **written**, `verify` proves it is **sound**.
+
+`restore` replaces the entire persisted state — every sample, event, collection
+run and cycle, the detection state, the device event keys and the hourly
+aggregates — **in one transaction**, after checking the backup's integrity, that
+its recorded migration set is **exactly** the one applied here (a file of another
+schema is refused), and that the row counts match before committing. A restore
+that did not carry everything over rolls back rather than reporting success.
+
+**A restore requires the collector stopped** (`make restore`, or
+`restore -from <file> -yes`): it rewrites the state `froniusd` would be writing
+at the same time. `restore` refuses to run without `-yes`, and before touching
+anything it keeps the current database aside as
+`<db>.pre-restore-<UTC instant>.db` (taken with the same consistent snapshot), so
+a restore done for the wrong reason stays reversible.
+
+After a restore, restart the service and check it is collecting again:
 
 ```bash
-sqlite3 data/fronius.db 'select count(*), min(ts_utc), max(ts_utc) from samples;'
-curl -s localhost:8080/api/v1/live | jq '.data.power_pv_w, .meta.stale'
+curl -s localhost:8080/api/v1/health | jq '.data.status, .data.collector.samples_total'
 ```
+
+The aggregates travel with the snapshot: the aggregation watermark lives in
+`collector_state`, so restoring a backup restores the aggregates and their
+watermark together — nothing is recomputed and no hour is left half-aggregated.
 
 Migrations are versioned (`schema_migrations`) and applied automatically at
-startup: restoring a database older than the binary is safe, in the direction of
-the migration.
+startup. `restore` requires the backup to carry **exactly** the migrations
+currently applied: a file from another schema (or an older binary) is refused
+rather than silently upgraded.
 
 ## Retention and purge
 

@@ -9,6 +9,40 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Database backup and restore.** `internal/storage/backup.go`
+  (`Store.Backup`, `Store.Restore`, `VerifyBackup`, `Inspect`, `BackupInfo`):
+  the snapshot is SQLite's `VACUUM INTO` taken **through the application's own
+  connection**, so it is consistent while the collector writes, compacted and
+  standalone (no WAL sidecar to carry along); the file is built under
+  `<dest>.partial-*` and renamed only once complete, and an **existing
+  destination is refused** (`ErrBackupExists`) rather than overwritten.
+  `Restore` replaces the whole persisted state (`samples`, `events`,
+  `collector_runs`, `collector_state`, `device`, `device_events_seen`,
+  `agg_hour`) **in one transaction**, after checking the backup's
+  `PRAGMA integrity_check`, that its recorded migration set is **exactly** the
+  one applied here (otherwise refused) and that the row counts match before
+  committing — a restore that did not carry everything over rolls back rather
+  than reporting success; the aggregation watermark lives in `collector_state`,
+  so the aggregates are restored with it. New command `cmd/fronius-backup`
+  (`save -out <file> [-db <path>] [-tz <zone>]`, `verify -file <file>`,
+  `restore -from <file> -yes [-db <path>] [-tz <zone>]`), plus `make backup` and
+  `make restore`; `restore` refuses to run without `-yes` and first keeps the
+  current database aside as `<db>.pre-restore-<UTC instant>.db`.
+  Verified against a database written by a **running** `froniusd` (simulator on
+  8081, WAL): `save` while the collector ran carried **9 samples**
+  (2026-10-16T17:46:41Z → 17:46:50Z) and the event, and `verify` reported the
+  same; after the database reached **23 samples**, `restore -yes` (daemon
+  stopped) brought it back to the **9 of the snapshot** and kept
+  `<db>.pre-restore-20261016T174711Z.db` holding the **24** samples it replaced;
+  `froniusd` restarted on the **restored** database collected again (9 → 17
+  samples) and `/api/v1/health` answered `status: ok`, `samples: 17`. Tests:
+  `internal/storage/backup_test.go` (round trip read back by a second store,
+  every table carried, destination never overwritten, a failed backup leaves
+  nothing behind, refusals) and `cmd/fronius-backup/main_test.go` (the three
+  subcommands through `main1`, refusal without `-yes`, save over an existing
+  file, verify on junk, usage errors); `go test ./... -race`, `gofmt` and
+  `go vet` clean.
+
 - 2026-10-16 — **Derived day and year energies (option b).** No local endpoint
   publishes the day or year counter on firmware `1.19.7-1` (`docs/UNKNOWNS.md`
   #13: `GetPowerFlowRealtimeData.fcgi`, `/status/powerflow` and the documented

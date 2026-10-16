@@ -57,7 +57,16 @@ frontend never has the inverter address.
 | `make lint` | `go vet ./...` then `oxlint` |
 | `make fmt` | `go fmt ./...` |
 | `make seed` | 7 days of simulated history |
+| `make backup` | consistent snapshot of the database (`FRONIUS_BACKUP=path` to choose the file); may run while `froniusd` runs |
+| `make restore` | replace the database from a backup (`FRONIUS_BACKUP=path`, stop `froniusd` first) |
 | `make clean` | removes `bin/`, `data/`, `coverage/`, `apps/web/dist` |
+
+`make backup` and `make restore` wrap `cmd/fronius-backup`, whose three
+subcommands are `save -out <file> [-db <path>] [-tz <zone>]`,
+`verify -file <file>` and `restore -from <file> -yes [-db <path>] [-tz <zone>]`.
+The database path and timezone default to `FRONIUS_DB_PATH` / `FRONIUS_TZ`; a
+restore refuses to run without `-yes` and keeps the current database aside as
+`<db>.pre-restore-<UTC instant>.db` (see `docs/RUNBOOK.md`).
 
 ## Configuration
 

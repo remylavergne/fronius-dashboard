@@ -56,6 +56,7 @@ diagnostic tool, never started by the service or by CI.
 | `cmd/fronius-sim` | Deterministic simulator of the Solar API (curve, failures, `/sim/health`) | — |
 | `cmd/froniusd` | Service: config, collector, API, clean shutdown | everything |
 | `cmd/fronius-probe` | Read-only probe, allowlist, endpoint selection and redaction | `config`, `fronius`, `digest`, `internalapi`, `secret` |
+| `cmd/fronius-backup` | Save, verify and restore the whole database — the one operation the service never performs | `config`, `storage` |
 | `internal/config` | Configuration via environment variables, listen guard | `secret` |
 | `internal/secret` | `secret.String`: masked for `fmt`, `slog` and JSON; `Reveal()` is the only way out | — |
 | `internal/fronius` | Read-only guard (`ReadOnly`) and shared HTTP/transport classification | `froniuserr` |
@@ -64,7 +65,7 @@ diagnostic tool, never started by the service or by CI.
 | `internal/fronius/solarapi` | Solar API client and the **only** encoding of the JSON shape | `fronius`, `froniuserr` |
 | `internal/fronius/internalapi` | Internal paths: **executable allowlist** and tolerant extraction | `fronius`, `froniuserr` |
 | `internal/model` | Normalized model, units, three-state detection, capabilities, events | `solarapi` |
-| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, purge | `model` |
+| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
 | `internal/collector` | Collection loop, backoff, events | `solarapi`, `model`, `storage` |
 | `internal/detect` | Detection loop: identity, presence, events, states and reasons | `internalapi`, `model`, `storage` |
@@ -134,6 +135,13 @@ Node process, nor a bundle, nor an HTTP response.
    (ADR 0006). A read serves an hour from the aggregates only if it is
    whole, closed and contained in the requested range; the rest is read from the
    raw measurements.
+10. **A restore is transactional and schema-checked.** `Store.Restore`
+   (`cmd/fronius-backup restore`) replaces every persisted table in **one**
+   transaction, refuses a backup whose recorded migration set is not exactly the
+   one applied here, and compares the row counts before committing: it either
+   carries everything over or leaves the database untouched. It requires the
+   collector stopped (see `docs/RUNBOOK.md`), and it keeps the current database
+   aside before rewriting it.
 
 ## Structuring decisions
 

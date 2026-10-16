@@ -3,7 +3,7 @@ GO ?= go
 PNPM ?= pnpm
 WEB := apps/web
 
-.PHONY: help build test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-web seed clean
+.PHONY: help build test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-web seed backup restore clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -45,6 +45,12 @@ dev-web: ## Start the Vite development server (127.0.0.1:5173)
 
 seed: ## Fill the database via the simulator (7 days of history)
 	$(GO) run ./cmd/froniusd --backfill-days 7
+
+backup: ## Snapshot the database (FRONIUS_BACKUP=path to choose the file)
+	$(GO) run ./cmd/fronius-backup save -out "$${FRONIUS_BACKUP:-data/fronius-$$(date -u +%Y%m%dT%H%M%SZ).db}"
+
+restore: ## Replace the database from a backup (FRONIUS_BACKUP=path, stop froniusd first)
+	$(GO) run ./cmd/fronius-backup restore -from "$(FRONIUS_BACKUP)" -yes
 
 clean: ## Remove generated artefacts
 	rm -rf bin data coverage $(WEB)/dist
