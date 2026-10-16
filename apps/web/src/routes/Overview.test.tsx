@@ -151,6 +151,66 @@ describe('Overview energy cards', () => {
   })
 })
 
+describe('Overview energy dashes', () => {
+  // A dash without its reason leaves the reader to guess whether the app is
+  // broken: the backend states why an energy could not be derived, and the card
+  // is where that belongs.
+  const refused = {
+    from: 'energy_total_wh',
+    day_wh: null,
+    day_baseline_utc: '',
+    day_reason: 'the total energy counter went backwards since the boundary',
+    year_wh: null,
+    year_baseline_utc: '',
+    year_reason: 'no sample carries a total energy at or before 2026-01-01T00:00:00+01:00',
+  }
+
+  it('prints the reason of a refused day energy instead of a bare dash', () => {
+    mockLive({ ...baseSample, energy_derived: refused })
+
+    render(<Overview />)
+
+    const card = screen.getByText('Energy of the day').closest('[data-slot="card"]')
+    expect(card).not.toBeNull()
+    expect(within(card as HTMLElement).getByText('—')).toBeInTheDocument()
+    expect(
+      within(card as HTMLElement).getByText('the total energy counter went backwards since the boundary'),
+    ).toBeInTheDocument()
+  })
+
+  it('prints the reason of a refused year energy', () => {
+    mockLive({ ...baseSample, energy_derived: refused })
+
+    render(<Overview />)
+
+    const card = screen.getByText('Energy of the year').closest('[data-slot="card"]')
+    expect(
+      within(card as HTMLElement).getByText(/no sample carries a total energy at or before/),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the derived value and its marker when a value is available', () => {
+    mockLive({ ...baseSample, energy_derived: derived })
+
+    render(<Overview />)
+
+    const card = screen.getByText('Energy of the day').closest('[data-slot="card"]')
+    // The number and its unit are separate elements, as in the other KPI tests.
+    expect(within(card as HTMLElement).getByText('139')).toBeInTheDocument()
+    expect(within(card as HTMLElement).getByText('Wh')).toBeInTheDocument()
+    expect(within(card as HTMLElement).getByText('estimated from the total')).toBeInTheDocument()
+  })
+
+  it('prints no reason when the payload carries none', () => {
+    mockLive({ ...baseSample, energy_derived: { ...refused, day_reason: '', year_reason: '' } })
+
+    render(<Overview />)
+
+    const card = screen.getByText('Energy of the day').closest('[data-slot="card"]')
+    expect(within(card as HTMLElement).getByText(/Last measurement/)).toBeInTheDocument()
+  })
+})
+
 describe('sampleSchema energy_derived', () => {
   it('accepts a payload without energy_derived', () => {
     const without: Record<string, unknown> = { ...baseSample }

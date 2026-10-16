@@ -12,7 +12,7 @@ import { useT } from '@/i18n'
 import { ApiError } from '@/lib/api'
 import { inferStepSeconds, toPowerPoints } from '@/lib/chart'
 import { formatAge, formatKWh, formatW } from '@/lib/format'
-import { resolveEnergy } from '@/lib/energy'
+import { resolveEnergy, type ResolvedEnergy } from '@/lib/energy'
 import { resolveStale } from '@/lib/freshness'
 import {
   RANGES,
@@ -97,6 +97,26 @@ function InverterStateChip({ family }: { family: DetailFamily | undefined }) {
       )}
     </div>
   )
+}
+
+/**
+ * energyHint explains a dash instead of hiding it.
+ *
+ * An energy KPI can be empty for a reason the backend states (the device reports
+ * no counter and the derived value is refused: no baseline yet, a counter that
+ * went backwards, a collector outage). Printing the generic hint in that case
+ * leaves the reader to guess whether the app is broken; the reason is what makes
+ * the dash actionable.
+ */
+function energyHint(
+  energy: ResolvedEnergy,
+  reason: string | undefined,
+  fallback: string,
+): string {
+  if (energy.wh === null && reason) {
+    return reason
+  }
+  return fallback
 }
 
 /**
@@ -215,7 +235,7 @@ export function Overview() {
             hint={
               dayEnergy.estimated
                 ? t('kpi.energyDerived')
-                : `${t('kpi.lastSample')}: ${formatAge(sample.ts)}`
+                : energyHint(dayEnergy, sample.energy_derived?.day_reason, `${t('kpi.lastSample')}: ${formatAge(sample.ts)}`)
             }
           />
           <KpiCard
@@ -224,7 +244,11 @@ export function Overview() {
             hint={
               yearEnergy.estimated
                 ? t('kpi.energyDerived')
-                : `${t('kpi.energyTotal')}: ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim()
+                : energyHint(
+                    yearEnergy,
+                    sample.energy_derived?.year_reason,
+                    `${t('kpi.energyTotal')}: ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim(),
+                  )
             }
           />
           <KpiCard
