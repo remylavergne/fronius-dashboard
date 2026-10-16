@@ -1,0 +1,11 @@
+.DS_Store
+data/
+*.db
+*.db-wal
+*.db-shm
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.vite/
+.env
+coverage/
+bin/
