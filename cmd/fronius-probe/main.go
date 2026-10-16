@@ -51,8 +51,12 @@ const maxBodyBytes = 1 << 20
 
 // endpoint describes an allowlist entry.
 type endpoint struct {
-	method         string
-	path           string
+	method string
+	path   string
+	// query is the frozen query string of the entry, empty when the path takes
+	// none. It is a constant of the binary, like the path: the probe still cannot
+	// target an arbitrary URL, it can only reach the entries below.
+	query          string
 	classification string
 	note           string
 	// digest: the path is reached by the official client with an authenticated
@@ -100,6 +104,13 @@ var whitelist = []endpoint{
 		classification: "READ",
 		digest:         true,
 		note:           "Presence of a battery (Body.Data indexed by component id)",
+	},
+	{
+		method:         http.MethodGet,
+		path:           solarapi.InverterRealtimePath,
+		query:          solarapi.CumulationQuery,
+		classification: "READ",
+		note:           "Documented Solar API accumulation data (E_Day, E_Year, E_Total): the last candidate source for the day and year energies, which both flow endpoints return as null on firmware 1.19.7-1 (docs/UNKNOWNS.md #13)",
 	},
 	{
 		method:         http.MethodGet,
@@ -267,6 +278,9 @@ func readCredentials(opt options) (credentials, error) {
 
 func probe(ctx context.Context, doer fronius.Doer, base *url.URL, ep endpoint, opt options, logger *slog.Logger) error {
 	endpointURL := base.JoinPath(ep.path)
+	if ep.query != "" {
+		endpointURL.RawQuery = ep.query
+	}
 
 	req, err := http.NewRequestWithContext(ctx, ep.method, endpointURL.String(), nil)
 	if err != nil {
@@ -327,7 +341,7 @@ func printWhitelist(w io.Writer, baseURL string) {
 	fmt.Fprintf(w, "fronius-probe allowlist (read-only mode, GET only)\n")
 	fmt.Fprintf(w, "Base: %s\n\n", baseURL)
 	for _, ep := range whitelist {
-		fmt.Fprintf(w, "  %-4s %-60s %-5s digest=%v\n", ep.method, ep.path, ep.classification, ep.digest)
+		fmt.Fprintf(w, "  %-4s %-60s %-5s digest=%v\n", ep.method, ep.displayPath(), ep.classification, ep.digest)
 		fmt.Fprintf(w, "       %s\n", ep.note)
 	}
 	fmt.Fprintf(w, "\nNo other request is possible: the list is frozen in the binary.\n")
@@ -366,6 +380,14 @@ func saveRedacted(dir string, ep endpoint, body []byte) (string, error) {
 //
 // The shape obtained (status_version, components_powermeter_readable) is that
 // of the promoted fixtures described in docs/PROBE-READONLY.md.
+// displayPath is the path as the probe will request it, query included.
+func (e endpoint) displayPath() string {
+	if e.query == "" {
+		return e.path
+	}
+	return e.path + "?" + e.query
+}
+
 func saveName(path string) string {
 	withoutExt := strings.TrimSuffix(path, filepath.Ext(path))
 	trimmed := strings.Trim(withoutExt, "/")

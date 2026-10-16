@@ -316,13 +316,16 @@ in base units.
 
 These names come from the **public Fronius Solar API v1 documentation**. None has
 been re-read in `references/fronius-original.js` (which contains no Solar API
-path) nor observed on firmware **1.19.7-1**: they are therefore all `[TO-TEST]`.
-They are listed to frame phase 2, not to be called.
+path) nor observed on firmware **1.19.7-1**: they are therefore all `[TO-TEST]`
+on the device — one of them
+(`GetInverterRealtimeData`, accumulation query) now has a `cmd/fronius-probe`
+entry, so its capture is ready to run. They are listed to frame phase 2, not to be
+called.
 
 | Candidate endpoint | What it would provide | Status |
 |---|---|---|
 | `/solar_api/GetAPIVersion` | API version exposed by the device | `[TO-TEST]` |
-| `/solar_api/v1/GetInverterRealtimeData.fcgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | `[TO-TEST]` (redundant with PowerFlow for power) |
+| `/solar_api/v1/GetInverterRealtimeData.fcgi` | Per-inverter measurements (`CommonInverterData`, `3PInverterData`, `CumulationInverterData`): voltage, current, frequency, temperature, state | **probe path added 2026-10-16, capture pending** — seventh `cmd/fronius-probe` entry, `GET /solar_api/v1/GetInverterRealtimeData.fcgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` (class `READ`, `digest=false`, frozen query `solarapi.CumulationQuery`), the **last candidate source** for the day and year energies `GetPowerFlowRealtimeData` nulls on `1.19.7-1` (`docs/UNKNOWNS.md` #13) and the "Solar API first" route (ADR 0003/0008); `cmd/fronius-sim` serves it too (documented shape, values from its own curve) |
 | `/solar_api/v1/GetInverterInfo.fcgi` | **Identity**: model, serial number, firmware per inverter | `[TO-TEST]` — direct candidate for the `device.identity` capability |
 | `/solar_api/v1/GetLoggerInfo.fcgi` | Identity of the datalogger / the interface | `[TO-TEST]` |
 | `/solar_api/v1/GetMeterRealtimeData.fcgi` | Measurements of the Fronius Smart Meter, if present | `[TO-TEST]` — would allow **detecting** a meter and unlocking `grid.import_export`, `load.consumption`, `autoconsumption.ratio` |

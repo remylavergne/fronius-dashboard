@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"fronius-supervisor/internal/fronius/solarapi"
 )
 
 const powerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
@@ -143,6 +145,7 @@ func newSimulator(opt options, loc *time.Location, log *slog.Logger) *simulator 
 func (s *simulator) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(powerFlowPath, s.logged(s.handlePowerFlow))
+	mux.HandleFunc(solarapi.InverterRealtimePath, s.logged(s.handleInverterRealtime))
 	mux.HandleFunc("/sim/health", s.logged(s.handleHealth))
 	s.registerInternal(mux)
 	return mux
@@ -270,6 +273,46 @@ func (s *simulator) handlePowerFlow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(body)
+}
+
+// handleInverterRealtime serves the documented Solar API accumulation endpoint.
+//
+// Shape: the documented Solar API v1 answer, `Body.Data.CumulationInverterData`
+// carrying `E_Day`, `E_Year` and `E_Total` for the device. It is NOT yet a captured
+// shape (docs/SOURCES.md): the simulator answers it so that a probe rehearsal
+// exercises the whole path, including its query, before the device is asked.
+func (s *simulator) handleInverterRealtime(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	s.requests.Add(1)
+
+	if s.genericFault(w, r, s.faultFor(r)) {
+		return
+	}
+
+	snap := s.gen.snapshotAt(time.Now())
+	writeJSON(w, http.StatusOK, map[string]any{
+		"Body": map[string]any{
+			"Data": map[string]any{
+				"CumulationInverterData": map[string]any{
+					"E_Day":   snap.EDayWh,
+					"E_Year":  snap.EYearWh,
+					"E_Total": snap.ETotalWh,
+				},
+			},
+		},
+		"Head": map[string]any{
+			"RequestArguments": map[string]any{
+				"Scope":          r.URL.Query().Get("Scope"),
+				"DeviceId":       r.URL.Query().Get("DeviceId"),
+				"DataCollection": r.URL.Query().Get("DataCollection"),
+			},
+			"Status":    map[string]any{"Code": 0, "Reason": "", "UserMessage": ""},
+			"Timestamp": time.Now().In(s.gen.loc).Format(time.RFC3339),
+		},
+	})
 }
 
 // faultFor returns the applicable fault: the X-Sim-Fault header takes precedence over the flag.

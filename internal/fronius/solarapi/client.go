@@ -18,6 +18,17 @@ import (
 // PowerFlowPath is the path of the single endpoint used in phase 1.
 const PowerFlowPath = "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
 
+// InverterRealtimePath is the documented Solar API endpoint for per-device
+// realtime data. The application does NOT call it yet: cmd/fronius-probe probes
+// it, with CumulationQuery, to settle whether this firmware exposes the day and
+// year counters that both flow endpoints return as null (docs/UNKNOWNS.md #13).
+// It becomes a client call only if a capture proves it carries them.
+const InverterRealtimePath = "/solar_api/v1/GetInverterRealtimeData.fcgi"
+
+// CumulationQuery selects the accumulation collection: the day, year and total
+// energy counters of the single device of the installation.
+const CumulationQuery = "Scope=Device&DeviceId=1&DataCollection=CumulationInverterData"
+
 // maxBodyBytes bounds the read: the real response is a few kilobytes.
 const maxBodyBytes = 1 << 20 // 1 MiB
 

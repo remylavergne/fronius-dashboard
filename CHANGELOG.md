@@ -9,6 +9,29 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **Seventh probe endpoint: the documented Solar API accumulation
+  data.** `cmd/fronius-probe` carries a new allowlist entry,
+  `GET /solar_api/v1/GetInverterRealtimeData.fcgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData`
+  (class `READ`, `digest=false`), the **last candidate source** for the day and
+  year energies that **both** flow endpoints return as `null` on firmware
+  `1.19.7-1` (`docs/UNKNOWNS.md` #13), on the "Solar API first" route
+  (ADR 0003/0008) — the internal `/status/powerflow` fallback fills nothing on
+  this installation. The probe gains support for a **frozen query string** per
+  entry (`endpoint.query`, a constant of the binary): the probe still cannot
+  target an arbitrary URL and the query shows up in `--list`, while `--endpoint`
+  still selects by path, without the query. The schema constants
+  `solarapi.InverterRealtimePath` and `solarapi.CumulationQuery` name the path and
+  the query (module `internal/fronius/solarapi`). The shape the probe expects is
+  the **documented** Solar API v1 answer (`Body.Data.CumulationInverterData` with
+  `E_Day`, `E_Year`, `E_Total`); `cmd/fronius-sim` serves that endpoint too
+  (documented shape, values from its own curve), so a probe rehearsal against the
+  simulator answers **seven** paths with `200` (`296` bytes, query echoed in
+  `Head.RequestArguments`). It is **not captured on the device yet** — the
+  capture, run by the user, is the next step; the probe's file name for it would
+  be `solar_api_v1_getinverterrealtimedata.json`. The application's client does
+  **not** call the endpoint: it becomes a client call only if the capture proves
+  it carries the counters.
+
 - 2026-10-16 — **Device name and article number surfaced.** `/status/version`
   carries `devicename` (`"Primo GEN24 3.6 Plus"`) and `articleNumber`
   (`"4,210,141,002"`), both captured on hardware; the identity panel now shows

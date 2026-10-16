@@ -96,8 +96,8 @@ func TestMaskHeaderValue(t *testing.T) {
 }
 
 func TestWhitelistIsGetOnly(t *testing.T) {
-	if len(whitelist) != 6 {
-		t.Fatalf("allowlist = %d entries, want 6", len(whitelist))
+	if len(whitelist) != 7 {
+		t.Fatalf("allowlist = %d entries, want 7", len(whitelist))
 	}
 	seen := map[string]bool{}
 	for _, ep := range whitelist {
@@ -121,7 +121,7 @@ func TestWhitelistIsGetOnly(t *testing.T) {
 	// describes the official client, not this device: the capture of 2026-10-16
 	// shows that firmware 1.19.7-1 answers all of them without a challenge.)
 	for _, ep := range whitelist {
-		wantDigest := ep.path != "/solar_api/v1/GetPowerFlowRealtimeData.fcgi"
+		wantDigest := !strings.HasPrefix(ep.path, "/solar_api/")
 		if ep.digest != wantDigest {
 			t.Fatalf("%s: digest = %v, want %v", ep.path, ep.digest, wantDigest)
 		}
@@ -224,9 +224,9 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 		hitsPerPath[r.URL.Path]++
 		mu.Unlock()
 
-		// Only the internal paths require a Digest; the Solar API endpoint
-		// responds without a header (two distinct routes, see docs/SOURCES.md).
-		if r.Header.Get("Authorization") == "" && r.URL.Path != "/solar_api/v1/GetPowerFlowRealtimeData.fcgi" {
+		// Only the internal paths require a Digest; the Solar API endpoints
+		// respond without a header (two distinct routes, see docs/SOURCES.md).
+		if r.Header.Get("Authorization") == "" && !strings.HasPrefix(r.URL.Path, "/solar_api/") {
 			w.Header().Set("x-www-authenticate", `Digest realm="Webinterface area", nonce="sim-nonce-1", qop="auth"`)
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = io.WriteString(w, "Unauthorized")
@@ -286,8 +286,8 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 			unauthenticated++
 		}
 	}
-	if unauthenticated != 2 {
-		t.Fatalf("requests without header = %d, want 2 (solar api + first challenge)", unauthenticated)
+	if unauthenticated != 3 {
+		t.Fatalf("requests without header = %d, want 3 (both solar api paths + the first bare internal attempt)", unauthenticated)
 	}
 	for _, header := range seen {
 		if header != "" && !strings.HasPrefix(header, "Digest ") {
@@ -354,9 +354,14 @@ func TestListPrintsWhitelist(t *testing.T) {
 			t.Fatalf("--list output incomplete (%q missing):\n%s", want, out)
 		}
 	}
-	// A single Solar API endpoint, and the four internal paths.
-	if n := strings.Count(out, "/solar_api/"); n != 1 {
-		t.Fatalf("the allowlist must cite a single Solar API path (%d):\n%s", n, out)
+	// Two Solar API paths: the flow endpoint the application uses, and the
+	// accumulation endpoint the probe offers until a capture settles whether this
+	// firmware exposes the day and year counters (docs/UNKNOWNS.md #13).
+	if n := strings.Count(out, "/solar_api/"); n != 2 {
+		t.Fatalf("the allowlist must cite both Solar API paths (%d):\n%s", n, out)
+	}
+	if !strings.Contains(out, "DataCollection=CumulationInverterData") {
+		t.Fatalf("the accumulation entry must show its frozen query:\n%s", out)
 	}
 	for _, want := range []string{"/status/version", "/status/activeEvents", "/components/PowerMeter/readable",
 		"/components/BatteryManagementSystem/readable", "digest=true", "FRONIUS_DEVICE_USER", "--password-stdin"} {
