@@ -27,3 +27,8 @@ projet adhère au [versionnage sémantique](https://semver.org/lang/fr/).
   `device_status`, `readonly_violation` ; `errors.Is`/`errors.As` et `KindOf`.
   Garde lecture seule (`internal/fronius/readonly.go`) : `ReadOnly` refuse
   toute méthode autre que GET avant d'atteindre le transport.
+- 2026-10-16 — Client Solar API (`internal/fronius/solarapi`) : DTO explicites de
+  `GetPowerFlowRealtimeData.fcgi` (forme [HYPOTHÈSE], décodage tolérant), borne
+  de 1 MiB sur le corps, cartographie complète des erreurs (404, 401/403,
+  429/5xx, JSON invalide ou tronqué, `Body.Data` absent, `Head.Status.Code != 0`,
+  délai dépassé, serveur injoignable).

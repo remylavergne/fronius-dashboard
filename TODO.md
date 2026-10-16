@@ -50,7 +50,7 @@
 - [ ] Définir DTO bruts versionnés et normalisation en modèle domaine
 - [ ] Normaliser unités W/kW/Wh/kWh, timestamps UTC, qualité des données
 - [ ] Gérer valeurs absentes/nulles et champs optionnels
-- [ ] Gérer 404/401/5xx, JSON invalide, timeout et déconnexion
+- [x] Gérer 404/401/5xx, JSON invalide, timeout et déconnexion
 - [ ] Mettre en place polling configurable avec jitter raisonnable
 - [ ] Garantir qu’aucun retry automatique ne déclenche une écriture
 - [ ] Ajouter métriques collecteur et logs structurés expurgés
@@ -154,3 +154,10 @@
   de POST/PUT/PATCH/DELETE/HEAD, y compris requête nulle et transport nul). La garde sera
   instanciée dans `froniusd` et `fronius-probe` ; un appel non-GET n'atteint jamais le
   réseau.
+- 2026-10-16 — Étape 5 : `internal/fronius/solarapi` (`dto.go` = seul lieu où la forme
+  supposée du JSON est encodée, `client.go` = transport + cartographie d'erreurs). Vérifié
+  par `httptest` : 200 nominal, 404/401/403/429/500/503, corps vide, JSON tronqué, page HTML,
+  `Body`/`Data` absent, `P_PV` non numérique, `Head.Status.Code = 7`, délai dépassé,
+  serveur fermé, corps > 1 MiB, champs inconnus tolérés, préfixe de chemin conservé.
+  L'item « Documenter GetPowerFlowRealtimeData.fcgi » reste ouvert jusqu'à `docs/SOURCES.md`
+  (étape 6) puis la réconciliation par la sonde (étape 11).
