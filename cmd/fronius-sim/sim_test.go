@@ -394,3 +394,116 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("health = %+v", health)
 	}
 }
+
+// TestInverterRealtimeAnswersTheObservedShapes pins the per-collection answers to
+// what firmware 1.19.7-1 was observed to return (survey of 2026-10-16, promoted
+// fixture test/fixtures/solarapi/inverter_realtime_accumulation.json).
+//
+// It is a fidelity test, not a formatting one: a rehearsal that answers the
+// documented wrapper object (`Body.Data.CumulationInverterData`) or a bare
+// number where the device answers a Unit/Value pair would teach a shape the
+// device does not have — which is exactly what happened before the survey.
+func TestInverterRealtimeAnswersTheObservedShapes(t *testing.T) {
+	sim := testSim(t, baseOpts())
+	srv := httptest.NewServer(sim.Handler())
+	defer srv.Close()
+
+	type measurement struct {
+		Unit  string   `json:"Unit"`
+		Value *float64 `json:"Value"`
+	}
+	type envelope struct {
+		Body struct {
+			Data map[string]json.RawMessage `json:"Data"`
+		} `json:"Body"`
+	}
+
+	load := func(collection string) (int, map[string]json.RawMessage) {
+		t.Helper()
+		status, _, body := get(t, srv,
+			"/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection="+collection, nil)
+		var env envelope
+		if err := json.Unmarshal(body, &env); err != nil {
+			t.Fatalf("%s: decoding: %v\n%s", collection, err, body)
+		}
+		return status, env.Body.Data
+	}
+
+	t.Run("accumulation is flat with Unit/Value pairs", func(t *testing.T) {
+		status, data := load("CumulationInverterData")
+		if status != http.StatusOK {
+			t.Fatalf("status = %d", status)
+		}
+		if _, wrapped := data["CumulationInverterData"]; wrapped {
+			t.Error("the documented wrapper object is served: the captured answer is flat")
+		}
+		for _, key := range []string{"DAY_ENERGY", "YEAR_ENERGY", "TOTAL_ENERGY", "PAC"} {
+			raw, ok := data[key]
+			if !ok {
+				t.Errorf("%s is missing from the accumulation answer", key)
+				continue
+			}
+			var m measurement
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Errorf("%s is not a Unit/Value pair: %v", key, err)
+				continue
+			}
+			if m.Unit == "" {
+				t.Errorf("%s carries no unit", key)
+			}
+		}
+		var ds struct {
+			InverterState string `json:"InverterState"`
+			StatusCode    *int   `json:"StatusCode"`
+			ErrorCode     *int   `json:"ErrorCode"`
+		}
+		if err := json.Unmarshal(data["DeviceStatus"], &ds); err != nil {
+			t.Fatalf("DeviceStatus: %v", err)
+		}
+		if ds.InverterState == "" || ds.StatusCode == nil || ds.ErrorCode == nil {
+			t.Errorf("DeviceStatus is incomplete: %+v", ds)
+		}
+	})
+
+	t.Run("the common collection carries the observed measurements", func(t *testing.T) {
+		status, data := load("CommonInverterData")
+		if status != http.StatusOK {
+			t.Fatalf("status = %d", status)
+		}
+		// The thirteen measurement keys the survey observed on the device.
+		for _, key := range []string{"DAY_ENERGY", "IAC", "IDC", "IDC_2", "IDC_3", "PAC", "SAC",
+			"TOTAL_ENERGY", "UAC", "UDC", "UDC_2", "UDC_3", "YEAR_ENERGY"} {
+			if _, ok := data[key]; !ok {
+				t.Errorf("%s is missing from the common answer", key)
+			}
+		}
+		// An input that is not connected has no value: null, never a zero.
+		for _, key := range []string{"IDC_3", "UDC_3"} {
+			var m measurement
+			if err := json.Unmarshal(data[key], &m); err != nil {
+				t.Fatalf("%s: %v", key, err)
+			}
+			if m.Value != nil {
+				t.Errorf("%s carries a value (%v): a disconnected input has none", key, *m.Value)
+			}
+		}
+	})
+
+	t.Run("the three-phase collection answers nothing on a single-phase unit", func(t *testing.T) {
+		status, data := load("3PInverterData")
+		if status != http.StatusOK {
+			t.Fatalf("status = %d", status)
+		}
+		if len(data) != 0 {
+			t.Errorf("3PInverterData carries %d keys, want an empty answer: %v", len(data), data)
+		}
+	})
+
+	t.Run("an unmodelled collection is refused rather than invented", func(t *testing.T) {
+		status, _, _ := get(t, srv,
+			"/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=MadeUpData", nil)
+		if status != http.StatusNotFound {
+			t.Errorf("status = %d, want 404: a collection nobody observed must not be made up", status)
+		}
+	})
+}

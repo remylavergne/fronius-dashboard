@@ -99,7 +99,7 @@ endpoint. The table is kept as the record of what each capture had to settle:
 | `/components/PowerMeter/readable`              | #4 (meter presence)                  | `Body.Data` indexed by component identifier; `channels` (23 `SMARTMETER_*` signals); `attributes.addr` and `attributes["[ENABLE]"]`                                                                                             | presence, real signal names and units on `1.19.7-1`                                                      |
 | `/components/BatteryManagementSystem/readable` | #5 (battery and state of charge)     | `channels` (10 signals), including `BAT_VALUE_STATE_OF_CHARGE_RELATIVE_U16` in `%`                                                                                                                                              | presence, and whether the state of charge really exists on this firmware                                 |
 | `/status/powerflow`                            | #13 (null day/year energies)         | envelope `Default`; fields read `site.E_Day`/`E_Year`/`E_Total`, `site.P_PV`/`P_Grid`/`P_Load`/`P_Akku`, `inverters.<id>.SOC`/`BatMode`, `Smartloads.Ohmpilots.<id>.P_AC_Total` (l. 129034, 129043-129063) — **captured** 2026-10-16 (fixture `internalapi/status_powerflow.json`) | the real values and units of the day and year energies — **settled**: `site.E_Day`/`E_Year` are **null here too**, so this internal path does **not** return them where the Solar API nulls them; the fallback built on it was **removed** (#13) |
-| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the **documented** Solar API v1 shape, `Body.Data.CumulationInverterData` with `E_Day`, `E_Year`, `E_Total` — documented, **not extracted** (the bundle has no Solar API path, `docs/SOURCES.md`); the probe expects it as-is | whether this firmware exposes the day/year counters **at all** — **settled (captured 2026-10-16)**: `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so the counters are not reported by any local source; the same answer carries `DeviceStatus` (`InverterState`, `StatusCode`), a **candidate** metric, not implemented. (The first attempt used the `.fcgi` suffix and answered `404` with the webserver's XHTML page, which is what a wrong path looks like here.) |
+| `/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CumulationInverterData` | #13 (null day/year energies) | the shape the **capture** established: a **flat** `Body.Data` whose measurements are `{"Unit": …, "Value": …}` pairs (`DAY_ENERGY`, `YEAR_ENERGY`, `TOTAL_ENERGY`, `PAC`) with `DeviceStatus` beside them — the **documented** `Body.Data.CumulationInverterData` wrapper **does not exist** in the answer (fixture `solarapi/inverter_realtime_accumulation.json`) | whether this firmware exposes the day/year counters **at all** — **settled (captured 2026-10-16)**: `DAY_ENERGY`/`YEAR_ENERGY` are **null** while `TOTAL_ENERGY` is live, so the counters are not reported by any local source; the same answer carries `DeviceStatus` (`InverterState`, `StatusCode`), a **candidate** metric, not implemented. (The first attempt used the `.fcgi` suffix and answered `404` with the webserver's XHTML page, which is what a wrong path looks like here.) |
 
 Now that these five captures are taken (2026-10-16, firmware 1.19.7-1; promotion
 in § 9), the freeze is broader: a later run captured `/status/powerflow` (the
@@ -239,6 +239,12 @@ types only. With `--db <path>` — or the default `$FRONIUS_DB_PATH` — it reco
 one row per path in the application's database (table `source_probe`), which is
 where the "Data sources" page reads it; `--db ""` writes the report only
 (`docs/RUNBOOK.md`).
+
+**Result of the first survey of the reference installation** (2026-10-16,
+firmware `1.19.7-1`, no credentials): the 27 catalogued paths answered
+**`11 ok, 4 empty, 2 auth_required, 10 not_found`** — report
+`probe-survey/survey_20261016T191253Z.json`, rows in `data/fronius.db`. Outcome
+and closures in `docs/SOURCES.md` (§ Hardware captures) and `docs/UNKNOWNS.md`.
 
 ## 4. Device credentials
 

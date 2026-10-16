@@ -295,3 +295,118 @@ func TestFixturesContainNoSensitiveData(t *testing.T) {
 		t.Fatalf("no fixture found under %s", root)
 	}
 }
+
+// TestAccumulationFixtureKeepsTheCapturedShape pins the real answer of
+// GetInverterRealtimeData.cgi?DataCollection=CumulationInverterData, promoted
+// from the hardware capture of 2026-10-16.
+//
+// It guards three things a rehearsal against the simulator had got wrong before
+// the capture: the answer is FLAT (there is no `CumulationInverterData` wrapper,
+// contrary to the official documentation), a measurement is a Unit/Value pair
+// rather than a bare number, and the day and year counters come back null while
+// the total and PAC are live. The same answer carries DeviceStatus — the
+// observed source of the inverter state, which nothing reads yet.
+func TestAccumulationFixtureKeepsTheCapturedShape(t *testing.T) {
+	body := readFixture(t, "inverter_realtime_accumulation.json")
+
+	var doc struct {
+		Provenance struct {
+			Synthetic  bool   `json:"synthetic"`
+			Source     string `json:"source"`
+			Confidence string `json:"confidence"`
+			Firmware   string `json:"firmware"`
+			Query      string `json:"query"`
+		} `json:"_provenance"`
+		Body struct {
+			Data map[string]json.RawMessage `json:"Data"`
+		} `json:"Body"`
+		Head struct {
+			Timestamp        string `json:"Timestamp"`
+			RequestArguments struct {
+				DataCollection string `json:"DataCollection"`
+			} `json:"RequestArguments"`
+		} `json:"Head"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("decoding the fixture: %v", err)
+	}
+
+	// The promotion convention: a captured fixture states where it comes from.
+	if doc.Provenance.Synthetic {
+		t.Error("the fixture is declared synthetic")
+	}
+	if doc.Provenance.Source != "fronius-probe" {
+		t.Errorf("provenance.source = %q", doc.Provenance.Source)
+	}
+	if doc.Provenance.Firmware == "" {
+		t.Error("the fixture does not name the firmware it was captured on")
+	}
+	if !strings.Contains(doc.Provenance.Query, "DataCollection=CumulationInverterData") {
+		t.Errorf("provenance.query = %q, want the accumulation query", doc.Provenance.Query)
+	}
+	if doc.Head.RequestArguments.DataCollection != "CumulationInverterData" {
+		t.Errorf("the body answers %q, but the fixture claims another collection",
+			doc.Head.RequestArguments.DataCollection)
+	}
+
+	// The documented wrapper object does not exist in the answer.
+	if _, wrapped := doc.Body.Data["CumulationInverterData"]; wrapped {
+		t.Error("the fixture carries the documented wrapper: the captured answer is flat")
+	}
+
+	type measurement struct {
+		Unit  string   `json:"Unit"`
+		Value *float64 `json:"Value"`
+	}
+	values := map[string]*float64{}
+	for _, key := range []string{"DAY_ENERGY", "YEAR_ENERGY", "TOTAL_ENERGY", "PAC"} {
+		raw, ok := doc.Body.Data[key]
+		if !ok {
+			t.Errorf("%s is missing from the captured accumulation answer", key)
+			continue
+		}
+		var m measurement
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Errorf("%s is not a Unit/Value pair: %v", key, err)
+			continue
+		}
+		if m.Unit == "" {
+			t.Errorf("%s carries no unit", key)
+		}
+		values[key] = m.Value
+	}
+
+	// The two counters this whole endpoint was probed for: absent, on this
+	// firmware, while the total is live (docs/UNKNOWNS.md #13).
+	for _, key := range []string{"DAY_ENERGY", "YEAR_ENERGY"} {
+		if v, ok := values[key]; ok && v != nil {
+			t.Errorf("%s carries a value (%v): the derived energy is justified by its absence", key, *v)
+		}
+	}
+	if v, ok := values["TOTAL_ENERGY"]; ok && (v == nil || *v <= 0) {
+		t.Errorf("TOTAL_ENERGY = %v, want a live counter", v)
+	}
+	if v, ok := values["PAC"]; ok && v == nil {
+		t.Error("PAC is null: the accumulation answer carries it as a measurement")
+	}
+
+	// The inverter state, the second reason to look at this endpoint.
+	var status struct {
+		InverterState string `json:"InverterState"`
+		StatusCode    *int   `json:"StatusCode"`
+		ErrorCode     *int   `json:"ErrorCode"`
+	}
+	if err := json.Unmarshal(doc.Body.Data["DeviceStatus"], &status); err != nil {
+		t.Fatalf("DeviceStatus: %v", err)
+	}
+	if status.InverterState == "" {
+		t.Error("DeviceStatus.InverterState is empty: it is a string state, not a code")
+	}
+	if status.StatusCode == nil || status.ErrorCode == nil {
+		t.Errorf("DeviceStatus is incomplete: %+v", status)
+	}
+
+	if _, err := time.Parse(time.RFC3339, doc.Head.Timestamp); err != nil {
+		t.Errorf("Head.Timestamp = %q, not RFC 3339: %v", doc.Head.Timestamp, err)
+	}
+}

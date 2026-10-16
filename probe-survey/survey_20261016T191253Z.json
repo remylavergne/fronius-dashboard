@@ -1,0 +1,1430 @@
+{
+  "base_url": "http://192.0.2.10",
+  "started_at": "2026-10-16T19:12:53.223628Z",
+  "finished_at": "2026-10-16T19:13:20.567877Z",
+  "firmware": "1.19.7-1",
+  "counts": {
+    "auth_required": 2,
+    "empty": 4,
+    "not_found": 10,
+    "ok": 11
+  },
+  "entries": [
+    {
+      "path": "/solar_api/v1/GetPowerFlowRealtimeData.fcgi",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 1044,
+      "fields": [
+        {
+          "path": "Body.Data.Inverters.1.DT",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.Inverters.1.E_Day",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Inverters.1.E_Total",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.Inverters.1.E_Year",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Inverters.1.P",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.Site.BackupMode",
+          "type": "bool"
+        },
+        {
+          "path": "Body.Data.Site.BatteryStandby",
+          "type": "bool"
+        },
+        {
+          "path": "Body.Data.Site.E_Day",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Site.E_Total",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.Site.E_Year",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Site.Meter_Location",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.Site.Mode",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.Site.P_Akku",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Site.P_Grid",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Site.P_Load",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Site.P_PV",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.Site.rel_Autonomy",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Site.rel_SelfConsumption",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.Version",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.Code",
+          "type": "int"
+        },
+        {
+          "path": "Head.Status.Reason",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.UserMessage",
+          "type": "string"
+        },
+        {
+          "path": "Head.Timestamp",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/solar_api/v1/GetInverterRealtimeData.cgi",
+      "query": "Scope=Device\u0026DeviceId=1\u0026DataCollection=CumulationInverterData",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 883,
+      "fields": [
+        {
+          "path": "Body.Data.DAY_ENERGY.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.DAY_ENERGY.Value",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.DeviceStatus.ErrorCode",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.DeviceStatus.InverterState",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.DeviceStatus.StatusCode",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.PAC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.PAC.Value",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.TOTAL_ENERGY.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.TOTAL_ENERGY.Value",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.YEAR_ENERGY.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.YEAR_ENERGY.Value",
+          "type": "null"
+        },
+        {
+          "path": "Head.RequestArguments.DataCollection",
+          "type": "string"
+        },
+        {
+          "path": "Head.RequestArguments.DeviceId",
+          "type": "string"
+        },
+        {
+          "path": "Head.RequestArguments.Scope",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.Code",
+          "type": "int"
+        },
+        {
+          "path": "Head.Status.Reason",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.UserMessage",
+          "type": "string"
+        },
+        {
+          "path": "Head.Timestamp",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/solar_api/v1/GetInverterRealtimeData.cgi",
+      "query": "Scope=Device\u0026DeviceId=1\u0026DataCollection=CommonInverterData",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 1680,
+      "fields": [
+        {
+          "path": "Body.Data.DAY_ENERGY.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.DAY_ENERGY.Value",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.DeviceStatus.ErrorCode",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.DeviceStatus.InverterState",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.DeviceStatus.StatusCode",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.IAC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.IAC.Value",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.IDC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.IDC.Value",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.IDC_2.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.IDC_2.Value",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.IDC_3.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.IDC_3.Value",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.PAC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.PAC.Value",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.SAC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.SAC.Value",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.TOTAL_ENERGY.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.TOTAL_ENERGY.Value",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.UAC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.UAC.Value",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.UDC.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.UDC.Value",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.UDC_2.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.UDC_2.Value",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.UDC_3.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.UDC_3.Value",
+          "type": "null"
+        },
+        {
+          "path": "Body.Data.YEAR_ENERGY.Unit",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.YEAR_ENERGY.Value",
+          "type": "null"
+        },
+        {
+          "path": "Head.RequestArguments.DataCollection",
+          "type": "string"
+        },
+        {
+          "path": "Head.RequestArguments.DeviceId",
+          "type": "string"
+        },
+        {
+          "path": "Head.RequestArguments.Scope",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.Code",
+          "type": "int"
+        },
+        {
+          "path": "Head.Status.Reason",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.UserMessage",
+          "type": "string"
+        },
+        {
+          "path": "Head.Timestamp",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/solar_api/v1/GetInverterRealtimeData.cgi",
+      "query": "Scope=Device\u0026DeviceId=1\u0026DataCollection=3PInverterData",
+      "class": "empty",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 436
+    },
+    {
+      "path": "/solar_api/v1/GetInverterInfo.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetLoggerInfo.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetMeterRealtimeData.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetStorageRealtimeData.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetActiveDeviceInfo.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetDeviceInfo.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetStringRealtimeData.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetSensorRealtimeData.fcgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/v1/GetArchiveData.cgi",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/solar_api/GetAPIVersion",
+      "class": "not_found",
+      "http_status": 404,
+      "digest_required": false,
+      "bytes": 341
+    },
+    {
+      "path": "/status/version",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 935,
+      "fields": [
+        {
+          "path": "apiversions.commandsApi",
+          "type": "string"
+        },
+        {
+          "path": "apiversions.configApi",
+          "type": "string"
+        },
+        {
+          "path": "apiversions.setupAppApi",
+          "type": "string"
+        },
+        {
+          "path": "apiversions.statusApi",
+          "type": "string"
+        },
+        {
+          "path": "apiversions.updateApi",
+          "type": "string"
+        },
+        {
+          "path": "articleNumber",
+          "type": "string"
+        },
+        {
+          "path": "commonName",
+          "type": "string"
+        },
+        {
+          "path": "devicegroup",
+          "type": "string"
+        },
+        {
+          "path": "devicename",
+          "type": "string"
+        },
+        {
+          "path": "hardwareId",
+          "type": "string"
+        },
+        {
+          "path": "hwrevisions.1PN6K-33091005235190074",
+          "type": "string"
+        },
+        {
+          "path": "hwrevisions.PILOT-33071001014970150",
+          "type": "string"
+        },
+        {
+          "path": "hwrevisions.ROX-L-33071001097830033",
+          "type": "string"
+        },
+        {
+          "path": "minAppVersions.minAndroidVersion",
+          "type": "int"
+        },
+        {
+          "path": "minAppVersions.minIOSVersion",
+          "type": "int"
+        },
+        {
+          "path": "minAppVersions.minWinVersion",
+          "type": "int"
+        },
+        {
+          "path": "numberOfPhases",
+          "type": "int"
+        },
+        {
+          "path": "serialNumber",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.CoyoteControl",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.CoyoteCore",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.DEVICEGROUP",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.GEN24",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.GEN24PRIMO",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.GEN24ROW",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.Kronos",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.P6RW-pilot",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.Rhea",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.Zeus",
+          "type": "string"
+        },
+        {
+          "path": "swrevisions.imx6sx-pilot",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/status/activeEvents",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 443,
+      "fields": [
+        {
+          "path": "",
+          "type": "array",
+          "array_len": 2
+        },
+        {
+          "path": "[].category",
+          "type": "int"
+        },
+        {
+          "path": "[].confirmable",
+          "type": "bool"
+        },
+        {
+          "path": "[].eventID",
+          "type": "int"
+        },
+        {
+          "path": "[].label",
+          "type": "string"
+        },
+        {
+          "path": "[].prefix",
+          "type": "string"
+        },
+        {
+          "path": "[].severity",
+          "type": "int"
+        },
+        {
+          "path": "[].sourceID",
+          "type": "int"
+        },
+        {
+          "path": "[].subID",
+          "type": "int"
+        },
+        {
+          "path": "[].timestamp",
+          "type": "int"
+        },
+        {
+          "path": "[].type",
+          "type": "int"
+        },
+        {
+          "path": "[].uuid",
+          "type": "string"
+        },
+        {
+          "path": "[].viewer",
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "path": "/components/PowerMeter/readable",
+      "class": "empty",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 370
+    },
+    {
+      "path": "/components/BatteryManagementSystem/readable",
+      "class": "empty",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 383
+    },
+    {
+      "path": "/status/powerflow",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 372,
+      "fields": [
+        {
+          "path": "common.datestamp",
+          "type": "string"
+        },
+        {
+          "path": "common.timestamp",
+          "type": "string"
+        },
+        {
+          "path": "inverters",
+          "type": "array",
+          "array_len": 1
+        },
+        {
+          "path": "inverters[].CID",
+          "type": "int"
+        },
+        {
+          "path": "inverters[].DT",
+          "type": "int"
+        },
+        {
+          "path": "inverters[].E_Total",
+          "type": "float"
+        },
+        {
+          "path": "inverters[].ID",
+          "type": "int"
+        },
+        {
+          "path": "inverters[].P",
+          "type": "int"
+        },
+        {
+          "path": "site.BatteryStandby",
+          "type": "bool"
+        },
+        {
+          "path": "site.E_Day",
+          "type": "null"
+        },
+        {
+          "path": "site.E_Total",
+          "type": "float"
+        },
+        {
+          "path": "site.E_Year",
+          "type": "null"
+        },
+        {
+          "path": "site.MLoc",
+          "type": "int"
+        },
+        {
+          "path": "site.Mode",
+          "type": "string"
+        },
+        {
+          "path": "site.P_Akku",
+          "type": "null"
+        },
+        {
+          "path": "site.P_Grid",
+          "type": "null"
+        },
+        {
+          "path": "site.P_Load",
+          "type": "null"
+        },
+        {
+          "path": "site.P_PV",
+          "type": "int"
+        },
+        {
+          "path": "site.rel_Autonomy",
+          "type": "null"
+        },
+        {
+          "path": "site.rel_SelfConsumption",
+          "type": "null"
+        },
+        {
+          "path": "version",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/status/common",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 349,
+      "fields": [
+        {
+          "path": "networkState.connectedViaAP",
+          "type": "bool"
+        },
+        {
+          "path": "networkState.interfaces",
+          "type": "array",
+          "array_len": 4
+        },
+        {
+          "path": "networkState.interfaces[].name",
+          "type": "string"
+        },
+        {
+          "path": "networkState.interfaces[].type",
+          "type": "string"
+        },
+        {
+          "path": "passwordState.customer",
+          "type": "bool"
+        },
+        {
+          "path": "passwordState.technician",
+          "type": "bool"
+        },
+        {
+          "path": "serviceState",
+          "type": "string"
+        },
+        {
+          "path": "supportEnabled",
+          "type": "bool"
+        },
+        {
+          "path": "systemName",
+          "type": "string"
+        },
+        {
+          "path": "updateRunning",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "/status/devices",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 65,
+      "fields": [
+        {
+          "path": "",
+          "type": "array",
+          "array_len": 1
+        },
+        {
+          "path": "[].status",
+          "type": "int"
+        },
+        {
+          "path": "[].statusMessage",
+          "type": "string"
+        },
+        {
+          "path": "[].type",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/status/network",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 768,
+      "fields": [
+        {
+          "path": "eth0.ip.configured",
+          "type": "string"
+        },
+        {
+          "path": "eth0.ip.dns",
+          "type": "array"
+        },
+        {
+          "path": "eth0.ip.gateway",
+          "type": "string"
+        },
+        {
+          "path": "eth0.ip.ip",
+          "type": "string"
+        },
+        {
+          "path": "eth0.ip.mask",
+          "type": "string"
+        },
+        {
+          "path": "eth0.network.interface_mode",
+          "type": "string"
+        },
+        {
+          "path": "eth0.network.ssid",
+          "type": "string"
+        },
+        {
+          "path": "eth0.network.status",
+          "type": "string"
+        },
+        {
+          "path": "eth0.network.wps_state",
+          "type": "string"
+        },
+        {
+          "path": "eth1.ip.configured",
+          "type": "string"
+        },
+        {
+          "path": "eth1.ip.dns",
+          "type": "array"
+        },
+        {
+          "path": "eth1.ip.gateway",
+          "type": "string"
+        },
+        {
+          "path": "eth1.ip.ip",
+          "type": "string"
+        },
+        {
+          "path": "eth1.ip.mask",
+          "type": "string"
+        },
+        {
+          "path": "eth1.network.interface_mode",
+          "type": "string"
+        },
+        {
+          "path": "eth1.network.ssid",
+          "type": "string"
+        },
+        {
+          "path": "eth1.network.status",
+          "type": "string"
+        },
+        {
+          "path": "eth1.network.wps_state",
+          "type": "string"
+        },
+        {
+          "path": "isFDMPConnected",
+          "type": "bool"
+        },
+        {
+          "path": "uap0.ip.configured",
+          "type": "string"
+        },
+        {
+          "path": "uap0.ip.dns",
+          "type": "array"
+        },
+        {
+          "path": "uap0.ip.gateway",
+          "type": "string"
+        },
+        {
+          "path": "uap0.ip.ip",
+          "type": "string"
+        },
+        {
+          "path": "uap0.ip.mask",
+          "type": "string"
+        },
+        {
+          "path": "uap0.network.interface_mode",
+          "type": "string"
+        },
+        {
+          "path": "uap0.network.ssid",
+          "type": "string"
+        },
+        {
+          "path": "uap0.network.status",
+          "type": "string"
+        },
+        {
+          "path": "uap0.network.wps_state",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.ip.configured",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.ip.dns",
+          "type": "array",
+          "array_len": 1
+        },
+        {
+          "path": "wlan0.ip.dns[]",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.ip.gateway",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.ip.ip",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.ip.mask",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.network.interface_mode",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.network.ssid",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.network.status",
+          "type": "string"
+        },
+        {
+          "path": "wlan0.network.wps_state",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/status/emrs",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 214,
+      "fields": [
+        {
+          "path": "pin1.reason",
+          "type": "string"
+        },
+        {
+          "path": "pin1.state",
+          "type": "bool"
+        },
+        {
+          "path": "pin2.reason",
+          "type": "string"
+        },
+        {
+          "path": "pin2.state",
+          "type": "bool"
+        },
+        {
+          "path": "pin3.reason",
+          "type": "string"
+        },
+        {
+          "path": "pin3.state",
+          "type": "bool"
+        },
+        {
+          "path": "pin4.reason",
+          "type": "string"
+        },
+        {
+          "path": "pin4.state",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "path": "/components/cache/readable",
+      "class": "ok",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 4897,
+      "fields": [
+        {
+          "path": "Body.Data.393216.attributes.[ENABLE]",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.[VISIBLE]",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.createTS",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.inverter.devicetree",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.inverter.devicetype",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.inverter.nodetype",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.inverter.pmc.0",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.inverter.pmc.1",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.inverter.pmc.2",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.attributes.note",
+          "type": "string"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1090584584\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1107361800\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1124139016\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1140916232\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1157693448\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1174470664\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1208025096\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1224802312\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1241579528\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1258356744\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1275133960\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1291911176\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1308688392\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1325465608\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1342242824\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1359020040\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1375797256\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1392574472\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c1409351876\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2197881028\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2214658244\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2231435460\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2231566532\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2315517954\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2349006852\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2365784260\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2382561476\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2399338692\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2500001988\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2516779204\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2533556420\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2550333636\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2567110852\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c2667643076\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c604242116\u003e",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c939589828\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.\u003c973144260\u003e",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_CURRENT_ACTIVE_MEAN_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_ENERGYACTIVE_ACTIVECONSUMED_SUM_01_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_ENERGYACTIVE_ACTIVECONSUMED_SUM_02_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_ENERGYACTIVE_ACTIVECONSUMED_SUM_03_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_01_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_02_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_ENERGYACTIVE_PRODUCED_SUM_03_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_POWERACTIVE_MEAN_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_POWERACTIVE_SUM_MEAN_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_POWERAPPARENT_MEAN_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_POWERAPPARENT_SUM_MEAN_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_POWERREACTIVE_MEAN_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_POWERREACTIVE_SUM_MEAN_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ACBRIDGE_TIME_BACKUPMODE_UPTIME_SUM_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.BAT_ENERGYACTIVE_ACTIVECHARGE_SUM_01_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.BAT_ENERGYACTIVE_ACTIVEDISCHARGE_SUM_01_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.BAT_MODE_ENFORCED_U16",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.BAT_VOLTAGE_OUTER_MEAN_01_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.COMPONENTS_MODE_ENABLE_U16",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.COMPONENTS_MODE_VISIBLE_U16",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.COMPONENTS_TIME_STAMP_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.DCLINK_VOLTAGE_MEAN_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.DEVICE_MODE_OPERATING_REFERRAL_U16",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.DEVICE_TEMPERATURE_AMBIENTEMEAN_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.DEVICE_TIME_UPTIME_SUM_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.DEVICE_VOLTAGE_SELV_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.FANCONTROL_PERCENT_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.FANCONTROL_PERCENT_02_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.FEEDINPOINT_FREQUENCY_MEAN_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.FEEDINPOINT_VOLTAGE_MEAN_01_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.INVERTER_VALUE_SYNCHRONISATION_BITMAP_U16",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.ISO_RESISTANCE_MEAN_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.LEGACY_MODE_BACKUP_OPERATION_SYNC_DM_SYSTEMS_U16",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.MODULE_TEMPERATURE_MEAN_01_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.MODULE_TEMPERATURE_MEAN_03_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.MODULE_TEMPERATURE_MEAN_04_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_CURRENT_MEAN_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_CURRENT_MEAN_02_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_ENERGYACTIVE_ACTIVE_SUM_01_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_ENERGYACTIVE_ACTIVE_SUM_02_U64",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_POWERACTIVE_MEAN_01_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_POWERACTIVE_MEAN_02_F32",
+          "type": "int"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_VOLTAGE_MEAN_01_F32",
+          "type": "float"
+        },
+        {
+          "path": "Body.Data.393216.channels.PV_VOLTAGE_MEAN_02_F32",
+          "type": "float"
+        },
+        {
+          "path": "Head.Note",
+          "type": "string"
+        },
+        {
+          "path": "Head.RequestArguments.method",
+          "type": "string"
+        },
+        {
+          "path": "Head.RequestArguments.resource",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.Code",
+          "type": "int"
+        },
+        {
+          "path": "Head.Status.ErrorDetail.Nodes",
+          "type": "array"
+        },
+        {
+          "path": "Head.Status.Reason",
+          "type": "string"
+        },
+        {
+          "path": "Head.Status.UserMessage",
+          "type": "string"
+        },
+        {
+          "path": "Head.Timestamp",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "path": "/components/Ohmpilot/readable",
+      "class": "empty",
+      "http_status": 200,
+      "digest_required": false,
+      "bytes": 368
+    },
+    {
+      "path": "/commands/GetUTCTime",
+      "class": "auth_required",
+      "http_status": 401,
+      "digest_required": true,
+      "bytes": 347
+    },
+    {
+      "path": "/commands/GetServiceState",
+      "query": "serviceId=\u003cid\u003e",
+      "class": "auth_required",
+      "http_status": 401,
+      "digest_required": true,
+      "bytes": 347
+    }
+  ]
+}

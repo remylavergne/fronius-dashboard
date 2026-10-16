@@ -275,15 +275,35 @@ func (s *simulator) handlePowerFlow(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// handleInverterRealtime serves the Solar API accumulation endpoint.
+// handleInverterRealtime serves the Solar API realtime-data endpoint, one answer
+// per DataCollection.
 //
-// Shape: the **captured** answer of firmware 1.19.7-1 (2026-10-16, 883 bytes),
-// not the documented guess: `Body.Data.CumulationInverterData` carries
-// `DAY_ENERGY`, `YEAR_ENERGY` and `TOTAL_ENERGY` — NOT the `E_Day`/`E_Year`
-// keys of the flow endpoint — and the same Body carries `DeviceStatus`
-// (`InverterState`, `StatusCode`, `ErrorCode`), the documented source of the
-// inverter state. A rehearsal that answered the guess would teach a shape the
-// device does not have (docs/UNKNOWNS.md #13).
+// The shapes are the ones observed on firmware 1.19.7-1 on 2026-10-16, not the
+// documented guess. What the capture and the survey established:
+//
+//   - the answer is **FLAT**: the measurements sit directly under `Body.Data`,
+//     there is no `CumulationInverterData` (nor `CommonInverterData`) object,
+//     contrary to the documentation;
+//   - a measurement is a `{"Unit": ..., "Value": ...}` pair, not a bare number —
+//     so "the type of PAC" is an object, not a float (docs/SOURCES.md);
+//   - `Day_ENERGY` and `YEAR_ENERGY` come back `null` on this firmware, and the
+//     accumulation also carries `PAC`;
+//   - `DeviceStatus` (`InverterState`, `StatusCode`, `ErrorCode`) travels beside
+//     the measurements: it is the observed source of the inverter state;
+//   - `3PInverterData` answers an **empty** `Body.Data` (the Primo is
+//     single-phase), and `CommonInverterData` carries thirteen measurements
+//     (`DAY_ENERGY`, `IAC`, `IDC`, `IDC_2`, `IDC_3`, `PAC`, `SAC`,
+//     `TOTAL_ENERGY`, `UAC`, `UDC`, `UDC_2`, `UDC_3`, `YEAR_ENERGY`) — with
+//     `IDC_3`/`UDC_3` null, as observed.
+//
+// The values remain the simulator's own (its contract is "values from its own
+// curve"); only the shape is the device's. A rehearsal against this handler now
+// describes what the device describes.
+//
+// `cmd/fronius-sim` is not a substitute for the device: the day and year
+// counters are answered here as numbers whereas the reference installation
+// answers them null (its flow endpoint does the same, a synthetic choice kept
+// for development).
 func (s *simulator) handleInverterRealtime(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		methodNotAllowed(w, http.MethodGet)
@@ -296,23 +316,64 @@ func (s *simulator) handleInverterRealtime(w http.ResponseWriter, r *http.Reques
 	}
 
 	snap := s.gen.snapshotAt(time.Now())
+	collection := r.URL.Query().Get("DataCollection")
+
+	data := map[string]any{}
+	switch collection {
+	case "CumulationInverterData":
+		data["DAY_ENERGY"] = measurement("Wh", snap.EDayWh)
+		data["YEAR_ENERGY"] = measurement("Wh", snap.EYearWh)
+		data["TOTAL_ENERGY"] = measurement("Wh", snap.ETotalWh)
+		// PAC is part of the accumulation answer, as captured.
+		data["PAC"] = measurement("W", snap.PowerW)
+	case "CommonInverterData":
+		// The thirteen measurements the survey observed, in the Unit/Value form.
+		data["DAY_ENERGY"] = measurement("Wh", snap.EDayWh)
+		data["YEAR_ENERGY"] = measurement("Wh", snap.EYearWh)
+		data["TOTAL_ENERGY"] = measurement("Wh", snap.ETotalWh)
+		data["PAC"] = measurement("W", snap.PowerW)
+		data["SAC"] = measurement("VA", snap.PowerW)
+		// A DC input at 400 V and an AC output at 230 V: the simulator's own
+		// electrical model, consistent with the power it reports.
+		data["UDC"] = measurement("V", 400.0)
+		data["IDC"] = measurement("A", round1(snap.PowerW/400.0))
+		data["UDC_2"] = measurement("V", 400.0)
+		data["IDC_2"] = measurement("A", 0.0)
+		// The third DC input and the third string are not connected on the
+		// reference installation: the survey observed null, and null is what the
+		// simulator answers — never a zero.
+		data["UDC_3"] = measurement("V", nil)
+		data["IDC_3"] = measurement("A", nil)
+		data["UAC"] = measurement("V", 231.4)
+		data["IAC"] = measurement("A", round1(snap.PowerW/231.4))
+	case "3PInverterData":
+		// Empty Body.Data: the single-phase Primo answers an empty object, which
+		// the probe records as `empty` and the application would read as "no
+		// measurement for this component".
+	default:
+		// The simulator does not model this collection. Answering a made-up
+		// shape would be worse than answering nothing: a rehearsal must not
+		// teach a shape nothing observed.
+		http.NotFound(w, r)
+		return
+	}
+
+	// The inverter state travels beside the measurements, as captured — but only
+	// where there are measurements: the empty answer of the three-phase
+	// collection carries nothing at all, not even a state (observed: the probe
+	// classifies it `empty`, which is not "an answer with no fields").
+	if len(data) > 0 {
+		// The simulator is producing, so it reports a running state; the
+		// reference device answered "Sleeping" with status code 13.
+		data["DeviceStatus"] = map[string]any{
+			"InverterState": "Running",
+			"StatusCode":    7,
+			"ErrorCode":     0,
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"Body": map[string]any{
-			"Data": map[string]any{
-				"CumulationInverterData": map[string]any{
-					"DAY_ENERGY":   snap.EDayWh,
-					"YEAR_ENERGY":  snap.EYearWh,
-					"TOTAL_ENERGY": snap.ETotalWh,
-				},
-				// The inverter state travels beside the energies, as captured.
-				// The simulator is producing, so it reports a running state; the
-				// reference device answered "Sleeping" with status code 13.
-				"DeviceStatus": map[string]any{
-					"InverterState": "Running",
-					"StatusCode":    7,
-					"ErrorCode":     0,
-				},
-			},
+			"Data": data,
 		},
 		"Head": map[string]any{
 			"RequestArguments": map[string]any{

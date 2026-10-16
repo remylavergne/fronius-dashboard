@@ -168,6 +168,14 @@ func (g *generator) snapshotAt(t time.Time) snapshot {
 
 func round1(v float64) float64 { return math.Round(v*10) / 10 }
 
+// measurement builds a Solar API measurement: a Unit/Value pair, the form every
+// measurement of that API takes. A nil value is serialised as null, never as a
+// zero: an unconnected input has no value, and the model invariant is the same
+// everywhere.
+func measurement(unit string, value any) map[string]any {
+	return map[string]any{"Unit": unit, "Value": value}
+}
+
 // ---------------------------------------------------------------------------
 // Assumed JSON shape of GetPowerFlowRealtimeData.fcgi
 // ---------------------------------------------------------------------------

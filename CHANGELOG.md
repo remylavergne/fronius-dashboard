@@ -297,6 +297,27 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Changed
 
+- 2026-10-16 — **The daily chart cannot come from the device: the first real
+  survey settles it.** `cmd/fronius-probe --survey` was run on
+  `http://192.0.2.10`, firmware `1.19.7-1`, with no credentials (27
+  catalogued paths, one `GET` each); it answered **11 `ok`, 4 `empty`,
+  2 `auth_required`, 10 `not_found`** (report
+  `probe-survey/survey_20261016T191253Z.json`, rows in `data/fronius.db`). Two
+  established assumptions change. `GetArchiveData.cgi` is a **`404`** on this
+  firmware, so the daily chart (`/api/v1/energy/daily`) **cannot** be filled
+  from device-side history — the aggregate/derived route is the only one
+  (`docs/UNKNOWNS.md` #13); the endpoint leaves the candidate table as an open
+  source for the chart. `GetInverterInfo.fcgi` and `GetLoggerInfo.fcgi` are also
+  `404`, closing the "identity from the Solar API" route: the identity stays on
+  the Digest-protected internal `/status/version` (`docs/UNKNOWNS.md` #3).
+  Conversely, `CommonInverterData` and `CumulationInverterData` are **served**,
+  so the electrical detail and the inverter `DeviceStatus`
+  (`InverterState`/`StatusCode`/`ErrorCode`) exist on this device — candidates
+  for the dashboard's missing state and detail, not wired. `/solar_api/GetAPIVersion`
+  is `404` and stays an **open candidate**, no reason asserted. Recorded in
+  `docs/SOURCES.md` (§ Hardware captures and the candidate table),
+  `docs/UNKNOWNS.md`, `docs/PROBE-READONLY.md` and `TODO.md` (step 21).
+
 - 2026-10-16 — **Route guard audited: it is a navigation condition, not a role
   gate.** The 37 guarded routes of the AppModule array (`canActivate: [oi.a]`,
   `const Yb` l. 155510-155701; the lazy `ji.a.solarWeb` route carries none) are
@@ -413,16 +434,27 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
-- 2026-10-16 — **The simulator answered a shape the device does not have**
-  (`cmd/fronius-sim`). Its `Body.Data.CumulationInverterData` carried the
-  documented guess (`E_Day`, `E_Year`, `E_Total`); the capture of firmware
-  `1.19.7-1` proves the device answers `DAY_ENERGY`, `YEAR_ENERGY`,
-  `TOTAL_ENERGY` **and** a `DeviceStatus` object there (`InverterState`,
-  `StatusCode`, `ErrorCode` — the documented source of the inverter state that
-  the flow endpoints do not carry; `docs/UNKNOWNS.md` #13). A probe rehearsal
-  against the simulator would have taught those wrong keys. It now mirrors the
-  capture, and the survey mode — which found the divergence on its first run — is
-  what makes such a drift visible instead of silent.
+- 2026-10-16 — **The realtime-data answer is flat, and the simulator was not.**
+  The capture of `GetInverterRealtimeData.cgi?…DataCollection=CumulationInverterData`
+  (firmware `1.19.7-1`, 883 bytes, promoted as
+  `test/fixtures/solarapi/inverter_realtime_accumulation.json`) proves the answer
+  carries **no** `CumulationInverterData` wrapper — contrary to the official
+  documentation — and that every measurement is a `{"Unit": …, "Value": …}` pair,
+  not a bare number: `DAY_ENERGY`, `YEAR_ENERGY`, `TOTAL_ENERGY`, `PAC` sit
+  directly under `Body.Data`, with `DeviceStatus` (`InverterState` `"Sleeping"`,
+  `StatusCode` 13, `ErrorCode` 1175) beside them. The survey of the same day
+  observed the same for `CommonInverterData` — thirteen measurements
+  (`IAC`, `IDC`, `IDC_2`, `IDC_3`, `PAC`, `SAC`, `UAC`, `UDC`, `UDC_2`, `UDC_3`,
+  the two energy counters and `DAY_ENERGY`/`YEAR_ENERGY` null) — and an **empty**
+  `Body.Data` for the three-phase collection, the Primo being single-phase.
+  Corrected: `cmd/fronius-sim` now answers **per collection** in the observed
+  shape (it used to answer one body for all three, with the guessed keys), the
+  catalogue's field paths and types for the three collections follow the
+  observations instead of the documentation, and
+  `internal/fronius/solarapi`'s contract test pins the promoted fixture so the
+  flat shape, the null counters and `DeviceStatus` cannot drift again. Found by
+  the survey mode on its first device run: a rehearsal would otherwise have
+  taught keys and a nesting the device does not have.
 
 - 2026-10-16 — **Wrong endpoint suffix for the accumulation capture**
   (`internal/fronius/solarapi`). The documented Solar API v1 realtime-data family is

@@ -510,3 +510,34 @@
   catalogued path and record its outcome" (phase 4). No deviation from the plan;
   the survey is a manual diagnostic — it is never started by the service or by
   CI, and it adds nothing to the application's own executable allowlist.
+
+- 2026-10-16 — Step 21 (phase 4): the first real survey of the reference
+  installation. Run by the user against `http://192.0.2.10`, firmware
+  `1.19.7-1`, with **no credentials**:
+  `./bin/fronius-probe --survey --base-url http://192.0.2.10
+  --allow-non-loopback --db data/fronius.db --save ./probe-survey` — 27
+  catalogued paths, one `GET` each, 1 s apart. Outcome: **11 `ok`, 4 `empty`,
+  2 `auth_required`, 10 `not_found`**; report
+  `probe-survey/survey_20261016T191253Z.json` (in the working tree, untracked),
+  rows in `data/fronius.db` (table `source_probe`). What answered: the
+  `GetPowerFlowRealtimeData` and the `CommonInverterData`/`CumulationInverterData`
+  collections, and the internal `/status/version`, `/status/activeEvents`,
+  `/status/powerflow`, `/status/common`, `/status/devices`, `/status/network`,
+  `/status/emrs`, `/components/cache/readable`. What did not: `3PInverterData`
+  (empty, as the single-phase Primo predicted), the meter/battery/Ohmpilot
+  readables (empty — consistent with the hardware), `/commands/GetUTCTime` and
+  `/commands/GetServiceState` (`401` without credentials), and ten Solar API
+  paths as `404`. **Settled:** `GetArchiveData.cgi` is `404` ⇒ the daily chart
+  cannot be filled from device-side history (the aggregate/derived route is the
+  only one, `docs/UNKNOWNS.md` #13); `GetInverterInfo.fcgi`/`GetLoggerInfo.fcgi`
+  are `404` ⇒ the identity stays on the Digest-protected internal API, the
+  "identity from the Solar API" idea is closed (#3); `CommonInverterData` and
+  `CumulationInverterData` are served, so the electrical detail and the inverter
+  `DeviceStatus` are available on this device (candidates, not wired);
+  `/solar_api/GetAPIVersion` is `404` and stays an **open candidate** with no
+  reason asserted. Documentation: `docs/SOURCES.md` (the run under Hardware
+  captures and the candidate-table statuses), `docs/UNKNOWNS.md` (#3, #13, and
+  the survey as per-firmware evidence), `docs/PROBE-READONLY.md` (§ 3 result
+  line), `CHANGELOG.md` (the chart cannot come from the device). **No box is
+  ticked by this step** — the survey tool itself was delivered and checked at
+  step 20 — and none the run closes is re-opened.

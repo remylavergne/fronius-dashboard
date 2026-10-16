@@ -1,0 +1,51 @@
+{
+  "Body": {
+    "Data": {
+      "DAY_ENERGY": {
+        "Unit": "Wh",
+        "Value": null
+      },
+      "DeviceStatus": {
+        "ErrorCode": 1175,
+        "InverterState": "Sleeping",
+        "StatusCode": 13
+      },
+      "PAC": {
+        "Unit": "W",
+        "Value": 0.0
+      },
+      "TOTAL_ENERGY": {
+        "Unit": "Wh",
+        "Value": 15089627.579722222
+      },
+      "YEAR_ENERGY": {
+        "Unit": "Wh",
+        "Value": null
+      }
+    }
+  },
+  "Head": {
+    "RequestArguments": {
+      "DataCollection": "CumulationInverterData",
+      "DeviceId": "1",
+      "Scope": "Device"
+    },
+    "Status": {
+      "Code": 0,
+      "Reason": "",
+      "UserMessage": ""
+    },
+    "Timestamp": "2026-10-16T19:17:40+00:00"
+  },
+  "_provenance": {
+    "synthetic": false,
+    "source": "fronius-probe",
+    "confidence": "VERIFIED (hardware)",
+    "firmware": "1.19.7-1",
+    "captured_at": "2026-10-16T19:17:40Z",
+    "http_status": 200,
+    "digest_required": false,
+    "query": "Scope=Device&DeviceId=1&DataCollection=CumulationInverterData",
+    "note": "Reference installation. The answer is FLAT: the energies sit directly under Body.Data and each measurement is a Unit/Value pair — there is no CumulationInverterData object, contrary to the documented shape. DAY_ENERGY and YEAR_ENERGY are null on this firmware; TOTAL_ENERGY and PAC are live. DeviceStatus (InverterState Sleeping, StatusCode 13, ErrorCode 1175) is the documented source of the inverter state the flow endpoints do not carry. The application does not call this path: it is reachable through cmd/fronius-probe only."
+  }
+}
