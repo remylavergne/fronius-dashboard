@@ -393,12 +393,15 @@ order of magnitude below.
 
 ## Hourly aggregates
 
-Reads at hourly or daily steps (`/api/v1/timeseries` with `step=1h|1d`,
-`/api/v1/energy/daily`) do not scan the measurements: they read `agg_hour`, fed
-by `internal/maintenance`, which aggregates **closed** hours every 5 minutes and
-catches up at startup with what was written since the last pass. The current
-hour is still read from the raw measurements: an hour still being filled is
-never materialised, otherwise a read would believe it complete.
+Reads at hourly or daily steps (`/api/v1/timeseries` with `step=1h|1d`) do not
+scan the measurements: they read `agg_hour`, fed by `internal/maintenance`, which
+aggregates **closed** hours every 5 minutes and catches up at startup with what
+was written since the last pass. The current hour is still read from the raw
+measurements: an hour still being filled is never materialised, otherwise a read
+would believe it complete. The **daily energy** (`/api/v1/energy/daily`) reads
+`agg_hour` for the device counter, but its derived value takes **two point reads
+of the raw measurements per day** (the day's baseline and its end reading,
+`Store.TotalEnergyAt`) — not a scan.
 
 Diagnosis:
 
@@ -418,14 +421,15 @@ to the raw measurements, more slowly. So it is never a failure, only a catch-up
 to wait for (or to trigger by restarting). `make test-perf` measures the gain on
 one year of data (ADR 0006).
 
-## Day and year energies (derived)
+## Day, year and daily energies (derived)
 
-The reference firmware publishes **no** day and no year counter on any local
+The reference firmware publishes **no** day, year or daily counter on any local
 endpoint — and the specification **documents it** (`42,0410,2012,EN 02115052025`,
 §4.1.5: on GEN24/Tauro/Verto `DAY_ENERGY` and `YEAR_ENERGY` "will always report
 null"; `docs/UNKNOWNS.md` #13). The measured fields `energy_day_wh` /
-`energy_year_wh` stay `null`. To fill the two KPIs, `/api/v1/live` carries an
-`energy_derived` object **computed from our own stored total**:
+`energy_year_wh` stay `null`, and so does the daily counter `energy_wh`
+(`E_Day`). To fill the two KPIs, `/api/v1/live` carries an `energy_derived`
+object **computed from our own stored total**:
 
 - `day_wh` / `year_wh` — the difference between the current sample's total energy
   and the most recent stored sample **at or before the local boundary** (midnight
@@ -454,10 +458,62 @@ Reading a `*_reason` (empty means the value is present):
 | `the current sample carries no total energy` | this cycle did not read `E_Total` | check the last collection cycle |
 | `the baseline could not be read` | database read error | check `/api/v1/health` (`db.ok`) |
 
-The **daily chart** (`/api/v1/energy/daily`) is **not** derived and stays empty on
-this firmware: it reads the hourly aggregate `max_energy_day_wh`, which the device
-does not feed. That is a separate, open decision — not a fault of the derived
-KPIs.
+**The daily energy follows the same rule.** `/api/v1/energy/daily` carries, per
+local day, the device counter `energy_wh` (null here) and a `derived_wh` measured
+from the **same stored total** with the same refusals and the same **10-minute**
+tolerance as the day KPI — a baseline within 10 minutes of the local midnight, an
+end reading within 10 minutes of the day's end, no counter that went backwards —
+with `derived_reason` carrying the cause when it could not be established and
+`partial` marking the day in progress. Because the device reports no `E_Day` here,
+the derived value is the **only source of a daily energy on this installation**,
+so the daily chart is no longer empty.
+
+## The Events and Energy pages
+
+Two pages render registers the API already published: the **Events** journal
+(`/events`, `GET /api/v1/events`) and the **Energy** page (`/energy`,
+`GET /api/v1/energy/daily`).
+
+**Events.** The journal holds what the collector and the inverter report: the
+collector's own failures and recoveries (`collector_error` / `collector_recovered`
+/ `collector_started`), its retention purges (`retention_purge`), and the events
+the device itself raises (`device_event`). One row per event — time ·
+severity badge · kind · message — with the raw payload of each event in a
+collapsed disclosure. The **range preset** (24 h / 7 days / 30 days / all) and the
+**limit** (`50 / 100 / 250 / 500`; the API accepts `1..500` and answers `100` by
+default) go to the endpoint; the **severity** and **kind** filters are applied by
+the **page**, not by the server: `/api/v1/events` has no severity and no kind
+parameter, so they narrow the fetched page — which is why the page states
+`visible / fetched` and why raising the limit is how a filter is given more to
+work on. An empty range and a filter that matches nothing are two distinct empty
+states. The run used for verification produced two events — `collector_started`
+(info) and `device_event` (warning) — and both render with their detail.
+
+**Energy.** One row per local day of the window: the value, the **source** of the
+value (`device counter` when the device reports `E_Day`, `derived from total` when
+it is measured from our stored total) and, when neither exists, **the day's cause**
+(`derived_reason`). The page asks for the **current year** — the bar chart draws
+one bar per day with a missing day kept as a **gap** (no bar, never interpolated,
+never a `0`) — and the three rollups (this week, this month, this year) read that
+whole window, so they mean something. The table shows the last 30 days by default,
+with a selector for the rest.
+
+**A rollup is a floor.** A period's sum is taken over the days that **could be
+measured**: each rollup states how many days **contributed** and how many were
+**excluded**, and the total is a **lower bound** because the day in progress is
+included and its value grows until midnight. Verified running against the
+simulator with `froniusd --backfill-days 3`: 289 days fetched for the year, the
+table showing the last 30 (`30 / 289 day(s) of the window fetched`), rows reading
+`2026-10-14 · 24.60 kWh · device counter`, the day in progress labelled, and a
+rollup reading `4 days contributed · 12 days excluded · lower bound`.
+
+**Why a day shows a dash.** A day carries no value when the device reports no
+`E_Day` (always, on this firmware) **and** the derived value could not be
+established; the dash then carries the backend's `derived_reason` (no sample with
+a total at or before the day's start, a baseline more than 10 minutes from the
+boundary, a counter that went backwards). The reason is printed **only beside a
+dash** — beside a value it would read as a defect. A valueless day reads, for
+instance, `no sample carries a total at or before the day's start`.
 
 ## Logging
 

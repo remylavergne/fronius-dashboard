@@ -9,6 +9,51 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-16 — **The Events page, the Energy page and the derived daily
+  energy.** Two read surfaces that were served but consumed by nothing — the
+  audit that lists the hooks found `/api/v1/events` with **no hook at all** and
+  `useEnergyDaily` used in **zero files** — now have a page each, and the daily
+  energy finally has a source. **`/events`** (`useEvents`) is the journal of the
+  collector and of the inverter: failures, recoveries, retention purges and the
+  device's own events, one row per event (time · severity badge · kind · message)
+  with the raw payload of each event in a collapsed disclosure. Its range preset
+  (24 h / 7 days / 30 days / all) and its limit selector (the API accepts
+  `1..500`, `100` by default) go to the endpoint; the **severity and kind filters
+  are client-side**, because the endpoint has neither parameter — so the page
+  says how many of the fetched events it shows, and its filter options carry the
+  labels the table shows (the raw word stays the option's value). **`/energy`**
+  (`useEnergyDaily`, now used) states one row per local day with the value, a
+  marker saying whether it is the **device counter** or a value **derived from
+  total**, and the day's reason when there is neither; a bar chart of the daily
+  energies materialises a missing day as a **gap** (never interpolated, never a
+  zero), and
+  three rollups (this week, this month, this year) sum the days that **could be
+  measured**, each stating how many **contributed** and how many were
+  **excluded** — a **lower bound**, the day in progress included. **Backend:** the
+  daily payload now carries, per day, `energy_wh` (the device's own `E_Day`,
+  always null on the reference firmware), `derived_wh` (**measured from our own
+  stored total**, the same rules as the day KPI: a baseline within **10 minutes**
+  of the local midnight, an end reading within 10 minutes of the day's end, no
+  counter that went backwards), `derived_reason` (the cause when it could not be
+  established) and `partial` (the day in progress); the range now lists **every
+  local day** as soon as anything was recorded in it and stays `"data": []` when
+  the range holds nothing at all — the empty state stated once, not once per day.
+  New storage query `Store.DailyEnergyFromTotal` (`internal/storage/daily_derived.go`),
+  built on the baseline lookup `Store.TotalEnergyAt`. **Fixes:** the three Solar
+  API families on `/detail` (`inverter_info`, `active_devices`, `api_version`)
+  render under proper headings instead of their raw ids, and a day's
+  `derived_reason` is shown **only beside a dash** — beside a value it read as a
+  defect. **Verified running** against the simulator with
+  `froniusd --backfill-days 3`: `/energy` fetched **289** days (the year, for the
+  rollups), the table showing the last 30 (`30 / 289 day(s) of the window
+  fetched`), rows reading `2026-10-14 · 24.60 kWh · device counter`, the day in
+  progress labelled, valueless days carrying `no sample carries a total at or
+  before the day's start`, and the rollups `4 days contributed · 12 days excluded
+  · lower bound`; `/events` rendered the two events of the run (`collector_started`
+  info, `device_event` warning) with its filters and its detail disclosure. Web
+  suite **196 tests** (was 156), typecheck and lint clean; Go `-race`, `vet`,
+  `gofmt` green.
+
 - 2026-10-16 — **The Solar API-first route, implemented: identity and presence
   without credentials.** Three Solar API requests need no credential and now
   answer what the Digest-protected internal API could not: `internal/fronius/solarapi`
@@ -264,6 +309,8 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   1 January — the reason string says so, no zero is invented. The daily **chart**
   (`/api/v1/energy/daily`) is **not** covered: it reads `agg_hour.max_energy_day_wh`,
   `null` on this firmware, so it stays empty — a separate, open decision.
+  **Superseded** by the newest `### Added` entry: the daily chart is now derived
+  from the stored total (`Store.DailyEnergyFromTotal`), so it is no longer empty.
 
 - 2026-10-16 — **Seventh probe endpoint: the documented Solar API accumulation
   data.** `cmd/fronius-probe` carries a new allowlist entry,

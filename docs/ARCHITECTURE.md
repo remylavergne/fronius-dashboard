@@ -73,10 +73,11 @@ production, and the API publishes them on a page of their own
   change rarely, and a snapshot of them belongs with the identity read.
 - The **`inverter_info`**, **`active_devices`** and **`api_version`** families
   are the three Solar API requests the detector reads on the same detection
-  cycle (`GetInverterInfo.cgi`, `GetActiveDeviceInfo.cgi?DeviceClass=System`,
+  `GetInverterInfo.cgi`, `GetActiveDeviceInfo.cgi?DeviceClass=System`,
   `GetAPIVersion.cgi`): they need no credential, and they are also **used** —
   the identity and the presence the internal API could not establish come from
-  them (see the Solar API-first route below).
+  them (see the Solar API-first route below). `/detail` renders them under
+  proper headings, not under their raw ids.
 - The **cache** family (`/components/cache/readable`) is read by the same
   detector, on the same cycle: `4 897` bytes and `99` values on the reference
   device, so a register dump on every `5 s` collection cycle would be waste. The
@@ -130,6 +131,42 @@ credential at all**, while the device events (`/status/activeEvents`) and the tw
 (`docs/RUNBOOK.md`). A detector with no `SolarReader` (its `Solar` field nil)
 reads the internal paths only and keeps working.
 
+### The events journal and the daily energy
+
+Two read routes of `internal/api` were **served but read by nothing**: the audit
+that lists the hooks found `/api/v1/events` had **no hook at all** and
+`useEnergyDaily` was used in **zero files**. Each now backs a page of its own.
+
+- **`/api/v1/events`** (`useEvents`, the **Events** page, `/events`) is the
+  journal of the collector and of the inverter: collection failures and
+  recoveries, retention purges, and the events the device itself reports. The
+  table shows time · severity badge · kind label · message, with the raw payload
+  of each event in a collapsed disclosure. The endpoint takes only `from`/`to`
+  and `limit` (`1..500`, default `100`): it has **no severity and no kind
+  parameter**, so the page's severity and kind filters are **client-side** and it
+  states how many of the fetched events it shows.
+- **`/api/v1/energy/daily`** (`useEnergyDaily`, the **Energy** page, `/energy`)
+  states one row per local day of the requested range: the value, a marker saying
+  whether it is the **device counter** or the value **derived from total**, and
+  the day's reason when there is neither. A bar chart of the daily energies
+  materialises a missing day as a **gap** (never interpolated, never a zero), and
+  three rollups — this week, this month, this year — sum the days that could be
+  measured and say how many contributed and how many were excluded (a **lower
+  bound**, the day in progress included). The range defaults to the last 30 days
+  and is bounded to 366; the page asks for the current year so the rollups mean
+  something.
+
+The daily payload carries, per day, `energy_wh` (the device's own `E_Day`,
+**always null** on the reference firmware), `derived_wh` (**measured from our
+own stored total** — the same rules as the day KPI), `derived_reason` (the cause
+when it could not be established) and `partial` (the day in progress). The
+derivation is `Store.DailyEnergyFromTotal` with `derivedBaselineTolerance`:
+a baseline within **10 minutes** of the local midnight, an end reading within the
+same 10 minutes of the day's end, and no counter that went backwards. The payload
+lists **every local day of the range** as soon as anything was recorded in it,
+and stays `"data": []` when the range holds nothing at all — the empty state is
+stated once, not once per day.
+
 ## Go packages
 
 | Package | Role | Depends on |
@@ -146,12 +183,12 @@ reads the internal paths only and keeps working.
 | `internal/fronius/solarapi` | Solar API client and the **only** encoding of the JSON shape | `fronius`, `froniuserr` |
 | `internal/fronius/internalapi` | Internal paths: **executable allowlist** (nine paths) and tolerant extraction | `fronius`, `froniuserr` |
 | `internal/model` | Normalized model, units, three-state detection, capabilities, events, and the device detail snapshots (the six families) | `solarapi` |
-| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy, identity, deduplication, the recorded survey (`source_probe`), the device detail (`device_detail`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
+| `internal/storage` | SQLite: migrations, measurements, hourly aggregates, daily energy (the device counter `DailyEnergy` and the value derived from the stored total, `DailyEnergyFromTotal`), identity, deduplication, the recorded survey (`source_probe`), the device detail (`device_detail`), purge, consistent snapshot (`Backup`) and transactional, schema-checked restore (`Restore`) | `model` |
 | `internal/maintenance` | Background work: aggregation of closed hours and scheduled retention purge | `storage`, `model` |
 | `internal/collector` | Collection loop, backoff, events, and the inverter detail snapshot (`InverterRealtime`, every other cycle — `detailEveryNCycles`) | `solarapi`, `model`, `storage` |
 | `internal/detect` | Detection loop: identity, presence, events, states and reasons; the system/network/devices/emrs/cache detail families; and the Solar API-first step (the `inverter_info`/`active_devices`/`api_version` families and the two fallbacks) | `internalapi`, `solarapi`, `model`, `storage` |
 | `internal/sources` | Machine-readable catalogue of every known source: transport (`solar_api` / `internal_api`), state, field-level status, proofs and capability join; served by `GET /api/v1/sources` | — |
-| `internal/api` | REST API, validation, envelope and DTO; the read routes include `/api/v1/detail` (the device detail families) | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
+| `internal/api` | REST API, validation, envelope and DTO; the read routes include `/api/v1/detail` (the device detail families), `/api/v1/events` (the journal) and `/api/v1/energy/daily` (the device counter and the value derived from the stored total) | `model`, `storage`, `config`, `detect`, `internalapi`, `sources` |
 
 The direction of the dependencies is acyclic and goes from the most concrete
 (the binaries) to the most abstract (the typed errors). No internal package
@@ -165,8 +202,9 @@ imports a `cmd/`.
 | `src/lib/api.ts` | `fetchJSON`: failures classified as `network` / `http` / `schema` |
 | `src/lib/queries.ts` | TanStack Query hooks, polling 5 s, ranges and steps |
 | `src/lib/chart.ts` | Buckets → chart points, **materialized gaps** |
+| `src/lib/energy.ts` | Per-day resolution (`measured` vs `derived`), **materialized day gaps**, the three rollups |
 | `src/lib/freshness.ts` | Staleness decision displayed |
-| `src/routes/*` | Overview, System, Capabilities, Detail, Settings, Sources |
+| `src/routes/*` | Overview, Energy, Events, System, Capabilities, Detail, Settings, Sources |
 | `src/i18n/*` | Flat FR dictionary, ready for EN/DE |
 
 The frontend talks only to `/api` (relayed by the Vite proxy in development). It

@@ -1,4 +1,4 @@
-import { CircleDot, CircuitBoard, Database, Gauge, ListChecks, Settings, SunMedium } from 'lucide-react'
+import { BatteryCharging, BellRing, CircleDot, CircuitBoard, Database, Gauge, ListChecks, Settings, SunMedium } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useT } from '@/i18n'
@@ -20,10 +20,14 @@ export function AppShell({ children }: AppShellProps) {
 
   const links = [
     { to: '/', label: t('nav.overview'), icon: Gauge },
+    { to: '/energy', label: t('nav.energy'), icon: BatteryCharging },
+    // Events sits right after the device detail: both are the device's own
+    // account of itself, read by the collector.
+    { to: '/detail', label: t('nav.detail'), icon: CircuitBoard },
+    { to: '/events', label: t('nav.events'), icon: BellRing },
     { to: '/system', label: t('nav.system'), icon: CircleDot },
     { to: '/capabilities', label: t('nav.capabilities'), icon: ListChecks },
     { to: '/sources', label: t('nav.sources'), icon: Database },
-    { to: '/detail', label: t('nav.detail'), icon: CircuitBoard },
     { to: '/settings', label: t('nav.settings'), icon: Settings },
   ]
 

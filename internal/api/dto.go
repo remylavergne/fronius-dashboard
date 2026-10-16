@@ -171,15 +171,48 @@ func bucketsToDTO(buckets []storage.Bucket) []bucketDTO {
 	return out
 }
 
+// dailyEnergyDTO is one local day of energy.
+//
+// Two values, because the two sources are not the same kind of fact:
+//
+//   - `energy_wh` is the device's own `E_Day` counter — always null on the
+//     reference firmware (the Solar API specification §4.1.5 states it), so it is
+//     null on most installations;
+//   - `derived_wh` is measured from our own stored total, with the same rules as
+//     the day KPI (a baseline close enough to the local midnight, a counter that
+//     did not go backwards), and carries its cause in `derived_reason` when it
+//     could not be established.
+//
+// The client prefers the measured counter and falls back to the derived value;
+// `partial` marks the day in progress, whose value grows until it ends.
 type dailyEnergyDTO struct {
-	Date     string   `json:"date"`
-	EnergyWh *float64 `json:"energy_wh"`
+	Date          string   `json:"date"`
+	EnergyWh      *float64 `json:"energy_wh"`
+	DerivedWh     *float64 `json:"derived_wh"`
+	DerivedReason string   `json:"derived_reason,omitempty"`
+	Partial       bool     `json:"partial,omitempty"`
 }
 
-func dailyToDTO(daily []storage.DailyEnergy) []dailyEnergyDTO {
-	out := make([]dailyEnergyDTO, 0, len(daily))
-	for _, d := range daily {
-		out = append(out, dailyEnergyDTO{Date: d.Date, EnergyWh: d.EnergyWh})
+// dailyToDTO merges the two readings by local day.
+//
+// The derived list is the spine: it holds one entry per day of the range,
+// including the days nothing was produced (or nothing was recorded). The
+// measured counter is added where the device reported one.
+func dailyToDTO(measured []storage.DailyEnergy, derived []storage.DailyDerivedEnergy) []dailyEnergyDTO {
+	byDate := make(map[string]*float64, len(measured))
+	for _, d := range measured {
+		byDate[d.Date] = d.EnergyWh
+	}
+
+	out := make([]dailyEnergyDTO, 0, len(derived))
+	for _, d := range derived {
+		out = append(out, dailyEnergyDTO{
+			Date:          d.Date,
+			EnergyWh:      byDate[d.Date],
+			DerivedWh:     d.Wh,
+			DerivedReason: d.Reason,
+			Partial:       d.Partial,
+		})
 	}
 	return out
 }

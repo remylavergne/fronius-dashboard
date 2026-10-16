@@ -207,12 +207,40 @@ export const bucketSchema = z.object({
 })
 export type Bucket = z.infer<typeof bucketSchema>
 
+/**
+ * One local day of `/api/v1/energy/daily`.
+ *
+ * `energy_wh` is the device's **own** counter and it is `null` whenever the
+ * firmware publishes no day counter at all (the reference installation: it
+ * never reports `E_Day`); `derived_wh` is measured from our own stored total
+ * and is then the value that exists. A day may therefore carry either, both or
+ * neither — and a day that carries neither says why in `derived_reason`.
+ *
+ * `derived_reason` and `partial` are `omitempty` on the Go side: absent is the
+ * normal encoding of "no reason to give" and "the day is over". They are
+ * accepted as absent so a payload from a backend that omits them never fails
+ * the whole page.
+ */
 export const dailyEnergySchema = z.object({
+  /** Local day (`YYYY-MM-DD`) of the **installation**, not of the browser. */
   date: localDate,
   energy_wh: nullableNumber,
+  derived_wh: nullableNumber.optional(),
+  derived_reason: z.string().optional(),
+  /** Day in progress: its value grows until the day ends. */
+  partial: z.boolean().optional(),
 })
 export type DailyEnergy = z.infer<typeof dailyEnergySchema>
 
+/**
+ * One event of `/api/v1/events`.
+ *
+ * `severity` is a closed vocabulary server-side (`info`, `warning`, `error`) but
+ * it is read as a plain string: a severity this build does not know yet renders
+ * as its raw token rather than taking the page down. `kind` is an open machine
+ * word (`collector_error`, `device_event`, …); `detail` is a free-text payload,
+ * frequently raw JSON, bounded to 2 KB by the backend — it is text, never HTML.
+ */
 export const eventSchema = z.object({
   ts: timestamp,
   kind: z.string(),
@@ -693,8 +721,10 @@ export const systemEnvelopeSchema = envelopeSchema(systemSchema)
 /** `data` is `null` when no measurement exists yet. */
 export const liveEnvelopeSchema = envelopeSchema(sampleSchema.nullable())
 export const timeseriesEnvelopeSchema = envelopeSchema(z.array(bucketSchema))
-export const energyDailyEnvelopeSchema = envelopeSchema(z.array(dailyEnergySchema))
-export const eventsEnvelopeSchema = envelopeSchema(z.array(eventSchema))
+/** `data` is `[]` for a range that holds nothing; `null` is accepted as the same absence. */
+export const energyDailyEnvelopeSchema = envelopeSchema(z.array(dailyEnergySchema).nullish())
+/** `data` is `[]` when the window holds no event; `null` is accepted as the same absence. */
+export const eventsEnvelopeSchema = envelopeSchema(z.array(eventSchema).nullish())
 export const capabilitiesEnvelopeSchema = envelopeSchema(z.array(capabilitySchema))
 export const sourcesEnvelopeSchema = envelopeSchema(sourcesSchema)
 export const detailEnvelopeSchema = envelopeSchema(detailSchema)

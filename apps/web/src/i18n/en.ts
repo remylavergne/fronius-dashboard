@@ -12,10 +12,12 @@ export const en = {
 
   'nav.aria': 'Main navigation',
   'nav.overview': 'Overview',
+  'nav.energy': 'Energy',
   'nav.system': 'System',
   'nav.capabilities': 'Capabilities',
   'nav.settings': 'Settings',
   'nav.detail': 'Device detail',
+  'nav.events': 'Events',
 
   'kpi.production': 'Instantaneous production',
   'kpi.energyToday': 'Energy of the day',
@@ -250,6 +252,9 @@ export const en = {
   'detail.family.devices': 'Devices',
   'detail.family.emrs': 'EMRS',
   'detail.family.cache': 'Cache',
+  'detail.family.inverterInfo': 'Inverter identity (Solar API)',
+  'detail.family.activeDevices': 'Active devices (Solar API)',
+  'detail.family.apiVersion': 'Solar API version',
 
   'detail.inverter.state': 'State',
   'detail.inverter.statusCode': 'Status code',
@@ -301,6 +306,96 @@ export const en = {
   'detail.col.deviceType': 'Type',
   'detail.col.statusCode': 'Status code',
   'detail.col.statusMessage': 'Status message',
+
+  'events.title': 'Events',
+  'events.intro':
+    'The journal of the collector and of the inverter: failures and recoveries of the collection, device events reported by the inverter itself, retention purges. The API returns them newest first and knows no filter — the severity and the kind are narrowed here, over the page that was fetched, and the count below always says how many of those events are shown.',
+
+  'events.range': 'Range',
+  'events.range.24h': '24 hours',
+  'events.range.7d': '7 days',
+  'events.range.30d': '30 days',
+  'events.range.all': 'All recorded events',
+
+  'events.limit': 'Fetched at once',
+  'events.limitHint': 'The API accepts 1 to 500 events per request, newest first.',
+
+  'events.filter.severity': 'Severity',
+  'events.filter.allSeverities': 'All severities',
+  'events.filter.kind': 'Kind',
+  'events.filter.allKinds': 'All kinds',
+  'events.filter.visible': 'Events shown',
+  'events.fetched': 'fetched',
+  'events.filter.none': 'No event matches these filters',
+  'events.filter.noneHint':
+    'The fetched page is not empty: it is the severity and kind filters that keep nothing. Widen them, or clear them.',
+
+  'events.table.caption': 'Events of the range, newest first',
+  'events.col.time': 'Time',
+  'events.col.severity': 'Severity',
+  'events.col.kind': 'Kind',
+  'events.col.message': 'Message',
+  'events.col.detail': 'Detail',
+  'events.detail.show': 'Show the detail',
+  'events.detail.hide': 'Hide the detail',
+  'events.detail.none': 'No detail',
+
+  'events.empty': 'No event in this range',
+  'events.emptyHint':
+    'Nothing was recorded between these bounds. A wider range — All recorded events — covers everything the database holds.',
+
+  'events.severity.info': 'Info',
+  'events.severity.warning': 'Warning',
+  'events.severity.error': 'Error',
+
+  'events.kind.collectorError': 'Collection failure',
+  'events.kind.collectorRecovered': 'Collection recovered',
+  'events.kind.collectorStarted': 'Collector started',
+  'events.kind.retentionPurge': 'Retention purge',
+  'events.kind.deviceEvent': 'Device event',
+
+  'energy.title': 'Energy',
+  'energy.intro':
+    'The energy of each day, as the API resolves it. The inverter of this installation publishes no day counter: the value shown therefore comes from our own stored total, and every row says which of the two it is. A day nothing could be established for keeps its dash and the reason the backend gives for it — never a zero. The totals below are sums of those days, with the number of days they rest on.',
+
+  'energy.window': 'Window',
+  'energy.shown': 'Days shown',
+  'energy.shownDays': 'day(s) of the window fetched',
+  'energy.shown.7d': 'Last 7 days',
+  'energy.shown.30d': 'Last 30 days',
+  'energy.shown.90d': 'Last 90 days',
+  'energy.shown.all': 'The whole window',
+  'energy.windowHint':
+    'Requested from the API in UTC instants, from 1 January to tomorrow: the days themselves are the local days of the installation.',
+
+  'energy.table.caption': 'Energy per local day',
+  'energy.col.date': 'Day',
+  'energy.col.value': 'Energy',
+  'energy.col.source': 'Source',
+  'energy.col.note': 'Note',
+  'energy.source.measured': 'device counter',
+  'energy.source.derived': 'derived from total',
+  'energy.partial': 'day in progress',
+  'energy.partialHint': 'Its value grows until the day ends.',
+
+  'energy.chart.title': 'Energy of each day',
+  'energy.chart.valued': 'days with a value',
+  'energy.chart.gaps': 'days without a value (a gap, never interpolated)',
+  'energy.chart.total': 'total',
+  'energy.chart.empty': 'No day carries a value',
+  'energy.chart.emptyHint':
+    'Every day of this range was recorded without an energy: there is no bar to draw. The reasons are in the table below.',
+
+  'energy.rollup.week': 'This week',
+  'energy.rollup.month': 'This month',
+  'energy.rollup.year': 'This year',
+  'energy.rollup.contributedDays': 'days contributed',
+  'energy.rollup.excludedDays': 'days excluded',
+  'energy.rollup.lowerBound': 'includes the day in progress: a lower bound',
+
+  'energy.empty': 'Nothing was recorded in this range',
+  'energy.emptyHint':
+    'The API returned no day at all: the range holds no measurement. A day that was recorded without an energy is a different state — it is listed with a dash and its reason.',
 
   'settings.title': 'Settings',
   'settings.intro': 'Effective configuration, read-only.',

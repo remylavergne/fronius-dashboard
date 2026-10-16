@@ -57,6 +57,22 @@ const FAMILY_TITLES: Record<KnownFamily, TranslationKey> = {
   cache: 'detail.family.cache',
 }
 
+/**
+ * Titles of the families the Solar API publishes.
+ *
+ * They are read by the collector like any other family, but they carry no typed
+ * body of their own: they render through the generic `entries` shape, which is
+ * why they are not in `KNOWN_FAMILIES`. A machine id is not a heading, though,
+ * so these three are named. Any *other* family keeps its raw id as its title:
+ * inventing a name for a shape this build has never seen would be worse than
+ * showing the id itself.
+ */
+const SOLAR_API_FAMILY_TITLES: Record<string, TranslationKey> = {
+  inverter_info: 'detail.family.inverterInfo',
+  active_devices: 'detail.family.activeDevices',
+  api_version: 'detail.family.apiVersion',
+}
+
 /** Text of a measurement value: base units, a dash when the device reported none. */
 function measurementText(measurement: DetailMeasurement): string {
   const { value, unit } = measurement
@@ -704,12 +720,18 @@ export function DetailPage() {
           <Block title={t(FAMILY_TITLES.cache)} family={cache}>
             {cache ? <CacheBody family={cache} title={t(FAMILY_TITLES.cache)} /> : null}
           </Block>
-          {/* A family this build does not know yet still renders, generically. */}
-          {extraFamilies.map((family) => (
-            <Block key={family.family} title={family.family} family={family}>
-              <EntriesBody family={family} title={family.family} />
-            </Block>
-          ))}
+          {/* A family this build does not know yet still renders, generically —
+              under its proper title when it is one of the Solar API families,
+              under its raw id otherwise. */}
+          {extraFamilies.map((family) => {
+            const titleKey = SOLAR_API_FAMILY_TITLES[family.family]
+            const title = titleKey ? t(titleKey) : family.family
+            return (
+              <Block key={family.family} title={title} family={family}>
+                <EntriesBody family={family} title={title} />
+              </Block>
+            )
+          })}
         </>
       ) : null}
     </div>

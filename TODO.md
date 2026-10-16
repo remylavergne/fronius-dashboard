@@ -91,11 +91,11 @@
 - [ ] Build the shell (sidebar, header, breadcrumb, mobile navigation)
 - [x] Build the instantaneous production / energy of the day / state KPI cards
 - [x] Build the 24h power curve with tooltips, units and period selection
-- [ ] Build daily/weekly/monthly/yearly aggregates
+- [x] Build daily/weekly/monthly/yearly aggregates — the Energy page (`/energy`) shows one row per local day and three rollups (this week, this month, this year), each a **lower bound**: it sums the days that could be measured and states how many contributed and how many were excluded
 - [ ] Add period comparisons and production calendar
 - [x] Add inverter state, firmware, network and available diagnostics — the "Device detail" page (`/detail`) shows the device detail families with their read instant, their availability and their reason; the Overview carries the **inverter state chip**; the firmware and the identity stay on the System page
 - [x] Display the cache family — the "Device detail" page's **Cache block**: the node's attributes as a list and its registers in a collapsible table, the 44 the device names with its own type suffix and the 37 bare `<id>` shown as they are, **no unit derived from a name**
-- [ ] Add events and filters by date/severity
+- [x] Add events and filters by date/severity — the Events page (`/events`, `GET /api/v1/events`) shows the journal with a range preset (24 h / 7 days / 30 days / all) and client-side severity and kind filters, since the endpoint has neither parameter
 - [x] Add collector health page and last refresh
 - [ ] Add settings page and read-only connectivity test
 - [x] Add capabilities page (measured/estimated/unavailable/unverified)
@@ -736,3 +736,46 @@
   `docs/UNKNOWNS.md` (#3 implemented, #4/#5 corroborated), `CHANGELOG.md`. Boxes
   ticked: "Read the inverter identity from the Solar API, with no credential" and
   "Source the meter/battery presence from the Solar API inventory" (phase 4).
+
+- 2026-10-16 — Step 26 (phase 4/5): **the Events page, the Energy page and the
+  derived daily energy.** The audit that lists the hooks found two API surfaces
+  served but consumed by nothing — `/api/v1/events` had **no hook at all** and
+  `useEnergyDaily` was used in **zero files** — and each now has a page, with the
+  daily energy finally sourced. **`/events`** (`useEvents`): the journal of the
+  collector and of the inverter (failures, recoveries, retention purges, device
+  events), one row per event (time · severity badge · kind · message) with the raw
+  payload in a collapsed disclosure, a range preset (24 h / 7 days / 30 days /
+  all) and a limit selector (the API accepts `1..500`, `100` by default) sent to
+  the endpoint, and **client-side** severity and kind filters — the endpoint has
+  neither parameter — with the page stating how many of the fetched events it
+  shows and the filter options carrying the table's labels (the raw word stays the
+  option's value). **`/energy`** (`useEnergyDaily`, now used): one row per local
+  day with its value, a marker saying **device counter** or **derived from
+  total**, and the day's cause when there is neither; a bar chart with missing
+  days kept as **gaps** (never interpolated, never a zero), and three rollups (this week, this
+  month, this year), each a **lower bound** stating how many days contributed and
+  how many were excluded. **Backend:** `/api/v1/energy/daily` now carries
+  `energy_wh` (the device's own `E_Day`, always null on the reference firmware),
+  `derived_wh` (**measured from our own stored total**, same rules and same
+  **10-minute** tolerance as the day KPI), `derived_reason` and `partial`, and
+  lists **every local day** of the range as soon as anything was recorded in it
+  (staying `"data": []` when the range holds nothing at all). New storage query
+  `Store.DailyEnergyFromTotal`. **Fixes:** proper headings for the three Solar API
+  families on `/detail` (`inverter_info`, `active_devices`, `api_version`) instead
+  of their raw ids, and `derived_reason` shown **only beside a dash**. **Verified
+  running** (simulator + `froniusd --backfill-days 3`): `/energy` 289 days
+  fetched for the year, the table showing the last 30 (`30 / 289 day(s) of the
+  window fetched`), rows reading `2026-10-14 · 24.60 kWh · device counter`,
+  valueless days carrying `no sample carries a total at or before the day's start`
+  and the rollups `4 days contributed · 12 days excluded · lower bound`; `/events`
+  rendering `collector_started` (info) and `device_event` (warning) with its
+  filters and its detail disclosure. Web suite **196 tests** (was 156), typecheck
+  and lint clean; Go `-race`, `vet`, `gofmt` green. Registers updated:
+  `docs/ARCHITECTURE.md` (the two endpoints' consumers, the daily payload and its
+  derivation rule, the frontend routes and `src/lib/energy.ts`), `docs/SOURCES.md`
+  (the daily energy derived from the stored total), `docs/RUNBOOK.md` (the two
+  pages for the operator; the daily energy explained and the aggregates claim
+  corrected), `docs/UNKNOWNS.md` (#13: the chart question settled; #15: the
+  client-side events filters), `CHANGELOG.md`. Boxes ticked: "Build
+  daily/weekly/monthly/yearly aggregates" and "Add events and filters by
+  date/severity" (phase 5).

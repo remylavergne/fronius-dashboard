@@ -4,6 +4,8 @@ import { EmptyState } from '@/components/EmptyState'
 import { useT } from '@/i18n'
 import { CapabilitiesPage } from '@/routes/Capabilities'
 import { DetailPage } from '@/routes/Detail'
+import { EnergyPage } from '@/routes/Energy'
+import { EventsPage } from '@/routes/Events'
 import { Overview } from '@/routes/Overview'
 import { SettingsPage } from '@/routes/Settings'
 import { SourcesPage } from '@/routes/Sources'
@@ -16,6 +18,8 @@ function NotFound() {
 
 const router = createBrowserRouter([
   { path: '/', element: <AppShell><Overview /></AppShell> },
+  { path: '/energy', element: <AppShell><EnergyPage /></AppShell> },
+  { path: '/events', element: <AppShell><EventsPage /></AppShell> },
   { path: '/system', element: <AppShell><SystemPage /></AppShell> },
   { path: '/capabilities', element: <AppShell><CapabilitiesPage /></AppShell> },
   { path: '/sources', element: <AppShell><SourcesPage /></AppShell> },

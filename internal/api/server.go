@@ -439,15 +439,41 @@ func (s *Server) handleDailyEnergy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	daily, err := s.store.DailyEnergy(ctx, from, to)
+	measured, err := s.store.DailyEnergy(ctx, from, to)
 	if err != nil {
 		s.internalError(w, "reading daily energy", err)
 		return
 	}
+	// The total is recorded on every sample, so the day's energy can be measured
+	// from it when the device reports no E_Day — which is always the case on the
+	// reference firmware (docs/UNKNOWNS.md #13).
+	derived, err := s.store.DailyEnergyFromTotal(ctx, from, to, s.now(), derivedBaselineTolerance)
+	if err != nil {
+		s.internalError(w, "deriving daily energy", err)
+		return
+	}
+
+	// A range that holds nothing at all keeps answering `[]`: the empty state is
+	// stated once, not once per day. As soon as anything was recorded, every day
+	// of the range is published — with its value, or with the reason it has none.
+	if !anyDerivedValue(derived) && len(measured) == 0 {
+		derived = nil
+	}
 
 	m := s.baseMeta()
 	s.freshnessMeta(ctx, m)
-	s.writeData(w, http.StatusOK, dailyToDTO(daily), m)
+	s.writeData(w, http.StatusOK, dailyToDTO(measured, derived), m)
+}
+
+// anyDerivedValue reports whether at least one day of the range could be
+// measured from the total.
+func anyDerivedValue(days []storage.DailyDerivedEnergy) bool {
+	for _, d := range days {
+		if d.Wh != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {

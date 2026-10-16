@@ -738,17 +738,36 @@ func TestDailyEnergyEndpoint(t *testing.T) {
 	if err := json.Unmarshal(env.Data, &daily); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if len(daily) != 2 {
-		t.Fatalf("days = %+v, wanted 2", daily)
+	// The payload now holds one entry per local day of the range — the spine the
+	// aggregates view reads — with the device's own counter where it reported one
+	// and the derived value (or its cause) everywhere else.
+	byDate := map[string]dailyEnergyDTO{}
+	for _, d := range daily {
+		byDate[d.Date] = d
 	}
-	if daily[0].Date != "2026-10-14" || daily[1].Date != "2026-10-15" {
-		t.Fatalf("dates = %+v", daily)
+	fourteen, ok := byDate["2026-10-14"]
+	if !ok {
+		t.Fatalf("14/10 is missing from the payload: %+v", daily)
 	}
-	if daily[0].EnergyWh == nil || *daily[0].EnergyWh != 20000 {
-		t.Fatalf("14/10 = %v", daily[0].EnergyWh)
+	if fourteen.EnergyWh == nil || *fourteen.EnergyWh != 20000 {
+		t.Fatalf("14/10 measured = %v", fourteen.EnergyWh)
 	}
-	if daily[1].EnergyWh == nil || *daily[1].EnergyWh != 1000 {
-		t.Fatalf("15/10 = %v", daily[1].EnergyWh)
+	// No sample precedes that day's start, so nothing can be derived: the entry
+	// says why instead of showing a number.
+	if fourteen.DerivedWh != nil || fourteen.DerivedReason == "" {
+		t.Fatalf("14/10 derived = %+v", fourteen)
+	}
+	fifteen, ok := byDate["2026-10-15"]
+	if !ok {
+		t.Fatalf("15/10 is missing from the payload: %+v", daily)
+	}
+	if fifteen.EnergyWh == nil || *fifteen.EnergyWh != 1000 {
+		t.Fatalf("15/10 measured = %v", fifteen.EnergyWh)
+	}
+	// The closest sample before that day's start is ten hours old: refused, with
+	// the age in the cause.
+	if fifteen.DerivedWh != nil || !strings.Contains(fifteen.DerivedReason, "before the day's start") {
+		t.Fatalf("15/10 derived = %+v", fifteen)
 	}
 	decodeMeta(t, env)
 
@@ -765,14 +784,18 @@ func TestDailyEnergyEndpoint(t *testing.T) {
 	if err := json.Unmarshal(env.Data, &daily); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	if len(daily) != 2 || daily[0].Date != "2026-10-14" || daily[1].Date != "2026-10-15" {
-		t.Fatalf("daily = %+v", daily)
+	bounded := map[string]dailyEnergyDTO{}
+	for _, d := range daily {
+		bounded[d.Date] = d
 	}
-	if daily[0].EnergyWh == nil || *daily[0].EnergyWh != 20000 {
-		t.Fatalf("14/10 = %v", daily[0].EnergyWh)
+	if len(bounded) != 2 {
+		t.Fatalf("a bounded window must publish the two local days it covers: %+v", daily)
 	}
-	if daily[1].EnergyWh == nil || *daily[1].EnergyWh != 1000 {
-		t.Fatalf("15/10 = %v", daily[1].EnergyWh)
+	if d := bounded["2026-10-14"]; d.EnergyWh == nil || *d.EnergyWh != 20000 {
+		t.Fatalf("14/10 = %+v", d)
+	}
+	if d := bounded["2026-10-15"]; d.EnergyWh == nil || *d.EnergyWh != 1000 {
+		t.Fatalf("15/10 = %+v", d)
 	}
 
 	// Window covering only 13 October UTC: no local day.
@@ -997,5 +1020,58 @@ func TestResponsesUnchangedAfterRollup(t *testing.T) {
 			t.Fatalf("%s: payload changed by the aggregation\nbefore: %s\nafter: %s",
 				p, before[i], after[i])
 		}
+	}
+}
+
+// TestDailyEnergyCarriesTheDerivedValueWhenTheDeviceReportsNone is the reference
+// installation's case: `E_Day` is null on every endpoint, so the day's energy can
+// only come from our own stored total. Without it, the aggregates view would be
+// empty on an installation that is producing.
+func TestDailyEnergyCarriesTheDerivedValueWhenTheDeviceReportsNone(t *testing.T) {
+	srv, httpSrv, store := newTestServer(t, nil)
+
+	// A day with a reading just before its local midnight and one at its end,
+	// and a total that rose by 2 kWh in between. 2026-10-16 is CEST (UTC+2).
+	// `E_Day` is null on every sample, as this firmware answers it.
+	insert := func(ts time.Time, pv, total float64) {
+		sm := model.Sample{
+			TS: ts, TSSource: model.TSSourceDevice, Source: model.SourceSolarAPI,
+			Quality: model.QualityMeasured, Mode: "produce-only",
+			PowerPVW: new(pv), EnergyDayWh: nil, EnergyTotalWh: new(total),
+		}
+		if err := store.InsertSample(context.Background(), sm); err != nil {
+			t.Fatalf("InsertSample: %v", err)
+		}
+	}
+	insert(time.Date(2026, 10, 15, 21, 59, 0, 0, time.UTC), 0, 1_000_000)
+	insert(time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC), 800, 1_001_000)
+	insert(time.Date(2026, 10, 16, 21, 59, 0, 0, time.UTC), 0, 1_002_000)
+
+	srv.now = func() time.Time { return time.Date(2026, 10, 17, 6, 0, 0, 0, time.UTC) }
+
+	code, _, body := doRequest(t, httpSrv, http.MethodGet,
+		"/api/v1/energy/daily?from=2026-10-15T22:00:00Z&to=2026-10-16T22:00:00Z")
+	if code != http.StatusOK {
+		t.Fatalf("status = %d (%s)", code, body)
+	}
+	var daily []dailyEnergyDTO
+	if err := json.Unmarshal(decodeEnvelope(t, body).Data, &daily); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if len(daily) != 1 || daily[0].Date != "2026-10-16" {
+		t.Fatalf("daily = %+v", daily)
+	}
+	// The device reported no counter, the derivation did.
+	if daily[0].EnergyWh != nil {
+		t.Errorf("energy_wh = %v, want null: this firmware never reports E_Day", daily[0].EnergyWh)
+	}
+	if daily[0].DerivedWh == nil || *daily[0].DerivedWh != 2000 {
+		t.Errorf("derived_wh = %v, want 2000", daily[0].DerivedWh)
+	}
+	if daily[0].DerivedReason != "" {
+		t.Errorf("a derived day carries no cause: %+v", daily[0])
+	}
+	if daily[0].Partial {
+		t.Errorf("a finished day is not partial: %+v", daily[0])
 	}
 }

@@ -448,6 +448,76 @@ describe('DetailPage family states', () => {
   })
 })
 
+describe('DetailPage Solar API families', () => {
+  // The three families the collector reads without a credential carry a flat
+  // `entries` body like any family this build does not type; their *ids* are
+  // machine words, and a machine word is not a heading.
+  const solarFamilies: DetailFamily[] = [
+    {
+      family: 'inverter_info',
+      available: true,
+      reason: '',
+      read_at: READ_AT,
+      data: { entries: [{ path: 'Body.Data.1.UniqueID', value: '12345678' }] },
+    },
+    {
+      family: 'active_devices',
+      available: true,
+      reason: '',
+      read_at: READ_AT,
+      data: { entries: [{ path: 'Body.Data.System.1.Serial', value: '98765432' }] },
+    },
+    {
+      family: 'api_version',
+      available: true,
+      reason: '',
+      read_at: READ_AT,
+      data: { entries: [{ path: 'APIVersion', value: '1.19.7-1' }] },
+    },
+  ]
+
+  it('titles the three Solar API families in words, not in ids', () => {
+    mockDetail({ read_at: READ_AT, families: solarFamilies })
+
+    render(<DetailPage />)
+
+    const identity = screen.getByRole('article', { name: 'Inverter identity (Solar API)' })
+    // The heading changed, the body did not: these families keep rendering
+    // through the generic path and value table.
+    expect(within(identity).getByText('Body.Data.1.UniqueID')).toBeInTheDocument()
+    expect(within(identity).getByText('12345678')).toBeInTheDocument()
+
+    expect(screen.getByRole('article', { name: 'Active devices (Solar API)' })).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Solar API version' })).toBeInTheDocument()
+
+    // No block is left carrying the raw id.
+    for (const id of ['inverter_info', 'active_devices', 'api_version']) {
+      expect(screen.queryByRole('article', { name: id })).not.toBeInTheDocument()
+    }
+  })
+
+  it('titles an unavailable Solar API family too, and keeps its reason', () => {
+    mockDetail({
+      read_at: READ_AT,
+      families: [
+        {
+          family: 'inverter_info',
+          available: false,
+          reason: 'The device answered 404 on /solar_api/v1/GetInverterInfo.cgi.',
+          read_at: READ_AT,
+          data: null,
+        },
+      ],
+    })
+
+    render(<DetailPage />)
+
+    const identity = screen.getByRole('article', { name: 'Inverter identity (Solar API)' })
+    expect(within(identity).getByText('Unavailable')).toBeInTheDocument()
+    expect(within(identity).getByText(/answered 404/)).toBeInTheDocument()
+  })
+})
+
 describe('DetailPage cache family', () => {
   it('renders the node, its attributes and a disclosure collapsed by default', async () => {
     const user = userEvent.setup()

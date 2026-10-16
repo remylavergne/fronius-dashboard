@@ -400,7 +400,7 @@ schema above rests on the hardware capture, reconciled with the official Fronius
 Solar API v1 documentation against firmware **1.19.7-1**. The SQLite columns stay
 in base units.
 
-## Derived quantities — day and year energies
+## Derived quantities — day, year and daily energies
 
 `[VERIFIED]` (hardware), firmware `1.19.7-1`, 2026-10-16: no local endpoint
 publishes the day or year counter (`docs/UNKNOWNS.md` #13). The two quantities
@@ -427,9 +427,23 @@ are therefore **computed**, not measured, from our own stored total:
 Code: `internal/api/derived.go` (the rule, the 10-minute tolerance, the
 refusals), `Store.TotalEnergyAt` in `internal/storage` (the baseline lookup),
 `apps/web/src/lib/energy.ts` (`resolveEnergy`: measured wins, otherwise derived
-and flagged), KPI wiring in `apps/web/src/routes/Overview.tsx`. The daily
-**chart** (`/api/v1/energy/daily`) is **not** derived: it still reads
-`agg_hour.max_energy_day_wh`, `null` on this firmware, so it stays empty.
+and flagged), KPI wiring in `apps/web/src/routes/Overview.tsx`.
+
+**The daily energy follows the same rule.** `/api/v1/energy/daily` carries, per
+local day, the device's own counter `energy_wh` (`E_Day`, **always null** on this
+firmware) and a `derived_wh` measured from the **same stored total**, with the
+same provenance rule as the day KPI — a baseline within **10 minutes** of the
+local midnight, an end reading within the same 10 minutes of the day's end, no
+counter that went backwards — beside `derived_reason` (the cause when it could
+not be established) and `partial` (the day in progress). Because the device
+reports no `E_Day` here, the **derived value is the only source of a daily energy
+on the reference installation**: the page marks it `derived` and shows the cause
+beside a dash, never a zero. Code: `Store.DailyEnergyFromTotal`
+(`internal/storage/daily_derived.go`), the endpoint in
+`internal/api/server.go`, the page in `apps/web/src/routes/Energy.tsx`. The
+daily chart is therefore no longer empty on this firmware — the aggregate column
+`agg_hour.max_energy_day_wh` is still read for the device counter, but the
+derived value comes from the stored total.
 
 ## The Solar API specification — what it settles
 
@@ -618,8 +632,8 @@ recorded in `docs/UNKNOWNS.md`: #2 resolved (no authentication required), #4 and
 #5 resolved (no Smart Meter, no battery), #11 confirmed (integer `severity`), #13
 settled on the counters (`E_Day`/`E_Year` null on the Solar API, on the internal
 `/status/powerflow` **and** on the accumulation collection, so **no local source**
-exposes the day and year energies and the internal fallback was **removed**, see
-#13).
+exposes the day, year or daily counter and the internal fallback was **removed**,
+see #13; the daily energy is now **derived** from the stored total).
 
 ### First survey of the reference installation (2026-10-16)
 
