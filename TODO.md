@@ -91,7 +91,7 @@
 ## 5 — React/shadcn UI
 
 - [ ] Define the design system, light/dark themes and responsive navigation
-- [ ] Build the shell (sidebar, header, breadcrumb, mobile navigation)
+- [x] Build the shell (sidebar, header, breadcrumb, mobile navigation) — one `NAV_ITEMS` table feeds the sidebar, the drawer and the breadcrumb (order and labels cannot drift); `aria-current="page"`, a skip link to `main#main`, and a drawer with Escape/overlay/link close, focus returned to the trigger and a scroll lock restored on close and on unmount. Verified live at 1440/1280×900, 1024×768, 768×1024 and 390×844 (step 31)
 - [x] Build the instantaneous production / energy of the day / state KPI cards
 - [x] Build the 24h power curve with tooltips, units and period selection
 - [x] Build daily/weekly/monthly/yearly aggregates — the Energy page (`/energy`) shows one row per local day and three rollups (this week, this month, this year), each a **lower bound**: it sums the days that could be measured and states how many contributed and how many were excluded
@@ -100,7 +100,7 @@
 - [x] Display the cache family — the "Device detail" page's **Cache block**: the node's attributes as a list and its registers in a collapsible table, the 44 the device names with its own type suffix and the 37 bare `<id>` shown as they are, **no unit derived from a name**
 - [x] Add events and filters by date/severity — the Events page (`/events`, `GET /api/v1/events`) shows the journal with a range preset (24 h / 7 days / 30 days / all) and client-side severity and kind filters, since the endpoint has neither parameter
 - [x] Add collector health page and last refresh
-- [ ] Add settings page and read-only connectivity test
+- [x] Add settings page and read-only connectivity test — `GET /api/v1/connectivity` sends exactly two `GET`s (the Solar API powerflow, then `/status/version` with the credentials; the second is skipped without them), reports each probe's state/status/duration with an `ok`/`partial`/`failed` verdict, caches the answer 10 s, and never carries a secret; the page shows the whole effective configuration with the credentials as *configured* / *not configured* (step 29)
 - [x] Add capabilities page (measured/estimated/unavailable/unverified)
 - [x] Data sources page: states, field inventory, reasons and capability join
 - [x] Hide consumption, import/export and self-consumption cards without a meter
@@ -110,7 +110,7 @@
 - [x] Implement CSV export of the histories — `?format=csv` on `/api/v1/timeseries`, `/api/v1/energy/daily` and `/api/v1/events`: the same parameters, validation and data as the JSON routes, streamed through `encoding/csv` with `Content-Disposition` (an absent bound renders `all`, never a year-1 instant) and `Cache-Control: no-store`. Columns are the JSON field names in order; **a missing value is an empty cell** — never `0`, never `null`; and text cells are neutralised against spreadsheet formula injection (a leading `=`, `+`, `-`, `@`, TAB or CR gets `'`, numeric cells untouched so a negative number keeps its sign — event messages and derived reasons come from the device). Bounds stay the JSON routes' own, so a bad range answers the JSON `400` before any CSV byte. The Events, Energy and Overview pages carry plain `<a href download>` links built from the params they already fetched (no fetch, no bytes through React state); the Events link states that its client-side severity and kind filters are not part of the file
 - [x] Add FR translation with an i18n DE/EN structure
 - [x] Add keyboard navigation and WCAG AA checks
-- [ ] Test responsive desktop/tablet/mobile
+- [x] Test responsive desktop/tablet/mobile — verified in a real browser at 1440×900, 1280×800, 1024×768, 768×1024 and 390×844: the sidebar appears at ≥1024 px and the drawer below it, **0 px** horizontal overflow at every width, and the drawer opens/closes with focus returned at 390 and 768
 
 ## 6 — Quality, deployment, operations
 
