@@ -1,88 +1,160 @@
-# Fronius GEN24 — handover folder for an AI agent
+# Fronius Monitoring
 
-**Goal:** replace the manufacturer's Angular consultation interface with a local **Go + React/TypeScript + shadcn/ui** application, with dashboard, charts, history and, later, explicitly authorized controls.
+**Your inverter produces the data. This keeps it.**
 
-## At a glance
+A local, read-only supervisor for the Fronius GEN24 family: production history,
+events and daily energy in a SQLite database you own, behind an interface that
+keeps working when the inverter is asleep.
 
-**The device's own console tells you what the inverter thinks now. This application
-tells you what happened — in data you can back up, audit and export.**
+![The Overview screen: production, day and year energy, collector state and the power curve](docs/screenshots/01-overview.png)
 
-| ![Overview screen: production, day and year energy, collector state, and the power curve](docs/screenshots/01-overview.png) | ![Energy screen: three rollups and the per-day table with its device-counter and derived markers](docs/screenshots/02-energy.png) |
+No cloud. No account. No telemetry. One Go binary, one file on your disk, one
+browser tab.
+
+[Quick start](#quick-start) · [What you get](#what-you-get) · [Screens and guide](docs/USER-GUIDE.md) · [What it will never do](#what-it-will-never-do)
+
+## Why you want it
+
+- **Your history stays yours.** Everything lands in `FRONIUS_DB_PATH`, a plain
+  SQLite file you can copy, back up and open with any tool. The interface talks
+  only to the service on the same machine.
+- **It keeps working when the inverter does not.** History, events, daily energy
+  and exports come from the local database — a sleeping inverter, a dead network
+  or a power cut do not blank your screen.
+- **It cannot change your inverter.** Every client is wrapped in a guard that
+  refuses any method but `GET` *before* a request leaves the process. No
+  commands, no configuration writes, no firmware, no self-test triggers. Ever.
+- **It tells you what it knows, and what it does not.** A value is labelled
+  *measured* or *derived*; a missing value is a dash **with its reason**; a gap is
+  never interpolated; a total that is a lower bound says so.
+- **Real history, not a live widget.** Hourly aggregates, daily energy derived
+  from the device's stored total, an event journal, and CSV export of all three.
+
+## What you get
+
+| Screen | What it answers |
 |---|---|
-| Live state, with freshness and provenance | Local history, with measured and derived values kept apart |
+| **Overview** | What is the installation doing right now, and how fresh are those numbers? |
+| **Energy** | What did each local day produce — from the device's counter or derived from the stored total — and what is the week, month, year total? |
+| **Events** | What did the collector and the inverter report, when, and how bad? |
+| **Device detail** | Identity, system, network, devices, EMRS and cache — each with availability and its reason. |
+| **System** | The device's own clock and its drift (warned beyond ±60 s), its grid-limits self-test state, the detection resources. |
+| **Capabilities** | What this installation can and cannot measure, and why. |
+| **Data sources** | The machine-readable catalogue: which path, which fields, which evidence. |
+| **Settings** | The effective configuration, plus a read-only connectivity test. |
 
-### Same installation, a different contract
+Plus: a keyboard-accessible, mobile-ready shell; a connectivity test that tells
+you whether the device answers and whether your credentials work; and a CSV
+download on every history screen.
 
-| | Manufacturer's interface (the Angular app served *by* the inverter) | This application |
-|---|---|---|
-| Runs on | the inverter, as its web console | your machine, as a local service and interface |
-| Needs the device | yes, to show anything | no: history, events and exports keep working while the inverter is offline |
-| Access | role-gated screens — `customer` / `technician` / `support`, a **display** condition, not a server permission | no account; the device credentials never leave the backend and never reach the browser |
-| Scope | the full console: configuration, commands, firmware, service | **read-only by construction** — a non-GET is refused before it leaves the process |
-| History | the device's own reports | hourly aggregates, daily energy derived from the stored total, an event journal, CSV export |
-| Numbers | values as the device reports them | `measured` / `derived` / `unavailable` **with a reason**, `unverified` paths marked, gaps never interpolated |
-| Depends on | the manufacturer's bundle | nothing from it: the bundle is read as a source (`references/`), never loaded |
+![The Energy screen: three rollups and the per-day table with its device-counter and derived markers](docs/screenshots/02-energy.png)
 
-No capture of the manufacturer's interface is reproduced here: none exists in this
-folder, and one is not invented. The comparison rests on the extracted facts in
-[`docs/ENDPOINTS.md`](docs/ENDPOINTS.md) and [`docs/SOURCES.md`](docs/SOURCES.md),
-and on the simulator captures in [`docs/screenshots/`](docs/screenshots/) — taken
-against `cmd/fronius-sim`, with synthetic data.
+*The Energy screen: each day says whether its value is the device's own counter
+or was derived from the stored total; the rollups state how many days
+contributed, how many were excluded, and that the total is a lower bound while
+the day in progress is included.*
 
-## Reading order
+## Quick start
 
-1. [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) — what it does, screen by screen.
-2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — the invariants and the data flow.
-3. [`docs/SOURCES.md`](docs/SOURCES.md) and [`docs/ENDPOINTS.md`](docs/ENDPOINTS.md) — provenance, and the endpoint matrix per path.
-4. [`docs/UNKNOWNS.md`](docs/UNKNOWNS.md) — what remains open, and the provisional decisions.
-5. [`docs/RUNBOOK.md`](docs/RUNBOOK.md) — operating it: checks, diagnosis, backup, retention.
-6. [`TODO.md`](TODO.md) — the exhaustive backlog and the step log.
-7. [`AGENTS.md`](AGENTS.md) — the rules a development agent must follow.
-
-## Local sources
-
-- `references/fronius-original.js`: the Webpack JavaScript bundle provided by the user (about 184,000 lines), kept verbatim as the primary source and **never modified**.
-- `references/42,0410,2012.pdf`: the vendor's Solar API specification (`42,0410,2012,EN 02115052025`), cited throughout `docs/SOURCES.md`.
-- `fronius-information.pdf`: system export of 16 October 2026; **not copied**.
-- HTTP observations and user discussion: some values are reported and not reproducible from the JS alone.
-
-**Confidence:** distinguish [SOURCE-JS], [SOURCE-PDF], [OBSERVED-CONVERSATION], [HYPOTHESIS], [TO-TEST]. Never turn a route found in the JS into a confirmed server permission.
-
-## Delivered software (phases 1 to 3)
-
-The folder above describes the analysis and the target. The corresponding software is
-in this same repository:
-
-| Path                | Content                                                                  |
-| ------------------- | ------------------------------------------------------------------------ |
-| `cmd/fronius-sim`   | Deterministic simulator of the Solar API (no hardware required)          |
-| `cmd/froniusd`      | Service: collection, SQLite, REST API                                    |
-| `cmd/fronius-probe` | Read-only probe to validate the real shape of the responses              |
-| `internal/`         | Config, Solar API client, normalized model, persistence, collector, API  |
-| `apps/web`          | React 19 + strict TypeScript + shadcn/ui + Recharts interface            |
-| `docs/`             | Architecture, development, runbook, sources, unknowns, ADR               |
+Requirements: Linux or macOS, Go 1.26+ to build the service, Node.js 22+ with
+pnpm to build the interface.
 
 ```bash
-make dev-sim   # simulator on 127.0.0.1:8081
-make dev-api   # service on 127.0.0.1:8080
-make dev-web   # interface on 127.0.0.1:5173
+make build                          # backend into bin/, interface into apps/web/dist
+
+FRONIUS_SOLARAPI_URL=http://<inverter-ip> \
+FRONIUS_WEB_DIR=apps/web/dist \
+./bin/froniusd
 ```
 
-Phase 1 is **strictly read-only**: no code path emits
-`POST`, `PUT`, `PATCH` or `DELETE` to the inverter (structural guard in
-`internal/fronius/readonly.go`). To query the real hardware, first read
-`docs/PROBE-READONLY.md`.
+Open <http://127.0.0.1:8080>.
 
-Phase 2 adds authenticated reading of internal paths (device identity, presence of a
-meter and a battery, active events): the credentials live in the environment of
-`froniusd`, the `Authorization` header is only emitted in response to a 401, and an
-undetermined resource stays "undetermined" — never "absent". Phase 3 materializes the
-hourly aggregates and schedules the retention purge (`make test-perf` measures the
-criterion of ADR 0006 over one year of data).
+The Solar API needs **no credential**: production, energy and the device's own
+detail families work out of the box. Add the inverter's credentials only for the
+internal read paths (device events, the clock, the self-test state) — the same
+command, two more variables:
 
-A task-oriented guide, with a screenshot of every screen, is in
-[`docs/USER-GUIDE.md`](docs/USER-GUIDE.md).
+```bash
+FRONIUS_SOLARAPI_URL=http://<inverter-ip> \
+FRONIUS_WEB_DIR=apps/web/dist \
+FRONIUS_DEVICE_USER=<user> \
+FRONIUS_DEVICE_PASSWORD=<password> \
+./bin/froniusd
+```
 
-Landmarks: `docs/ARCHITECTURE.md` (invariants), `docs/RUNBOOK.md` (operations),
-`docs/SOURCES.md` (provenance of each claim), `docs/UNKNOWNS.md`
-(unknowns and provisional decisions).
+No inverter at hand? Reproduce the whole thing against the included simulator:
+
+```bash
+make dev-sim                        # deterministic simulator on 127.0.0.1:8081
+make seed                           # seven days of synthetic history
+FRONIUS_WEB_DIR=apps/web/dist ./bin/froniusd
+```
+
+### Configuration
+
+| Variable | Default | What it does |
+|---|---|---|
+| `FRONIUS_SOLARAPI_URL` | `http://127.0.0.1:8081` | The inverter's base URL. |
+| `FRONIUS_WEB_DIR` | *(empty — API only)* | Where the built interface lives; `apps/web/dist` after `make build`. |
+| `FRONIUS_HTTP_ADDR` | `127.0.0.1:8080` | Where the interface listens. Loopback only unless you knowingly set `FRONIUS_ALLOW_REMOTE=1`. |
+| `FRONIUS_DB_PATH` | `./data/fronius.db` | Your database. Back it up freely. |
+| `FRONIUS_TZ` | `Europe/Brussels` | The **installation's** time zone — it decides where a day starts and ends. |
+| `FRONIUS_POLL_INTERVAL` | `5s` | Collection interval. |
+| `FRONIUS_RETENTION_DAYS` | `0` | Purge samples older than N days. `0` keeps everything. |
+| `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` | *(empty)* | Only for the device's internal read paths. They never reach the browser. |
+
+The full list is in the [runbook](docs/RUNBOOK.md).
+
+## Different by design
+
+| | The inverter's own web console | This application |
+|---|---|---|
+| Where it runs | on the inverter | on your machine |
+| When the inverter is offline | nothing to see | history, events and exports keep working |
+| What it can change | configuration and commands | **nothing** — `GET` only, by construction |
+| History | what the device reports now | hourly aggregates, daily energy, an event journal, CSV export |
+| Numbers | as reported | *measured* / *derived* / *unavailable*, with reasons |
+
+Use both: the console for configuration, this for the record.
+
+## What it will never do
+
+- Send anything but `GET` to the inverter. The refusal is structural, not a
+  setting, not a flag, not the caller's goodwill.
+- Change configuration, firmware, grid parameters or passwords, or trigger a
+  self-test.
+- Phone home, or ask you for an account.
+- Show a fabricated number: where a measurement is missing you get a dash and
+  the reason — never a zero.
+
+## Compatibility and status
+
+- Built for the **Fronius GEN24** family; developed against a Primo GEN24 3.6 Plus
+  on firmware `1.19.7-1`. The Solar API-first design should suit Tauro and Verto,
+  but only the GEN24 has been used.
+- The core needs no credential. The provenance of every field is documented in
+  [Sources](docs/SOURCES.md), including what was observed on hardware and what
+  was only read from the manufacturer's client.
+- Two internal read paths (`/commands/GetUTCTime`, `/commands/GetServiceState`)
+  are marked **unverified on hardware**. When they fail they degrade to
+  "unknown, with a reason" — never to an invented value.
+- Everything runs against a deterministic simulator in the test suite: no
+  hardware is needed to build, test or explore it.
+
+## Documentation
+
+- [**User guide**](docs/USER-GUIDE.md) — every screen, with a screenshot, and how
+  to read the numbers.
+- [Runbook](docs/RUNBOOK.md) — checks, diagnosis, backup and restore, retention.
+- [Architecture](docs/ARCHITECTURE.md) — how it is built and the invariants it keeps.
+- [Sources](docs/SOURCES.md) · [Unknowns](docs/UNKNOWNS.md) · [Endpoints](docs/ENDPOINTS.md)
+  — provenance, open questions, and the endpoint matrix.
+- [Development](docs/DEVELOPMENT.md) — building, testing, capturing the screenshots.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Not affiliated with, endorsed by, or supported by Fronius International GmbH.
+"Fronius" is a trademark of its owner and is used here only to say what this
+software reads.
