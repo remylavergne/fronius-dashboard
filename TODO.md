@@ -117,7 +117,7 @@
 - [x] Unit tests for parsers, conversions and aggregations
 - [x] DST, time gaps, duplicates, reboot and outlier data tests
 - [x] API tests on network errors, authentication and JSON corruption
-- [ ] React component tests and E2E tests on the simulator
+- [x] React component tests and E2E tests on the simulator — the component half is delivered (236 tests across 17 files, including the shell's focus and scroll-lock behaviour, the drawer, the error-versus-empty distinctions and the CSV links). **E2E is declined** (2026-10-17, owner's decision): a Playwright suite is not worth its dependency and maintenance for a single-installation local app, and the browser-level joins are checked live at each delivery instead — the shell at five viewports, the CSV download to disk, the connectivity test's three states, the favicon by pixels. Accepted risk: those joins have no automated regression net; the component suite, the Go suite and the API contract test remain the gates
 - [x] Verify the absence of secrets in the bundle, logs, localStorage, repository
 - [ ] Secure CORS, cookies, CSP and authentication if remote access
 - [ ] Configure localhost/LAN bind and HTTPS proxy according to the ADR
@@ -1089,3 +1089,14 @@
   dark tile at 16 px, 13.4 % at 180 px, corners transparent by design. Suites:
   `go test -race ./...`, `vet`, `gofmt`, `pnpm typecheck`, 236 web tests;
   `make api-types` regenerates byte-identically.
+
+- 2026-10-17 — Decision, no code: **no E2E suite.** A Playwright (or equivalent)
+  browser suite is declined for this application. It is a single-installation
+  local app; the component suite (236 tests) plus the Go suite and the API
+  contract test already gate the code; and every delivery has verified the
+  browser-level joins live — the shell at five viewports, a real CSV download to
+  disk, the connectivity test's `ok` / `cached` / `unreachable` / `unauthorized`
+  states, the favicon by pixel shares. The box is ticked with the decision and
+  the accepted risk written down: those joins have **no automated regression
+  net**, so a UI change that breaks one is caught by the next live check, not by
+  CI. Worth revisiting only if this becomes multi-user or remotely exposed.
