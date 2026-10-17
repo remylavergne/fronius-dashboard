@@ -53,6 +53,9 @@ undetermined resource stays "undetermined" — never "absent". Phase 3 materiali
 hourly aggregates and schedules the retention purge (`make test-perf` measures the
 criterion of ADR 0006 over one year of data).
 
+A task-oriented guide, with a screenshot of every screen, is in
+[`docs/USER-GUIDE.md`](docs/USER-GUIDE.md).
+
 Landmarks: `docs/ARCHITECTURE.md` (invariants), `docs/RUNBOOK.md` (operations),
 `docs/SOURCES.md` (provenance of each claim), `docs/UNKNOWNS.md`
 (unknowns and provisional decisions).

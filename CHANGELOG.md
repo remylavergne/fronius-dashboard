@@ -9,6 +9,16 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **Screenshots and a user guide.** `docs/USER-GUIDE.md` walks the
+  ten screens — Overview, Energy, Events, Device detail, System, Capabilities,
+  Settings with a **completed connectivity test**, Data sources, and the mobile
+  pair (page and navigation drawer) — each with alt text and what to look at.
+  `docs/screenshots/` holds the PNGs, captured from the rendered application
+  against `cmd/fronius-sim` with a two-day backfill (1440×900 desktop, 390×844
+  mobile, default theme) and verified for content before each shot. The guide
+  states the synthetic provenance and repeats the honesty rules: unverified
+  paths, absent versus zero, no write access, and what the connectivity test does
+  not prove. The capture procedure is in `docs/DEVELOPMENT.md`.
 - 2026-10-17 — **The application shell.** A real structure replaces the static
   header and the flat wrapped link list: a **sidebar** on desktop (brand, then
   the three groups — Monitoring, Device, Application — fed by a single

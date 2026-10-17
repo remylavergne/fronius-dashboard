@@ -127,7 +127,7 @@
 - [ ] Test NAS/local installation, startup and updates
 - [x] Test backup and restore of the database
 - [x] Document installation, configuration, maintenance and troubleshooting
-- [ ] Create screenshots and a user guide
+- [x] Create screenshots and a user guide — `docs/USER-GUIDE.md` (ten screens, each with alt text) and `docs/screenshots/01…10.png`, captured 2026-10-17 from the rendered application against `cmd/fronius-sim` (reports firmware `1.24.3-sim`) with a two-day backfill, 1440×900 desktop and 390×844 mobile, default theme. Each capture was verified for content first (page heading, a page-specific string, no error alert); the mobile pair also for **0 px** horizontal overflow and a drawn navigation drawer. The guide states the synthetic provenance and restates the honesty rules (unverified paths, absent versus zero, no write access, the connectivity test's limits), and the capture procedure lives in `docs/DEVELOPMENT.md` so the set can be reproduced
 - [ ] Verify resource consumption and network load of the inverter
 
 ## 7 — Later phase (out of MVP)
@@ -951,3 +951,28 @@
   overlay behaviours, scroll lock including unmount, the single landmark); suite
   **236**. The §5 box stays open for the rest of "design system, light/dark themes"
   — the responsive-navigation half is done.
+
+- 2026-10-17 — Step 32 (phase 6): **screenshots and a user guide.**
+  `docs/USER-GUIDE.md` (3 365 words, ten sections plus a provenance paragraph)
+  walks every screen with its image — Overview, Energy, Events, Device detail
+  (full page), System, Capabilities, Settings with a **completed** connectivity
+  test, Data sources, and the mobile pair (Energy, drawer open) — each with alt
+  text and what to look at. The ten PNGs in `docs/screenshots/` were captured from
+  the **rendered** application against `cmd/fronius-sim` (firmware
+  `1.24.3-sim`) with a two-day backfill, 1440×900 desktop and 390×844 mobile,
+  default theme. **Each capture was content-checked first** — the page heading
+  from `main h1`, a page-specific string (`lower bound`, `Collector started`,
+  `GetPowerFlowRealtimeData`, `Overall`), no error alert — and the mobile pair
+  additionally for **0 px** horizontal overflow and a drawn drawer. Verified
+  afterwards: ten RGB PNGs (47–407 kB), each referenced exactly once, every image
+  path and every relative link resolving, every `make` target the guide mentions
+  existing. The guide carries the honesty rules: synthetic provenance, the
+  structural GET-only refusal, "the Settings screen is a read-out, not a form",
+  lower-bound rollups, `visible / fetched`, unverified ≠ false, and the
+  connectivity test's limits. It also **corrected two things the brief
+  overclaimed** after reading the code: the Overview renders four cards
+  (production, day energy, year energy, collector), and Capabilities uses
+  *available/unavailable* + *verified/unverified* + *measured/estimated/missing*
+  rather than one vocabulary. The capture procedure is in `docs/DEVELOPMENT.md`
+  (simulator, backfill, viewports), so the set is reproducible; `README.md` links
+  the guide. Box ticked: "Create screenshots and a user guide" (phase 6).

@@ -51,6 +51,29 @@ be local: history filling refuses a non-local target without
 Then <http://127.0.0.1:5173>. The Vite proxy relays `/api` to `froniusd`: the
 frontend never has the inverter address.
 
+## Capturing the guide screenshots
+
+The images of `docs/USER-GUIDE.md` are captured against the simulator, never
+against the inverter, and need no credential. Start the stack with a two-day
+backfill:
+
+```bash
+make dev-sim
+FRONIUS_DB_PATH=./data/guide.db go run ./cmd/froniusd --backfill-days 2
+make dev-web
+```
+
+The backfill writes two days of simulator history before the service starts, so
+the Energy page has a window and the Events page has a journal. Capture the
+desktop screens at 1440×900 and the mobile screens at 390×844, in the
+application's **default light theme** (there is no theme switch). Save the files
+in `docs/screenshots/` under the ten names the guide references:
+`01-overview.png`, `02-energy.png`, `03-events.png`, `04-device-detail.png`,
+`05-system.png`, `06-capabilities.png`, `07-settings-connectivity.png`,
+`08-sources.png`, `09-mobile-drawer.png` and `10-mobile-energy.png`. The mobile
+drawer shot is taken with the navigation open; the mobile Energy shot is the
+same page at the narrow viewport.
+
 ## Commands
 
 | Command | Effect |
