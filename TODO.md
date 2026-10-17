@@ -86,7 +86,7 @@
 - [x] Paginate and bound large requests
 - [ ] Generate OpenAPI and typed TS clients
 - [x] Add API+SQLite integration tests
-- [ ] Make a stored timestamp that does not parse cost **its row**, not the whole read — found 2026-10-17 while exercising the CSV export: one `events.ts_utc` written without the millisecond suffix (`…T10:00:00Z` instead of `…T10:00:00.000Z`) made **every** `/api/v1/events` answer (JSON *and* CSV) `500 invalid timestamp`. The application only ever writes the canonical format, so this is the manual-tamper or older-data case — but one bad row currently blinds the whole journal. Fix direction: skip and log a row that does not parse (or validate at write and at open), and pin it with a test that inserts a malformed row directly
+- [x] Make a stored timestamp that does not parse cost **its row**, not the whole read — found 2026-10-17 while exercising the CSV export: one `events.ts_utc` written without the millisecond suffix (`…T10:00:00Z` instead of `…T10:00:00.000Z`) made **every** `/api/v1/events` answer (JSON *and* CSV) `500 invalid timestamp`. The application only ever writes the canonical format, so this is the manual-tamper or older-data case — but one bad row currently blinds the whole journal. Fix direction: skip and log a row that does not parse (or validate at write and at open), and pin it with a test that inserts a malformed row directly
 
 ## 5 — React/shadcn UI
 
@@ -1043,3 +1043,23 @@
   *distribution* remain deferred. Boxes ticked: "Compile the Go binary with
   embedded React assets" and "Add volumes, healthcheck, restart policy and secret
   management".
+
+- 2026-10-17 — Step 35 (phase 4): **a bad timestamp costs its row, not the
+  read.** The reader now accepts the canonical layout *and* RFC 3339 without
+  milliseconds or with an offset (normalised to UTC), so an older or hand-written
+  row reads instead of failing the journal; anything truly unparseable is
+  skipped, counted, and logged once per query (`WARN skipping rows with an
+  unreadable timestamp table=events skipped=1 first=not-a-timestamp`). The sweep
+  found more than the box described: the SQL-side bucket loops
+  (`rawBucketsInto`, `aggBucketsInto`, `rawHourlyEnergyInto`) could also blind a
+  read on a `NULL` bucket, and now skip and count it; single-row records
+  (`Device`, `LatestRun`, `DeviceHealth`, `TotalEnergyAt`, the watermark/oldest
+  helpers) degrade to the zero/absent value instead of failing. Writes, schema
+  and API contract unchanged. **Verified live**: three rows inserted directly —
+  canonical, no-milliseconds, garbage — then `/api/v1/events` and its CSV answered
+  **200** with the first two (the second normalised to `.000Z`) and the third
+  absent, with exactly one warning per query. Tests: 8 in
+  `internal/storage/timestamp_tolerance_test.go` (both layouts and garbage; the
+  events and sample skips; the `agg_hour` bucket; a single-row tolerance; and a
+  captured-log assertion that a no-millis row warns nothing). Box ticked: "Make
+  a stored timestamp that does not parse cost its row, not the whole read".

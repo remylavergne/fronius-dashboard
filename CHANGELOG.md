@@ -9,6 +9,16 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **A stored timestamp that does not parse now costs its row, not
+  the read.** The reader accepts the canonical layout *and* RFC 3339 without
+  milliseconds or with an offset (normalised to UTC), so an older or hand-written
+  row still reads instead of failing the whole journal. Anything truly
+  unparseable is skipped, counted, and logged once per query —
+  `skipping rows with an unreadable timestamp table=events skipped=1 first=…` —
+  so `/api/v1/events` and its CSV answer `200` with the other rows instead of
+  `500`. The same rule covers `agg_hour` buckets and the SQL-side bucket loops;
+  single-row records (device, run, health) degrade to the zero value. Found while
+  exercising the CSV export, where one hand-inserted row blinded every read.
 - 2026-10-17 — **The interface embedded in the binary, credentials from files,
   and NAS guidance.** `//go:embed` of `internal/webui/assets`: the build copies
   `apps/web/dist` there, `webui.FS()` reports it only when it holds an

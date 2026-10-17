@@ -695,6 +695,33 @@ sqlite3 data/fronius.db 'select ts_utc, kind, severity, message from events orde
 sqlite3 data/fronius.db 'select count(*) from agg_hour;'   # hourly aggregates
 ```
 
+### A row whose timestamp cannot be read
+
+Timestamps are stored in the canonical form `2006-01-02T15:04:05.000Z`. The reader
+also accepts RFC 3339 **without** milliseconds and with an offset, so an older or
+hand-written row still reads (and is normalised in the answer). Anything else is
+**skipped, counted, and logged once per query**:
+
+```
+WARN skipping rows with an unreadable timestamp table=events skipped=1 first=not-a-timestamp
+```
+
+The read continues and returns every other row: one bad row costs its row, never
+the journal. The same rule applies to `agg_hour` buckets, and a bad timestamp in a
+single-row record (device, run, health) yields the zero/absent value instead of
+failing the read.
+
+To find a row that is not in the canonical form, with the service stopped:
+
+```bash
+sqlite3 data/fronius.db \
+  "select rowid, ts_utc from events where ts_utc not like '____-__-__T__:__:__.___Z'"
+```
+
+Fix or delete it, then start the service. Rows written by the application are
+always canonical; a deviation means a hand-written row, an older database, or a
+tampered file.
+
 ## What this service never does
 
 - no method other than `GET` towards the inverter: the refusal is structural

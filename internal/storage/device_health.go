@@ -95,10 +95,9 @@ func (s *Store) DeviceHealth(ctx context.Context) (DeviceHealth, bool, error) {
 		return DeviceHealth{}, false, fmt.Errorf("reading device health: %w", err)
 	}
 
-	parsed, err := parseTS(readAt)
-	if err != nil {
-		return DeviceHealth{}, false, err
-	}
+	// An unreadable stamp leaves the zero time rather than failing the read:
+	// a missing read instant is not a fabricated one.
+	parsed, _ := parseTS(readAt)
 
 	h := DeviceHealth{
 		ReadAtUTC:     parsed,
@@ -111,10 +110,9 @@ func (s *Store) DeviceHealth(ctx context.Context) (DeviceHealth, bool, error) {
 	// NULL device time and NULL drift both come back as the zero value: an
 	// unread clock is not a clock that read the epoch.
 	if deviceUTC.Valid {
-		h.ClockDeviceUTC, err = parseTS(deviceUTC.String)
-		if err != nil {
-			return DeviceHealth{}, false, err
-		}
+		// An unreadable device time is treated like an unread clock: the
+		// zero value, never a fabricated instant.
+		h.ClockDeviceUTC, _ = parseTS(deviceUTC.String)
 	}
 	if driftMS.Valid {
 		h.ClockDriftMS = driftMS.Int64

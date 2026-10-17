@@ -203,9 +203,18 @@ func formatTS(t time.Time) string {
 	return t.UTC().Truncate(time.Millisecond).Format(tsLayout)
 }
 
-// parseTS reads a timestamp written by formatTS.
+// parseTS reads a stored timestamp.
+//
+// The canonical layout is tried first: it is what formatTS writes. A
+// timestamp without milliseconds, or with an offset instead of the Z suffix,
+// is still valid data (hand-written row, older data) and is accepted through
+// time.RFC3339Nano, normalised to UTC. Only a value that neither layout
+// accepts is an error: the caller then decides whether it costs the row.
 func parseTS(s string) (time.Time, error) {
-	t, err := time.Parse(tsLayout, s)
+	if t, err := time.Parse(tsLayout, s); err == nil {
+		return t.UTC(), nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("invalid timestamp %q: %w", s, err)
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -14,6 +15,34 @@ import (
 
 // ErrNoData signals an empty database for the requested query.
 var ErrNoData = errors.New("storage: no data")
+
+// errUnreadableTimestamp marks a row whose stored timestamp no layout
+// accepts. A row-returning read skips the row; a single-row read treats it
+// as absent instead of failing.
+var errUnreadableTimestamp = errors.New("storage: unreadable timestamp")
+
+// unreadableTimestampError carries the stored value that could not be read,
+// so the caller's warning can name it without logging it row by row.
+type unreadableTimestampError struct{ value string }
+
+func (e *unreadableTimestampError) Error() string {
+	return fmt.Sprintf("storage: unreadable timestamp %q", e.value)
+}
+
+func (e *unreadableTimestampError) Is(target error) bool {
+	return target == errUnreadableTimestamp
+}
+
+// warnSkippedRows reports, once per query, the rows whose timestamp could not
+// be read. The warning carries the table and the first offending value, so
+// the damage can be located without logging every row.
+func warnSkippedRows(table, first string, skipped int) {
+	if skipped == 0 {
+		return
+	}
+	slog.Default().Warn("skipping rows with an unreadable timestamp",
+		"table", table, "skipped", skipped, "first", first)
+}
 
 // RunRecord traces a collector run.
 type RunRecord struct {
@@ -115,14 +144,48 @@ func (s *Store) InsertSample(ctx context.Context, sm model.Sample) error {
 }
 
 // LatestSample returns the most recent sample, all sources combined.
+//
+// A row whose stored timestamp cannot be read is skipped: the most recent
+// readable sample is returned, with a single warning for the query. No
+// readable sample at all is reported as ErrNoData.
 func (s *Store) LatestSample(ctx context.Context) (model.Sample, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT `+sampleColumns+` FROM samples ORDER BY ts_utc DESC LIMIT 1`)
-	sm, err := scanSample(row)
-	if errors.Is(err, sql.ErrNoRows) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+sampleColumns+` FROM samples ORDER BY ts_utc DESC`)
+	if err != nil {
+		return model.Sample{}, fmt.Errorf("reading the latest sample: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var (
+		latest        model.Sample
+		found         bool
+		skipped       int
+		firstBadValue string
+	)
+	for rows.Next() {
+		sm, err := scanSample(rows)
+		if err != nil {
+			var bad *unreadableTimestampError
+			if errors.As(err, &bad) {
+				skipped++
+				if firstBadValue == "" {
+					firstBadValue = bad.value
+				}
+				continue
+			}
+			return model.Sample{}, err
+		}
+		latest, found = sm, true
+		break
+	}
+	if err := rows.Err(); err != nil {
+		return model.Sample{}, fmt.Errorf("iterating samples: %w", err)
+	}
+	warnSkippedRows("samples", firstBadValue, skipped)
+	if !found {
 		return model.Sample{}, ErrNoData
 	}
-	return sm, err
+	return latest, nil
 }
 
 // TotalEnergyAt returns the total energy recorded at or before t: the most recent
@@ -144,9 +207,11 @@ func (s *Store) TotalEnergyAt(ctx context.Context, t time.Time) (float64, time.T
 	if err != nil {
 		return 0, time.Time{}, false, fmt.Errorf("reading the total energy at or before %s: %w", formatTS(t), err)
 	}
+	// A single-row read tolerates an unreadable stamp: the baseline is then
+	// absent rather than the whole read failing.
 	parsed, err := parseTS(ts)
 	if err != nil {
-		return 0, time.Time{}, false, err
+		return 0, time.Time{}, false, nil
 	}
 	return value, parsed, true, nil
 }
@@ -255,11 +320,18 @@ func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEne
 	byDate := map[string]*acc{}
 	var order []string
 
+	skipped, firstBad := 0, ""
 	for _, hour := range hourKeys {
 		v := hours[hour]
 		hourUTC, err := time.ParseInLocation("2006-01-02T15", hour, time.UTC)
 		if err != nil {
-			return nil, fmt.Errorf("unexpected UTC hour %q: %w", hour, err)
+			// A malformed bucket_utc costs its hour, not the day's energy:
+			// the hourly aggregates are the only source that can carry one.
+			skipped++
+			if firstBad == "" {
+				firstBad = hour
+			}
+			continue
 		}
 		date := hourUTC.In(s.loc).Format("2006-01-02")
 		a, ok := byDate[date]
@@ -280,6 +352,7 @@ func (s *Store) DailyEnergy(ctx context.Context, from, to time.Time) ([]DailyEne
 		a := byDate[date]
 		out = append(out, DailyEnergy{Date: date, EnergyWh: new(a.max)})
 	}
+	warnSkippedRows("agg_hour", firstBad, skipped)
 	return out, nil
 }
 
@@ -319,6 +392,7 @@ func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error
 	defer rows.Close()
 
 	var out []model.Event
+	skipped, firstBad := 0, ""
 	for rows.Next() {
 		var (
 			ts, kind, severity, message, detail string
@@ -328,7 +402,13 @@ func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error
 		}
 		parsed, err := parseTS(ts)
 		if err != nil {
-			return nil, err
+			// One unreadable timestamp costs its row, never the journal:
+			// skipping stays visible through the single warning below.
+			skipped++
+			if firstBad == "" {
+				firstBad = ts
+			}
+			continue
 		}
 		out = append(out, model.Event{
 			TS:       parsed,
@@ -341,6 +421,7 @@ func (s *Store) Events(ctx context.Context, q EventsQuery) ([]model.Event, error
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating events: %w", err)
 	}
+	warnSkippedRows("events", firstBad, skipped)
 	return out, nil
 }
 
@@ -384,10 +465,9 @@ func (s *Store) LatestRun(ctx context.Context) (RunRecord, bool, error) {
 		}
 		return RunRecord{}, false, fmt.Errorf("reading the last cycle: %w", err)
 	}
-	parsed, err := parseTS(started)
-	if err != nil {
-		return RunRecord{}, false, err
-	}
+	// An unreadable stamp leaves the zero time rather than failing the read:
+	// the rest of the cycle record stays true and visible.
+	parsed, _ := parseTS(started)
 	return RunRecord{
 		StartedUTC: parsed,
 		DurationMS: duration,
@@ -528,10 +608,9 @@ func (s *Store) Device(ctx context.Context) (DeviceRecord, bool, error) {
 		}
 		return DeviceRecord{}, false, fmt.Errorf("reading device state: %w", err)
 	}
-	parsed, err := parseTS(readAt)
-	if err != nil {
-		return DeviceRecord{}, false, err
-	}
+	// An unreadable stamp leaves the zero time rather than failing the read:
+	// the recorded identity is still the truth about the device.
+	parsed, _ := parseTS(readAt)
 	return DeviceRecord{
 		ReadAtUTC:          parsed,
 		Source:             source,
@@ -670,7 +749,7 @@ func scanSample(row interface{ Scan(...any) error }) (model.Sample, error) {
 
 	parsed, err := parseTS(ts)
 	if err != nil {
-		return model.Sample{}, err
+		return model.Sample{}, &unreadableTimestampError{value: ts}
 	}
 
 	sm := model.Sample{

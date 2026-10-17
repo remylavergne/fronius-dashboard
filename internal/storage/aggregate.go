@@ -137,9 +137,11 @@ func (s *Store) oldestSample(ctx context.Context) (time.Time, bool, error) {
 	if !v.Valid {
 		return time.Time{}, false, nil
 	}
+	// An unreadable stamp leaves the age unknown rather than failing the
+	// read; the caller then behaves as if no sample were retained.
 	t, err := parseTS(v.String)
 	if err != nil {
-		return time.Time{}, false, fmt.Errorf("unexpected timestamp %q: %w", v.String, err)
+		return time.Time{}, false, nil
 	}
 	return t, true, nil
 }
@@ -238,7 +240,7 @@ func (s *Store) rawBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT CAST(strftime('%s', ts_utc) AS INTEGER) / ? * ? AS bucket,
 		       COUNT(*), COUNT(power_pv_w), SUM(power_pv_w),
-		       MIN(power_pv_w), MAX(power_pv_w)
+		       MIN(power_pv_w), MAX(power_pv_w), MIN(ts_utc)
 		FROM samples
 		WHERE ts_utc >= ? AND ts_utc < ?
 		GROUP BY bucket
@@ -248,22 +250,35 @@ func (s *Store) rawBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 	}
 	defer rows.Close()
 
+	skipped, firstBad := 0, ""
 	for rows.Next() {
 		var (
-			key           int64
-			countAll      int
-			countPV       int
-			sum, min, max sql.NullFloat64
+			key                 sql.NullInt64
+			countAll            int
+			countPV             int
+			sum, min, max       sql.NullFloat64
+			firstUnreadableTime sql.NullString
 		)
-		if err := rows.Scan(&key, &countAll, &countPV, &sum, &min, &max); err != nil {
+		if err := rows.Scan(&key, &countAll, &countPV, &sum, &min, &max,
+			&firstUnreadableTime); err != nil {
 			return fmt.Errorf("reading a bucket: %w", err)
 		}
-		bucketAccFor(acc, key).add(countAll, countPV, sum.Float64,
+		if !key.Valid {
+			// The bucket key is NULL when SQLite's date function cannot read
+			// the stored timestamp: those rows cost themselves, not the series.
+			skipped += countAll
+			if firstBad == "" && firstUnreadableTime.Valid {
+				firstBad = firstUnreadableTime.String
+			}
+			continue
+		}
+		bucketAccFor(acc, key.Int64).add(countAll, countPV, sum.Float64,
 			nullPtr(min), nullPtr(max))
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterating buckets: %w", err)
 	}
+	warnSkippedRows("samples", firstBad, skipped)
 	return nil
 }
 
@@ -275,7 +290,7 @@ func (s *Store) aggBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT CAST(strftime('%s', bucket_utc) AS INTEGER) / ? * ? AS bucket,
 		       SUM(count_all), SUM(count_pv), SUM(sum_pv_w),
-		       MIN(min_pv_w), MAX(max_pv_w)
+		       MIN(min_pv_w), MAX(max_pv_w), COUNT(*), MIN(bucket_utc)
 		FROM agg_hour
 		WHERE bucket_utc >= ? AND bucket_utc < ?
 		GROUP BY bucket
@@ -285,22 +300,36 @@ func (s *Store) aggBucketsInto(ctx context.Context, acc map[int64]*bucketAcc, fr
 	}
 	defer rows.Close()
 
+	skipped, firstBad := 0, ""
 	for rows.Next() {
 		var (
-			key           int64
-			countAll      int
-			countPV       int
-			sum, min, max sql.NullFloat64
+			key                 sql.NullInt64
+			countAll            int
+			countPV             int
+			sum, min, max       sql.NullFloat64
+			rowCount            int
+			firstUnreadableTime sql.NullString
 		)
-		if err := rows.Scan(&key, &countAll, &countPV, &sum, &min, &max); err != nil {
+		if err := rows.Scan(&key, &countAll, &countPV, &sum, &min, &max,
+			&rowCount, &firstUnreadableTime); err != nil {
 			return fmt.Errorf("reading an aggregated bucket: %w", err)
 		}
-		bucketAccFor(acc, key).add(countAll, countPV, sum.Float64,
+		if !key.Valid {
+			// A bucket_utc SQLite cannot read costs its aggregate row, never
+			// the whole series.
+			skipped += rowCount
+			if firstBad == "" && firstUnreadableTime.Valid {
+				firstBad = firstUnreadableTime.String
+			}
+			continue
+		}
+		bucketAccFor(acc, key.Int64).add(countAll, countPV, sum.Float64,
 			nullPtr(min), nullPtr(max))
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterating aggregated buckets: %w", err)
 	}
+	warnSkippedRows("agg_hour", firstBad, skipped)
 	return nil
 }
 
@@ -311,7 +340,8 @@ func (s *Store) rawHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 		return nil
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT strftime('%Y-%m-%dT%H', ts_utc) AS hour_utc, MAX(energy_day_wh)
+		SELECT strftime('%Y-%m-%dT%H', ts_utc) AS hour_utc, MAX(energy_day_wh),
+		       COUNT(*), MIN(ts_utc)
 		FROM samples
 		WHERE ts_utc >= ? AND ts_utc < ? AND energy_day_wh IS NOT NULL
 		GROUP BY hour_utc
@@ -321,20 +351,37 @@ func (s *Store) rawHourlyEnergyInto(ctx context.Context, acc map[string]float64,
 	}
 	defer rows.Close()
 
+	skipped, firstBad := 0, ""
 	for rows.Next() {
-		var hour string
-		var v sql.NullFloat64
-		if err := rows.Scan(&hour, &v); err != nil {
+		var (
+			hour                sql.NullString
+			v                   sql.NullFloat64
+			rowCount            int
+			firstUnreadableTime sql.NullString
+		)
+		if err := rows.Scan(&hour, &v, &rowCount, &firstUnreadableTime); err != nil {
 			return fmt.Errorf("reading an hourly maximum: %w", err)
+		}
+		if !hour.Valid {
+			// A timestamp SQLite cannot read costs its row, not the day.
+			skipped += rowCount
+			if firstBad == "" && firstUnreadableTime.Valid {
+				firstBad = firstUnreadableTime.String
+			}
+			continue
 		}
 		if !v.Valid {
 			continue
 		}
-		if cur, ok := acc[hour]; !ok || v.Float64 > cur {
-			acc[hour] = v.Float64
+		if cur, ok := acc[hour.String]; !ok || v.Float64 > cur {
+			acc[hour.String] = v.Float64
 		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	warnSkippedRows("samples", firstBad, skipped)
+	return nil
 }
 
 // aggHourlyEnergyInto accumulates the maximum daily energy per UTC hour
