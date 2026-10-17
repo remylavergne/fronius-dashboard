@@ -84,7 +84,7 @@
 - [x] Implement SSE or polling according to the ADR
 - [x] Validate range/date/granularity parameters
 - [x] Paginate and bound large requests
-- [ ] Generate OpenAPI and typed TS clients
+- [x] Generate OpenAPI and typed TS clients — `api/openapi.json` (OpenAPI 3.1: 10 paths, 36 schemas) kept honest by `internal/api/openapi_test.go`, which compares DTO JSON tags with schema properties, registered paths with documented paths, checks every documented path answers, and requires each property to be typed or explicitly exempted (the detail family payload is the sole exemption, `additionalProperties`). The frontend types are generated with `openapi-typescript` (`make api-types`, file committed) and the zod schemas are tied to them by a compile-time contract registry, so a drift is a `tsc` error. **Types, not a generated fetch client**: the TanStack hooks stay hand-written. Eight nullability corrections were made to the spec from the Go struct tags
 - [x] Add API+SQLite integration tests
 - [x] Make a stored timestamp that does not parse cost **its row**, not the whole read — found 2026-10-17 while exercising the CSV export: one `events.ts_utc` written without the millisecond suffix (`…T10:00:00Z` instead of `…T10:00:00.000Z`) made **every** `/api/v1/events` answer (JSON *and* CSV) `500 invalid timestamp`. The application only ever writes the canonical format, so this is the manual-tamper or older-data case — but one bad row currently blinds the whole journal. Fix direction: skip and log a row that does not parse (or validate at write and at open), and pin it with a test that inserts a malformed row directly
 
@@ -1063,3 +1063,29 @@
   events and sample skips; the `agg_hour` bucket; a single-row tolerance; and a
   captured-log assertion that a no-millis row warns nothing). Box ticked: "Make
   a stored timestamp that does not parse cost its row, not the whole read".
+
+- 2026-10-17 — Step 36 (phase 6): **an OpenAPI contract, generated TypeScript
+  types, and a real favicon.** `api/openapi.json` (OpenAPI 3.1, 10 paths, 36
+  schemas) is guarded by `internal/api/openapi_test.go`: DTO JSON tags vs schema
+  properties in both directions (embedded structs flattened), `register(…)` paths
+  vs documented paths (parsed from `server.go`), every documented path answering
+  through the real test server, and every property typed or explicitly exempted
+  (only `DetailFamilyDTO.data`, `additionalProperties`, with a reason). The net
+  was demonstrated, not assumed: deleting `uptime_s` from `HealthDTO` fails with
+  "missing from the spec [uptime_s]"; renaming `/api/v1/events` fails on both the
+  path set and the 404 check. The frontend types are generated
+  (`openapi-typescript`, `make api-types`, `src/lib/api-types.ts` committed) and
+  the zod schemas are tied to them by a **compile-time contract registry**
+  (`Accepts` + `KeysMatch`, 48 links including the ten envelopes) rather than
+  literal `z.ZodType<…>` annotations, because `exactOptionalPropertyTypes` and the
+  validators' deliberate tolerance are incompatible; the registry checks the same
+  drift and is proven by renaming a property, adding one, and adding a zod key,
+  each a `tsc` error naming the schema. **Eight nullability corrections** went
+  into the spec from the Go tags (pointer + `omitempty` = absent, never `null`;
+  pointer without it = nullable), with the Go parity test green. The Vite scaffold
+  favicon (a purple bolt) became a **sun on the primary tile**
+  (`favicon.svg`, 550 B), with a 180-px `apple-touch-icon.png` and
+  `theme-color`; legibility was measured, not guessed — 7.8 % amber on a 76.6 %
+  dark tile at 16 px, 13.4 % at 180 px, corners transparent by design. Suites:
+  `go test -race ./...`, `vet`, `gofmt`, `pnpm typecheck`, 236 web tests;
+  `make api-types` regenerates byte-identically.

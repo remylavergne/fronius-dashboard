@@ -9,6 +9,21 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **An OpenAPI contract, generated TypeScript types, and a real
+  favicon.** `api/openapi.json` (OpenAPI 3.1) documents every registered route
+  and DTO. `internal/api/openapi_test.go` fails when a DTO field or a registered
+  path is missing from it, when a documented path answers 404, or when a schema
+  property is neither typed nor explicitly exempted — proven by deleting a field
+  and renaming a path, both of which fail with a precise message. The frontend
+  types are generated from the contract (`openapi-typescript`, `make api-types`,
+  the file committed so a checkout typechecks without codegen), and the zod
+  schemas are tied to those types through a compile-time contract registry: a
+  property present on one side only is a `tsc` error. Eight nullability
+  corrections went into the spec from the Go struct tags — a pointer with
+  `omitempty` is absent, never `null`; a pointer without it is nullable. The Vite
+  scaffold bolt favicon is replaced by a sun mark on the primary tile, with a
+  180-px Apple touch icon and `theme-color` (legibility checked by pixels: 7.8%
+  amber on a 76.6% dark tile at 16 px).
 - 2026-10-17 — **A stored timestamp that does not parse now costs its row, not
   the read.** The reader accepts the canonical layout *and* RFC 3339 without
   milliseconds or with an offset (normalised to UTC), so an older or hand-written

@@ -198,7 +198,7 @@ imports a `cmd/`.
 
 | Path | Role |
 |---|---|
-| `src/lib/schema.ts` | zod schemas **mirroring** `internal/api/dto.go` |
+| `src/lib/schema.ts` · `src/lib/api-types.ts` | zod schemas **linked by type** to the TypeScript types generated from `api/openapi.json` (`make api-types`), so an API drift is a compile error rather than a runtime surprise |
 | `src/lib/api.ts` | `fetchJSON`: failures classified as `network` / `http` / `schema` |
 | `src/lib/queries.ts` | TanStack Query hooks, polling 5 s, ranges and steps |
 | `src/lib/chart.ts` | Buckets → chart points, **materialized gaps** |

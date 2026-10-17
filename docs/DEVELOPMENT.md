@@ -51,6 +51,26 @@ be local: history filling refuses a non-local target without
 Then <http://127.0.0.1:5173>. The Vite proxy relays `/api` to `froniusd`: the
 frontend never has the inverter address.
 
+## The API contract
+
+`api/openapi.json` is the machine-readable description of the REST API (OpenAPI
+3.1, one path per registered route, a schema per DTO). Two guards keep it honest:
+
+- `internal/api/openapi_test.go` fails when a DTO field or a registered route is
+  missing from the document, when a documented path does not answer, or when a
+  schema property is neither typed nor explicitly exempted. The parity is on
+  **names**; required-ness and nullability follow the Go struct tags, and the
+  document follows them.
+- The frontend types are generated from it: `apps/web/src/lib/api-types.ts` ←
+  `openapi-typescript api/openapi.json`. Regenerate after any API change with
+  `make api-types` (or `pnpm --dir apps/web generate:api`). The generated file is
+  committed, so a checkout typechecks without running codegen.
+
+The zod schemas in `apps/web/src/lib/schema.ts` carry their generated type
+(`z.ZodType<components["schemas"]["SystemDTO"]>`): a property that exists on one
+side and not the other is a `tsc` error. Never edit `api-types.ts` by hand — fix
+the spec (and the Go DTO) instead.
+
 ## Building the container image
 
 `make docker` builds `fronius-monitoring:local` with the git revision as its
@@ -70,6 +90,11 @@ runtime carries only the binaries — there is no asset directory to ship.
 `make build` does the same copy for a local build; the copied files are
 gitignored, and only `internal/webui/assets/.gitkeep` is tracked, which keeps a
 plain `go build` valid when nothing is embedded.
+
+**A plain `go build` embeds whatever is already in that directory.** After
+changing the frontend, run `make build` (which copies first) or re-copy by hand —
+otherwise the binary ships the *previous* interface. This is how a rebuilt
+daemon once served the old favicon.
 
 `.dockerignore` keeps the context to the two build stages: no `.git`, `docs`,
 `references`, `test`, `bin`, `data`, `node_modules` or `.env`. Because the

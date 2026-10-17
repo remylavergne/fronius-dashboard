@@ -3,7 +3,7 @@ GO ?= go
 PNPM ?= pnpm
 WEB := apps/web
 
-.PHONY: help build test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-device dev-web seed backup restore clean
+.PHONY: help build api-types test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-device dev-web seed backup restore clean
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -16,6 +16,9 @@ build: ## Build the frontend, then the backend with it embedded (static, CGO off
 
 docker: ## Build the container image (VERSION from git, else dev)
 	docker build --build-arg VERSION=$$(git rev-parse --short HEAD 2>/dev/null || echo dev) -t fronius-monitoring:local .
+
+api-types: ## Regenerate the frontend API types from api/openapi.json
+	$(PNPM) --dir $(WEB) generate:api
 
 test: test-go test-web ## Run all tests
 

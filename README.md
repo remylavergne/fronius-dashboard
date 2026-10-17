@@ -175,6 +175,7 @@ Use both: the console for configuration, this for the record.
   to read the numbers.
 - [Runbook](docs/RUNBOOK.md) — checks, diagnosis, backup and restore, retention.
 - [Architecture](docs/ARCHITECTURE.md) — how it is built and the invariants it keeps.
+- [API contract](api/openapi.json) — OpenAPI 3.1, kept in step with the Go DTOs by a test.
 - [Sources](docs/SOURCES.md) · [Unknowns](docs/UNKNOWNS.md) · [Endpoints](docs/ENDPOINTS.md)
   — provenance, open questions, and the endpoint matrix.
 - [Development](docs/DEVELOPMENT.md) — building, testing, capturing the screenshots.

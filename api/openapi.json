@@ -1,0 +1,1683 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "fronius-supervisor read API",
+    "version": "1.0.0",
+    "description": "Read-only REST API of the local Fronius supervisor. Every JSON response uses the {data, meta} envelope; failures use {error: {code, message}}. Timestamps are RFC 3339 in UTC with millisecond precision. Values are in base SI units (W, Wh, %). An absent measurement is null, never 0. The CSV export is the same path with format=csv on the three history routes, not a second path."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080"
+    }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Health of the supervision",
+        "responses": {
+          "200": {
+            "description": "Database and collector health. A database failure is reported as status=error with HTTP 200, not as an API error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/HealthDTO"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/v1/system": {
+      "get": {
+        "operationId": "getSystem",
+        "summary": "Supervision configuration and last device identity",
+        "responses": {
+          "200": {
+            "description": "Configuration of this process, the last recorded device identity and the detection states. device is null until an identity read has succeeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SystemDTO"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/v1/connectivity": {
+      "get": {
+        "operationId": "getConnectivity",
+        "summary": "Read-only connectivity test towards the device",
+        "description": "Runs two GET probes: the Solar API power flow and the credential-protected /status/version. A second call within 10 seconds reuses the previous result and sets cached=true. No write request can leave this process.",
+        "responses": {
+          "200": {
+            "description": "Outcome of both probes and the derived overall verdict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/ConnectivityDTO"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/v1/live": {
+      "get": {
+        "operationId": "getLive",
+        "summary": "Latest measurement",
+        "responses": {
+          "200": {
+            "description": "Latest sample. On an empty database data is null and error.code is no_data, with HTTP 200 so the client distinguishes an empty install from an API failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "oneOf": [
+                        {
+                          "$ref": "#/components/schemas/SampleDTO"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/ApiError"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/timeseries": {
+      "get": {
+        "operationId": "getTimeSeries",
+        "summary": "Aggregated PV power buckets",
+        "description": "Both bounds are required here. The maximum span is 366 days. step=auto picks the finest step that keeps at most 1500 buckets. The applied step is echoed in meta.step_s.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "description": "Inclusive lower bound, RFC 3339 (for example 2026-01-01T00:00:00Z).",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "description": "Exclusive upper bound, RFC 3339; it must be strictly after from.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Step"
+          },
+          {
+            "$ref": "#/components/parameters/Format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Buckets ordered by start. With format=csv the body is the same data as CSV (start,count,missing,power_pv_avg_w,power_pv_min_w,power_pv_max_w).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BucketDTO"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "start,count,missing,power_pv_avg_w,power_pv_min_w,power_pv_max_w"
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_range (missing or malformed from/to, empty or excessive range), invalid_step, or invalid_format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/energy/daily": {
+      "get": {
+        "operationId": "getDailyEnergy",
+        "summary": "Energy per local day",
+        "description": "The window defaults to the last 30 local days, today included, when from/to are absent. The response holds one entry per day of the window; an entirely empty window answers []. energy_wh is the device E_Day counter (usually null on the reference firmware); derived_wh is measured from the stored total and carries its reason when it could not be established.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/From"
+          },
+          {
+            "$ref": "#/components/parameters/To"
+          },
+          {
+            "$ref": "#/components/parameters/Format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One entry per local day. With format=csv the columns are date,energy_wh,derived_wh,derived_reason,partial.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DailyEnergyDTO"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "date,energy_wh,derived_wh,derived_reason,partial"
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_range (malformed bound, empty range, more than 366 days) or invalid_format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/events": {
+      "get": {
+        "operationId": "getEvents",
+        "summary": "Recorded events",
+        "description": "Both bounds are optional: an absent bound is unbounded. limit defaults to 100 and is capped at 500.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/From"
+          },
+          {
+            "$ref": "#/components/parameters/To"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Format"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events, newest first. With format=csv the columns are ts,kind,severity,message,detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/EventDTO"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "ts,kind,severity,message,detail"
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_range (limit outside 1..500, malformed bound, empty range) or invalid_format.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Capabilities of the installation",
+        "description": "Derived from the last persisted detection. An unavailable capability carries a reason and no numeric value.",
+        "responses": {
+          "200": {
+            "description": "The capability list, in model order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CapabilityDTO"
+                      }
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          }
+        }
+      }
+    },
+    "/api/v1/sources": {
+      "get": {
+        "operationId": "getSources",
+        "summary": "Catalogue of device sources and last survey",
+        "description": "The catalogue is static; the probe half is the last recorded read-only survey. No freshness fields are added because the static half is not a measurement.",
+        "responses": {
+          "200": {
+            "description": "Catalogue summary, survey counters and one entry per catalogued source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/SourcesDTO"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/detail": {
+      "get": {
+        "operationId": "getDetail",
+        "summary": "Diagnostic families read on the device",
+        "description": "Each family is published as the device answered it. A family never read is absent from the list; a family that failed has available=false and a reason. The snapshot is not live: read_at is the instant of each family's own read.",
+        "responses": {
+          "200": {
+            "description": "Published diagnostic families.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "meta"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "data": {
+                      "$ref": "#/components/schemas/DetailDTO"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "From": {
+        "name": "from",
+        "in": "query",
+        "required": false,
+        "description": "Inclusive lower bound, RFC 3339 (for example 2026-01-01T00:00:00Z).",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "To": {
+        "name": "to",
+        "in": "query",
+        "required": false,
+        "description": "Exclusive upper bound, RFC 3339; it must be strictly after from when both are present.",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "Step": {
+        "name": "step",
+        "in": "query",
+        "required": false,
+        "description": "Aggregation step. auto selects the finest step that yields at most 1500 buckets.",
+        "schema": {
+          "type": "string",
+          "enum": ["auto", "1m", "5m", "15m", "1h", "1d"],
+          "default": "auto"
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "Maximum number of events.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        }
+      },
+      "Format": {
+        "name": "format",
+        "in": "query",
+        "required": false,
+        "description": "Representation of this history route. json is the default. csv answers text/csv with the same data and the same validation.",
+        "schema": {
+          "type": "string",
+          "enum": ["json", "csv"],
+          "default": "json"
+        }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Unknown path: error.code is not_found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "Only GET is registered on this path: error.code is method_not_allowed and Allow is GET.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Storage or processing failure: error.code is internal and the message carries no device detail.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Meta": {
+        "type": "object",
+        "description": "Envelope metadata. The measurement routes add the freshness fields; step_s is added only by /api/v1/timeseries.",
+        "additionalProperties": false,
+        "required": ["generated_at"],
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sampled_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "stale_after_s": {
+            "type": "number"
+          },
+          "step_s": {
+            "type": "number"
+          }
+        }
+      },
+      "ApiError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid_range",
+              "invalid_step",
+              "invalid_format",
+              "not_found",
+              "method_not_allowed",
+              "internal",
+              "no_data"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "description": "Error responses carry no data field: exactly {error: {code, message}}.",
+        "additionalProperties": false,
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ApiError"
+          }
+        }
+      },
+      "HealthDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "version", "uptime_s", "db", "collector"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["ok", "degraded", "error"]
+          },
+          "version": {
+            "type": "string"
+          },
+          "uptime_s": {
+            "type": "integer"
+          },
+          "db": {
+            "$ref": "#/components/schemas/DBHealthDTO"
+          },
+          "collector": {
+            "$ref": "#/components/schemas/CollectorHealthDTO"
+          }
+        }
+      },
+      "DBHealthDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok"],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "CollectorHealthDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["last_success_utc", "last_error", "last_run_ms", "samples_total"],
+        "properties": {
+          "last_success_utc": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": "string"
+          },
+          "last_run_ms": {
+            "type": "integer"
+          },
+          "samples_total": {
+            "type": "integer"
+          }
+        }
+      },
+      "SystemDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "go_version",
+          "solarapi_url",
+          "poll_interval_s",
+          "tz",
+          "db_path",
+          "retention_days",
+          "api_addr",
+          "stale_after_s",
+          "detect_interval_s",
+          "http_timeout_s",
+          "credentials_configured",
+          "device",
+          "detection"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "go_version": {
+            "type": "string"
+          },
+          "solarapi_url": {
+            "type": "string"
+          },
+          "poll_interval_s": {
+            "type": "number"
+          },
+          "tz": {
+            "type": "string"
+          },
+          "db_path": {
+            "type": "string"
+          },
+          "retention_days": {
+            "type": "integer"
+          },
+          "api_addr": {
+            "type": "string"
+          },
+          "stale_after_s": {
+            "type": "number"
+          },
+          "detect_interval_s": {
+            "type": "number"
+          },
+          "http_timeout_s": {
+            "type": "number"
+          },
+          "credentials_configured": {
+            "type": "boolean"
+          },
+          "device": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeviceDTO"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until an identity read has succeeded."
+          },
+          "detection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DetectionDTO"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null until a detection cycle has recorded a state."
+          }
+        }
+      },
+      "DeviceDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "model",
+          "device_name",
+          "article_number",
+          "firmware",
+          "serial_number",
+          "source",
+          "read_at_utc"
+        ],
+        "properties": {
+          "model": {
+            "type": ["string", "null"]
+          },
+          "device_name": {
+            "type": ["string", "null"]
+          },
+          "article_number": {
+            "type": ["string", "null"]
+          },
+          "firmware": {
+            "type": ["string", "null"]
+          },
+          "serial_number": {
+            "type": ["string", "null"]
+          },
+          "source": {
+            "type": "string"
+          },
+          "read_at_utc": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DetectionDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "read_at_utc",
+          "meter",
+          "battery",
+          "internal_api",
+          "device_events",
+          "clock",
+          "service",
+          "last_error"
+        ],
+        "properties": {
+          "read_at_utc": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "meter": {
+            "$ref": "#/components/schemas/DetectionResourceDTO"
+          },
+          "battery": {
+            "$ref": "#/components/schemas/DetectionResourceDTO"
+          },
+          "internal_api": {
+            "$ref": "#/components/schemas/DetectionResourceDTO"
+          },
+          "device_events": {
+            "$ref": "#/components/schemas/DetectionResourceDTO"
+          },
+          "clock": {
+            "$ref": "#/components/schemas/ClockResourceDTO"
+          },
+          "service": {
+            "$ref": "#/components/schemas/ServiceResourceDTO"
+          },
+          "last_error": {
+            "type": "string"
+          }
+        }
+      },
+      "DetectionResourceDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "source", "reason"],
+        "properties": {
+          "state": {
+            "type": "string",
+            "description": "unknown, absent or present, as it was read."
+          },
+          "source": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "ClockResourceDTO": {
+        "type": "object",
+        "description": "Reading of /commands/GetUTCTime. device_utc and drift_s are omitted when the clock was never read; a measured drift of 0 is emitted.",
+        "additionalProperties": false,
+        "required": ["state", "source", "reason"],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "device_utc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "drift_s": {
+            "type": "number"
+          }
+        }
+      },
+      "ServiceResourceDTO": {
+        "type": "object",
+        "description": "Reading of /commands/GetServiceState. value is omitted when nothing was read.",
+        "additionalProperties": false,
+        "required": ["state", "source", "reason"],
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "ConnectivityDTO": {
+        "type": "object",
+        "description": "Read-only connectivity test result. It contains no credential, header or body.",
+        "additionalProperties": false,
+        "required": ["tested_at", "cached", "credentials_configured", "overall", "probes"],
+        "properties": {
+          "tested_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cached": {
+            "type": "boolean"
+          },
+          "credentials_configured": {
+            "type": "boolean"
+          },
+          "overall": {
+            "type": "string",
+            "enum": ["ok", "partial", "failed"]
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectivityProbeDTO"
+            }
+          }
+        }
+      },
+      "ConnectivityProbeDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path", "state", "duration_ms"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["solar_api_powerflow", "internal_version"]
+          },
+          "path": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["ok", "skipped", "unauthorized", "absent", "timeout", "unreachable", "error"]
+          },
+          "http_status": {
+            "type": "integer"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "SampleDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ts",
+          "ts_source",
+          "source",
+          "quality",
+          "mode",
+          "power_pv_w",
+          "energy_day_wh",
+          "energy_year_wh",
+          "energy_total_wh",
+          "power_grid_w",
+          "power_load_w",
+          "power_battery_w",
+          "rel_autonomy_pct",
+          "rel_self_consumption_pct",
+          "inverters"
+        ],
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ts_source": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "quality": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "power_pv_w": {
+            "type": ["number", "null"]
+          },
+          "energy_day_wh": {
+            "type": ["number", "null"]
+          },
+          "energy_year_wh": {
+            "type": ["number", "null"]
+          },
+          "energy_total_wh": {
+            "type": ["number", "null"]
+          },
+          "power_grid_w": {
+            "type": ["number", "null"]
+          },
+          "power_load_w": {
+            "type": ["number", "null"]
+          },
+          "power_battery_w": {
+            "type": ["number", "null"]
+          },
+          "rel_autonomy_pct": {
+            "type": ["number", "null"]
+          },
+          "rel_self_consumption_pct": {
+            "type": ["number", "null"]
+          },
+          "inverters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InverterDTO"
+            }
+          },
+          "energy_derived": {
+            "$ref": "#/components/schemas/DerivedEnergyDTO"
+          }
+        }
+      },
+      "InverterDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "dt", "power_w", "energy_day_wh"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "dt": {
+            "type": "integer"
+          },
+          "power_w": {
+            "type": ["number", "null"]
+          },
+          "energy_day_wh": {
+            "type": ["number", "null"]
+          }
+        }
+      },
+      "DerivedEnergyDTO": {
+        "type": "object",
+        "description": "Day and year energies computed from the stored total, kept separate from measured fields. from names the derivation baseline source.",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "day_wh",
+          "day_baseline_utc",
+          "day_reason",
+          "year_wh",
+          "year_baseline_utc",
+          "year_reason"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "day_wh": {
+            "type": ["number", "null"]
+          },
+          "day_baseline_utc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "day_reason": {
+            "type": "string"
+          },
+          "year_wh": {
+            "type": ["number", "null"]
+          },
+          "year_baseline_utc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "year_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "BucketDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "count", "missing", "power_pv_avg_w", "power_pv_min_w", "power_pv_max_w"],
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "missing": {
+            "type": "integer"
+          },
+          "power_pv_avg_w": {
+            "type": ["number", "null"]
+          },
+          "power_pv_min_w": {
+            "type": ["number", "null"]
+          },
+          "power_pv_max_w": {
+            "type": ["number", "null"]
+          }
+        }
+      },
+      "DailyEnergyDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date", "energy_wh", "derived_wh"],
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Local date, YYYY-MM-DD."
+          },
+          "energy_wh": {
+            "type": ["number", "null"]
+          },
+          "derived_wh": {
+            "type": ["number", "null"]
+          },
+          "derived_reason": {
+            "type": "string"
+          },
+          "partial": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EventDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ts", "kind", "severity", "message", "detail"],
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "CapabilityDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "available", "quality", "requires", "read_only", "verified", "evidence", "reason"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "quality": {
+            "type": "string"
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "SourcesDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["summary", "survey", "sources"],
+        "properties": {
+          "summary": {
+            "$ref": "#/components/schemas/SourceSummary"
+          },
+          "survey": {
+            "$ref": "#/components/schemas/SurveyDTO"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceDTO"
+            }
+          }
+        }
+      },
+      "SurveyDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["probed", "ok", "empty", "not_json", "auth_required", "not_found", "error"],
+        "properties": {
+          "probed": {
+            "type": "integer"
+          },
+          "ok": {
+            "type": "integer"
+          },
+          "empty": {
+            "type": "integer"
+          },
+          "not_json": {
+            "type": "integer"
+          },
+          "auth_required": {
+            "type": "integer"
+          },
+          "not_found": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "integer"
+          },
+          "last_probed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "firmware": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceDTO": {
+        "type": "object",
+        "description": "A catalogued source plus what the last survey observed on it.",
+        "additionalProperties": false,
+        "required": ["id", "transport", "path", "method", "provides", "state", "called", "proofs"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string",
+            "enum": ["solar_api", "internal_api"]
+          },
+          "path": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "provides": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["called", "captured", "candidate", "archived"]
+          },
+          "called": {
+            "type": "boolean"
+          },
+          "fixture": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string"
+          },
+          "would_unlock": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceField"
+            }
+          },
+          "proofs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProof"
+            }
+          },
+          "docs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          },
+          "probe": {
+            "$ref": "#/components/schemas/ProbeDTO"
+          }
+        }
+      },
+      "ProbeDTO": {
+        "type": "object",
+        "description": "What the survey observed on one path: class, shape and counts, never a value of the answer.",
+        "additionalProperties": false,
+        "required": ["class", "http_status", "digest_required", "bytes", "probed_at"],
+        "properties": {
+          "class": {
+            "type": "string",
+            "enum": ["ok", "empty", "not_json", "auth_required", "not_found", "error"]
+          },
+          "http_status": {
+            "type": "integer"
+          },
+          "digest_required": {
+            "type": "boolean"
+          },
+          "bytes": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "firmware": {
+            "type": "string"
+          },
+          "probed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProbeField"
+            }
+          }
+        }
+      },
+      "ProbeField": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "type"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "array_len": {
+            "type": "integer"
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "transport", "path", "method", "provides", "state", "called", "proofs"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string",
+            "enum": ["solar_api", "internal_api"]
+          },
+          "path": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "provides": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["called", "captured", "candidate", "archived"]
+          },
+          "called": {
+            "type": "boolean"
+          },
+          "fixture": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string"
+          },
+          "would_unlock": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceField"
+            }
+          },
+          "proofs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceProof"
+            }
+          },
+          "docs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sources",
+          "called",
+          "captured",
+          "candidates",
+          "archived",
+          "fields",
+          "fields_displayed",
+          "fields_stored",
+          "fields_validated",
+          "fields_ignored",
+          "fields_unverified"
+        ],
+        "properties": {
+          "sources": {
+            "type": "integer"
+          },
+          "called": {
+            "type": "integer"
+          },
+          "captured": {
+            "type": "integer"
+          },
+          "candidates": {
+            "type": "integer"
+          },
+          "archived": {
+            "type": "integer"
+          },
+          "fields": {
+            "type": "integer"
+          },
+          "fields_displayed": {
+            "type": "integer"
+          },
+          "fields_stored": {
+            "type": "integer"
+          },
+          "fields_validated": {
+            "type": "integer"
+          },
+          "fields_ignored": {
+            "type": "integer"
+          },
+          "fields_unverified": {
+            "type": "integer"
+          }
+        }
+      },
+      "SourceField": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "type", "status"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["displayed", "stored", "validated", "ignored", "unverified"]
+          },
+          "why": {
+            "type": "string"
+          },
+          "capability": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceProof": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tag", "detail"],
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "firmware": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "DetailDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "families"],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "families": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetailFamilyDTO"
+            }
+          }
+        }
+      },
+      "DetailFamilyDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["family", "available", "read_at", "data"],
+        "properties": {
+          "family": {
+            "type": "string",
+            "enum": [
+              "inverter",
+              "system",
+              "network",
+              "devices",
+              "emrs",
+              "cache",
+              "inverter_info",
+              "active_devices",
+              "api_version"
+            ]
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "read_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "data": {
+            "additionalProperties": true,
+            "description": "Family payload passed through verbatim from the device. Its shape is defined by the family (object, array or scalar); it is intentionally free-form so the API can never invent a field the reader did not store."
+          }
+        }
+      },
+      "DetailMeasurementDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "unit", "value"],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "value": {
+            "type": ["number", "null"]
+          }
+        }
+      },
+      "InverterDetailDTO": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state", "measurements", "energies"],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/InverterStateDetail"
+          },
+          "measurements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DetailMeasurementDTO"
+            }
+          },
+          "energies": {
+            "$ref": "#/components/schemas/InverterEnergies"
+          }
+        }
+      },
+      "InverterStateDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["inverter_state", "status_code", "error_code"],
+        "properties": {
+          "inverter_state": {
+            "type": "string"
+          },
+          "status_code": {
+            "type": ["integer", "null"]
+          },
+          "error_code": {
+            "type": ["integer", "null"]
+          }
+        }
+      },
+      "InverterEnergies": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["day_wh", "year_wh", "total_wh"],
+        "properties": {
+          "day_wh": {
+            "type": ["number", "null"]
+          },
+          "year_wh": {
+            "type": ["number", "null"]
+          },
+          "total_wh": {
+            "type": ["number", "null"]
+          }
+        }
+      }
+    }
+  }
+}

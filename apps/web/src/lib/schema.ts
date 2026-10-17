@@ -13,9 +13,13 @@
  *  - zod objects ignore unknown keys: an enriched backend does not break the
  *    interface.
  *
- * To be maintained jointly with `internal/api/dto.go`.
+ * The generated contract (`./api-types.ts`, from `api/openapi.json`) is the
+ * machine-readable form of `internal/api/dto.go`; the links at the bottom of
+ * this file make a drift between the two a `tsc` error. Regenerate the types
+ * with `make api-types` after an API change, never by editing them.
  */
 import { z } from 'zod'
+import type { components, operations } from './api-types'
 
 /** UTC timestamp produced by `apiTimeLayout` (with or without milliseconds). */
 const timestamp = z
@@ -60,21 +64,25 @@ export const errorEnvelopeSchema = z.object({ error: apiErrorSchema })
 // Health, system
 // ---------------------------------------------------------------------------
 
+const dbHealthSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+})
+
+const collectorHealthSchema = z.object({
+  // Empty string as long as no successful cycle has occurred.
+  last_success_utc: z.string(),
+  last_error: z.string(),
+  last_run_ms: z.number(),
+  samples_total: z.number(),
+})
+
 export const healthSchema = z.object({
   status: z.string(),
   version: z.string(),
   uptime_s: z.number(),
-  db: z.object({
-    ok: z.boolean(),
-    error: z.string().optional(),
-  }),
-  collector: z.object({
-    // Empty string as long as no successful cycle has occurred.
-    last_success_utc: z.string(),
-    last_error: z.string(),
-    last_run_ms: z.number(),
-    samples_total: z.number(),
-  }),
+  db: dbHealthSchema,
+  collector: collectorHealthSchema,
 })
 export type Health = z.infer<typeof healthSchema>
 
@@ -823,3 +831,118 @@ export type DetailEnvelope = z.infer<typeof detailEnvelopeSchema>
 
 /** Error code signalling a still-empty database (`/api/v1/live`). */
 export const CODE_NO_DATA = 'no_data'
+
+// ---------------------------------------------------------------------------
+// Compile-time link to the generated contract
+// ---------------------------------------------------------------------------
+//
+// `api/openapi.json` is the machine-readable contract of the Go DTOs and
+// `api-types.ts` is generated from it. Each validator below is tied to its
+// generated counterpart by a type assertion, so a field renamed, removed,
+// added or retyped on the Go side is a `tsc` error here instead of a runtime
+// surprise.
+//
+// The check is deliberately one-directional in the *values* it accepts:
+// `Wire extends z.input<Schema>`. Every payload the contract describes must be
+// accepted by the validator, which is exactly the validator's job at the
+// boundary. A validator that is intentionally more tolerant than the contract
+// (an unknown enum member rendered as its raw token, a nil Go slice serialised
+// as `null`) stays valid; one that is too *narrow* fails. Property names are
+// compared exactly, so adding a key on either side fails too.
+
+/** Every value the generated contract describes is accepted by the schema. */
+type Accepts<Schema extends z.ZodTypeAny, Wire> = [Wire] extends [z.input<Schema>] ? true : false
+
+/** Every key of the generated type is declared by the schema. */
+type Covers<Schema extends z.ZodTypeAny, Wire> = [Exclude<keyof Wire, keyof z.input<Schema>>] extends [never]
+  ? true
+  : false
+
+/** The schema declares no key the generated type does not have. */
+type KeysMatch<Schema extends z.ZodTypeAny, Wire> =
+  Covers<Schema, Wire> extends true
+    ? [Exclude<keyof z.input<Schema>, keyof Wire>] extends [never]
+      ? true
+      : false
+    : false
+
+/** A DTO link: accepted values and the exact same set of property names. */
+type Linked<Name extends string, Schema extends z.ZodTypeAny, Wire> =
+  Accepts<Schema, Wire> extends true
+    ? KeysMatch<Schema, Wire> extends true
+      ? true
+      : `keys:${Name}`
+    : `accepts:${Name}`
+
+/**
+ * An envelope link. The generated success envelope declares `error` only on
+ * `/live`, while `envelopeSchema` always carries it as an optional key, so only
+ * the generated keys must be covered.
+ */
+type EnvelopeLinked<Name extends string, Schema extends z.ZodTypeAny, Wire> =
+  Accepts<Schema, Wire> extends true
+    ? Covers<Schema, Wire> extends true
+      ? true
+      : `keys:${Name}`
+    : `accepts:${Name}`
+
+/** A schema for a bare value (an enum), with no property names to compare. */
+type ValueLinked<Name extends string, Schema extends z.ZodTypeAny, Wire> =
+  Accepts<Schema, Wire> extends true ? true : `accepts:${Name}`
+
+type JsonOk<Operation extends keyof operations> =
+  operations[Operation]['responses'][200]['content']['application/json']
+
+type ContractLinks = [
+  Linked<'Meta', typeof metaSchema, components['schemas']['Meta']>,
+  Linked<'ApiError', typeof apiErrorSchema, components['schemas']['ApiError']>,
+  Linked<'ErrorEnvelope', typeof errorEnvelopeSchema, components['schemas']['ErrorEnvelope']>,
+  Linked<'DBHealthDTO', typeof dbHealthSchema, components['schemas']['DBHealthDTO']>,
+  Linked<'CollectorHealthDTO', typeof collectorHealthSchema, components['schemas']['CollectorHealthDTO']>,
+  Linked<'HealthDTO', typeof healthSchema, components['schemas']['HealthDTO']>,
+  Linked<'SystemDTO', typeof systemSchema, components['schemas']['SystemDTO']>,
+  Linked<'DeviceDTO', typeof deviceSchema, components['schemas']['DeviceDTO']>,
+  Linked<'DetectionDTO', typeof detectionSchema, components['schemas']['DetectionDTO']>,
+  Linked<'DetectionResourceDTO', typeof detectionResourceSchema, components['schemas']['DetectionResourceDTO']>,
+  Linked<'ClockResourceDTO', typeof clockResourceSchema, components['schemas']['ClockResourceDTO']>,
+  Linked<'ServiceResourceDTO', typeof serviceResourceSchema, components['schemas']['ServiceResourceDTO']>,
+  Linked<'ConnectivityDTO', typeof connectivitySchema, components['schemas']['ConnectivityDTO']>,
+  Linked<'ConnectivityProbeDTO', typeof connectivityProbeSchema, components['schemas']['ConnectivityProbeDTO']>,
+  ValueLinked<'ConnectivityProbeDTO.state', typeof connectivityProbeStateSchema, components['schemas']['ConnectivityProbeDTO']['state']>,
+  ValueLinked<'ConnectivityDTO.overall', typeof connectivityOverallSchema, components['schemas']['ConnectivityDTO']['overall']>,
+  Linked<'SampleDTO', typeof sampleSchema, components['schemas']['SampleDTO']>,
+  Linked<'InverterDTO', typeof inverterSchema, components['schemas']['InverterDTO']>,
+  Linked<'DerivedEnergyDTO', typeof derivedEnergySchema, components['schemas']['DerivedEnergyDTO']>,
+  Linked<'BucketDTO', typeof bucketSchema, components['schemas']['BucketDTO']>,
+  Linked<'DailyEnergyDTO', typeof dailyEnergySchema, components['schemas']['DailyEnergyDTO']>,
+  Linked<'EventDTO', typeof eventSchema, components['schemas']['EventDTO']>,
+  Linked<'CapabilityDTO', typeof capabilitySchema, components['schemas']['CapabilityDTO']>,
+  Linked<'SourcesDTO', typeof sourcesSchema, components['schemas']['SourcesDTO']>,
+  Linked<'SurveyDTO', typeof sourceSurveySchema, components['schemas']['SurveyDTO']>,
+  Linked<'SourceDTO', typeof sourceSchema, components['schemas']['SourceDTO']>,
+  Linked<'ProbeDTO', typeof sourceProbeSchema, components['schemas']['ProbeDTO']>,
+  Linked<'ProbeField', typeof probeFieldSchema, components['schemas']['ProbeField']>,
+  Linked<'SourceSummary', typeof sourceSummarySchema, components['schemas']['SourceSummary']>,
+  Linked<'SourceField', typeof sourceFieldSchema, components['schemas']['SourceField']>,
+  Linked<'SourceProof', typeof sourceProofSchema, components['schemas']['SourceProof']>,
+  Linked<'DetailDTO', typeof detailSchema, components['schemas']['DetailDTO']>,
+  Linked<'DetailFamilyDTO', typeof detailFamilySchema, components['schemas']['DetailFamilyDTO']>,
+  Linked<'DetailMeasurementDTO', typeof detailMeasurementSchema, components['schemas']['DetailMeasurementDTO']>,
+  Linked<'InverterDetailDTO', typeof detailInverterDataSchema, components['schemas']['InverterDetailDTO']>,
+  Linked<'InverterStateDetail', typeof detailInverterStateSchema, components['schemas']['InverterStateDetail']>,
+  Linked<'InverterEnergies', typeof detailEnergiesSchema, components['schemas']['InverterEnergies']>,
+  EnvelopeLinked<'HealthEnvelope', typeof healthEnvelopeSchema, JsonOk<'getHealth'>>,
+  EnvelopeLinked<'SystemEnvelope', typeof systemEnvelopeSchema, JsonOk<'getSystem'>>,
+  EnvelopeLinked<'ConnectivityEnvelope', typeof connectivityEnvelopeSchema, JsonOk<'getConnectivity'>>,
+  EnvelopeLinked<'LiveEnvelope', typeof liveEnvelopeSchema, JsonOk<'getLive'>>,
+  EnvelopeLinked<'TimeseriesEnvelope', typeof timeseriesEnvelopeSchema, JsonOk<'getTimeSeries'>>,
+  EnvelopeLinked<'EnergyDailyEnvelope', typeof energyDailyEnvelopeSchema, JsonOk<'getDailyEnergy'>>,
+  EnvelopeLinked<'EventsEnvelope', typeof eventsEnvelopeSchema, JsonOk<'getEvents'>>,
+  EnvelopeLinked<'CapabilitiesEnvelope', typeof capabilitiesEnvelopeSchema, JsonOk<'getCapabilities'>>,
+  EnvelopeLinked<'SourcesEnvelope', typeof sourcesEnvelopeSchema, JsonOk<'getSources'>>,
+  EnvelopeLinked<'DetailEnvelope', typeof detailEnvelopeSchema, JsonOk<'getDetail'>>,
+]
+
+/** Fails to compile (naming the DTO) as soon as one link above drifts. */
+type AllLinked<Links extends readonly true[]> = Links
+export type ApiContractLinks = AllLinked<ContractLinks>
