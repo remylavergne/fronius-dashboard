@@ -8,9 +8,11 @@ WEB := apps/web
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build the backend (static, CGO off) and the frontend
-	CGO_ENABLED=0 $(GO) build -o bin/ ./cmd/...
+build: ## Build the frontend, then the backend with it embedded (static, CGO off)
 	$(PNPM) --dir $(WEB) build
+	find internal/webui/assets -mindepth 1 ! -name .gitkeep -exec rm -rf {} +
+	cp -R $(WEB)/dist/. internal/webui/assets/
+	CGO_ENABLED=0 $(GO) build -o bin/ ./cmd/...
 
 docker: ## Build the container image (VERSION from git, else dev)
 	docker build --build-arg VERSION=$$(git rev-parse --short HEAD 2>/dev/null || echo dev) -t fronius-monitoring:local .
@@ -61,3 +63,4 @@ restore: ## Replace the database from a backup (FRONIUS_BACKUP=path, stop froniu
 
 clean: ## Remove generated artefacts
 	rm -rf bin data coverage $(WEB)/dist
+	find internal/webui/assets -mindepth 1 ! -name .gitkeep -exec rm -rf {} +

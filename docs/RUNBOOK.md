@@ -41,8 +41,8 @@ Backfill refuses a non-local target (protection: do not hammer the inverter);
 ## Docker
 
 The image is built by `make docker` (or by compose, below). It runs as uid
-`10001`, from `/app`, with the interface in `/app/web` and the database in the
-`/data` volume.
+`10001`, from `/app`, with the interface embedded in the binary and the database
+in the `/data` volume.
 
 ```bash
 docker compose --profile app up -d --build     # the real installation, 127.0.0.1:8080
@@ -70,6 +70,22 @@ docker compose down -v                         # deletes the database with it
   volume and port, never touching the real database).
 - The version shown in the interface comes from `--build-arg VERSION`; without it
   the image reports `dev`.
+- **How the container reaches the inverter.** It is ordinary outbound LAN
+  traffic: `FRONIUS_SOLARAPI_URL` is a URL, not a mount. Use the inverter's LAN
+  address (`http://192.168.x.y`), or a DNS name the container resolves; across
+  compose services the service name works (`http://simulator:8081`); on Docker
+  Desktop, `host.docker.internal` reaches the host. `127.0.0.1` inside the
+  container is the container itself, and the published port is **inbound** —
+  irrelevant to this. A proxy set in the environment (`HTTP_PROXY`) is honoured
+  by the Go client: set one only if your network needs it.
+- **Credentials from files (Docker secrets).** `FRONIUS_DEVICE_USER_FILE` and
+  `FRONIUS_DEVICE_PASSWORD_FILE` read the value from a file, strip the trailing
+  newline Docker writes, and win over the inline variables; an unreadable file is
+  a startup error naming the variable and the path, never the content. The compose
+  file documents the `secrets:` wiring as a commented block — compose validates
+  secret files when it parses the file, and a fresh checkout has none.
+- **Running it on a NAS?** See [`docs/NAS.md`](NAS.md) — image transport, local
+  storage only (never a CIFS/NFS database), retention, autostart and updates.
 
 ## Checking everything is fine
 

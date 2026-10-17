@@ -19,6 +19,7 @@ import (
 	"fronius-supervisor/internal/model"
 	"fronius-supervisor/internal/secret"
 	"fronius-supervisor/internal/storage"
+	"fronius-supervisor/internal/webui"
 )
 
 type respEnvelope struct {
@@ -977,11 +978,26 @@ func TestStaticWebSPAFallback(t *testing.T) {
 	}
 }
 
-func TestNoStaticWebWhenUnset(t *testing.T) {
+// TestRootServingWithoutWebDir pins what happens when FRONIUS_WEB_DIR is unset:
+// the interface is served from the binary's embed when the build carries one,
+// and the API answers alone (404 on /) when it does not. The test branches on
+// webui.FS() rather than on the working tree: whether the assets were copied in
+// depends on the build (`make build`, the Docker build), not on the code.
+func TestRootServingWithoutWebDir(t *testing.T) {
 	_, httpSrv, _ := newTestServer(t, nil)
-	code, _, _ := doRequest(t, httpSrv, http.MethodGet, "/")
+	code, header, _ := doRequest(t, httpSrv, http.MethodGet, "/")
+
+	if _, embedded := webui.FS(); embedded {
+		if code != http.StatusOK {
+			t.Fatalf("status = %d with an embedded interface, wanted 200", code)
+		}
+		if ct := header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+			t.Fatalf("content-type = %q, wanted the embedded HTML index", ct)
+		}
+		return
+	}
 	if code != http.StatusNotFound {
-		t.Fatalf("status = %d, wanted 404 without FRONIUS_WEB_DIR", code)
+		t.Fatalf("status = %d without a web dir and without an embed, wanted 404", code)
 	}
 }
 

@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -21,6 +20,7 @@ import (
 	"fronius-supervisor/internal/fronius/internalapi"
 	"fronius-supervisor/internal/model"
 	"fronius-supervisor/internal/storage"
+	"fronius-supervisor/internal/webui"
 )
 
 const (
@@ -56,6 +56,10 @@ type Server struct {
 	started time.Time
 	now     func() time.Time
 
+	// assets is the interface source resolved once at construction: an
+	// explicit FRONIUS_WEB_DIR, else the embedded copy, else nil (API only).
+	assets fs.FS
+
 	// Connectivity test cache. connMu also serialises the probes themselves:
 	// the server is shared, and two simultaneous presses must not multiply
 	// the authentication attempts towards the device.
@@ -76,16 +80,14 @@ func New(store *storage.Store, cfg config.Config, version string, log *slog.Logg
 		version: version,
 		started: time.Now(),
 		now:     time.Now,
+		assets:  resolveAssets(cfg.WebDir, webui.FS),
 	}
 }
 
-// Handler returns the router, possibly wrapped with the static service.
+// Handler returns the router, wrapped with the interface service when a
+// frontend source exists (an explicit FRONIUS_WEB_DIR or the embedded copy).
 func (s *Server) Handler() http.Handler {
-	api := s.apiMux()
-	if s.cfg.WebDir == "" {
-		return api
-	}
-	return s.withStaticWeb(api)
+	return staticHandler(s.apiMux(), s.assets)
 }
 
 func (s *Server) apiMux() http.Handler {
@@ -120,32 +122,6 @@ func (s *Server) apiMux() http.Handler {
 	})
 
 	return mux
-}
-
-// withStaticWeb serves the frontend assets, with an SPA fallback to index.html.
-//
-// No go:embed in phase 1: the asset integration is planned for phase 5
-// (ADR 0007).
-func (s *Server) withStaticWeb(api http.Handler) http.Handler {
-	fileServer := http.FileServer(http.Dir(s.cfg.WebDir))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			api.ServeHTTP(w, r)
-			return
-		}
-		cleaned := filepath.Clean("/" + r.URL.Path)
-		candidate := filepath.Join(s.cfg.WebDir, cleaned)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			fileServer.ServeHTTP(w, r)
-			return
-		}
-		index := filepath.Join(s.cfg.WebDir, "index.html")
-		if _, err := os.Stat(index); err != nil {
-			api.ServeHTTP(w, r) // without assets: API behaviour (JSON 404)
-			return
-		}
-		http.ServeFile(w, r, index)
-	})
 }
 
 // ---------------------------------------------------------------------------

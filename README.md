@@ -98,10 +98,10 @@ docker compose --profile app up -d --build
 # http://127.0.0.1:8080
 ```
 
-The interface is built into the image; the database lives in the `fronius-data`
+The interface is embedded in the binary; the database lives in the `fronius-data`
 volume. The port is published on **127.0.0.1 only** — the API has no
 authentication of its own, so put a TLS reverse proxy in front before exposing it
-further.
+further. Running it on a NAS? See [`docs/NAS.md`](docs/NAS.md).
 
 No inverter? The same image runs a complete demo — simulator, a day of synthetic
 history, its own volume and port:

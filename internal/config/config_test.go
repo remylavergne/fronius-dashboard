@@ -1,7 +1,10 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -188,6 +191,127 @@ func TestLoadRejectsPartialCredentials(t *testing.T) {
 	t.Setenv("FRONIUS_DEVICE_PASSWORD", "password")
 	if _, err := Load(); err != nil {
 		t.Fatalf("a complete pair must be accepted: %v", err)
+	}
+}
+
+// writeCredentialFile writes content to a fresh file and returns its path.
+func writeCredentialFile(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	return path
+}
+
+// TestLoadCredentialsFromFiles: the _FILE variables are read and their trailing
+// newline (Docker writes one, here also a CR) is stripped, nothing else.
+func TestLoadCredentialsFromFiles(t *testing.T) {
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DEVICE_USER_FILE", writeCredentialFile(t, "user", "installer\n"))
+	t.Setenv("FRONIUS_DEVICE_PASSWORD_FILE", writeCredentialFile(t, "password", "password\r\n"))
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.DeviceUser != "installer" {
+		t.Fatalf("DeviceUser = %q, want %q", got.DeviceUser, "installer")
+	}
+	if pw := got.DevicePassword.Reveal(); pw != "password" {
+		t.Fatalf("DevicePassword = %q, want %q", pw, "password")
+	}
+}
+
+// TestCredentialFilesWinOverInline: when both forms are set, the file decides —
+// the Docker-secrets convention.
+func TestCredentialFilesWinOverInline(t *testing.T) {
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DEVICE_USER", "inline-user")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "inline-password")
+	t.Setenv("FRONIUS_DEVICE_USER_FILE", writeCredentialFile(t, "user", "file-user"))
+	t.Setenv("FRONIUS_DEVICE_PASSWORD_FILE", writeCredentialFile(t, "password", "file-password"))
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.DeviceUser != "file-user" {
+		t.Fatalf("DeviceUser = %q, want the file value %q", got.DeviceUser, "file-user")
+	}
+	if pw := got.DevicePassword.Reveal(); pw != "file-password" {
+		t.Fatalf("DevicePassword = %q, want the file value %q", pw, "file-password")
+	}
+}
+
+// TestLoadRejectsUnreadableCredentialFile: a missing file is a startup error
+// naming the variable and the path, never the other credential's value, and no
+// half-built configuration is returned.
+func TestLoadRejectsUnreadableCredentialFile(t *testing.T) {
+	clearFroniusEnv(t)
+	missing := filepath.Join(t.TempDir(), "absent")
+	t.Setenv("FRONIUS_DEVICE_USER", "installer")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "very-secret-value-42")
+	t.Setenv("FRONIUS_DEVICE_USER_FILE", missing)
+
+	got, err := Load()
+	if err == nil {
+		t.Fatal("an unreadable credentials file must be refused")
+	}
+	for _, want := range []string{"FRONIUS_DEVICE_USER_FILE", missing} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "very-secret-value-42") {
+		t.Fatalf("the error message leaked the password: %v", err)
+	}
+	if got != (Config{}) {
+		t.Fatalf("Load returned a partially built configuration: %+v", got)
+	}
+}
+
+// TestEmptyCredentialFilesMeanNoCredential: an empty file (Docker writes at
+// least a newline) wins over the inline variable and means "no credential";
+// the daemon then runs credential-less through the existing empty path.
+func TestEmptyCredentialFilesMeanNoCredential(t *testing.T) {
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DEVICE_USER", "inline-user")
+	t.Setenv("FRONIUS_DEVICE_PASSWORD", "inline-password")
+	t.Setenv("FRONIUS_DEVICE_USER_FILE", writeCredentialFile(t, "user", "\n"))
+	t.Setenv("FRONIUS_DEVICE_PASSWORD_FILE", writeCredentialFile(t, "password", "\r\n"))
+
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("credential-less configuration must be accepted: %v", err)
+	}
+	if got.DeviceUser != "" || !got.DevicePassword.IsZero() {
+		t.Fatalf("empty files must yield no credential, got user %q and a %v password", got.DeviceUser, got.DevicePassword.IsZero())
+	}
+}
+
+// TestCredentialsFromFilesStayMasked: a file-sourced password is masked by fmt
+// and by JSON, like an inline one.
+func TestCredentialsFromFilesStayMasked(t *testing.T) {
+	const password = "file-secret-value-42"
+
+	clearFroniusEnv(t)
+	t.Setenv("FRONIUS_DEVICE_USER_FILE", writeCredentialFile(t, "user", "installer\n"))
+	t.Setenv("FRONIUS_DEVICE_PASSWORD_FILE", writeCredentialFile(t, "password", password+"\n"))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if out := fmt.Sprintf("%+v", cfg); strings.Contains(out, password) {
+		t.Fatalf("fmt leaked the file-sourced password: %s", out)
+	}
+	b, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(b), password) {
+		t.Fatalf("JSON leaked the file-sourced password: %s", b)
 	}
 }
 

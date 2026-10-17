@@ -3,7 +3,10 @@
 // No configuration file is used: all values come from environment variables
 // prefixed with FRONIUS_ (see .env.example and docs/DEVELOPMENT.md). The device
 // credentials (FRONIUS_DEVICE_USER, FRONIUS_DEVICE_PASSWORD) are read here and
-// kept in a secret.String: no other package receives them in clear.
+// kept in a secret.String: no other package receives them in clear. Each one
+// also accepts a file variant (FRONIUS_DEVICE_USER_FILE,
+// FRONIUS_DEVICE_PASSWORD_FILE), so Docker secrets work without a secret in an
+// environment variable or a compose file.
 package config
 
 import (
@@ -55,7 +58,10 @@ const (
 	// the frontend nor by the REST API.
 	deviceUserEnvVar     = "FRONIUS_DEVICE_USER"
 	devicePasswordEnvVar = "FRONIUS_DEVICE_PASSWORD"
-	detectIntervalEnvVar = "FRONIUS_DETECT_INTERVAL"
+	// File variants of the credentials, for Docker secrets.
+	deviceUserFileEnvVar     = "FRONIUS_DEVICE_USER_FILE"
+	devicePasswordFileEnvVar = "FRONIUS_DEVICE_PASSWORD_FILE"
+	detectIntervalEnvVar     = "FRONIUS_DETECT_INTERVAL"
 )
 
 // Config is the effective configuration of the application.
@@ -74,7 +80,13 @@ type Config struct {
 	WebDir        string        // FRONIUS_WEB_DIR           default "" (no static files)
 	StaleAfter    time.Duration // FRONIUS_STALE_AFTER       default 30s
 	// Device identity: the two variables below are read together or not at all
-	// (see validate). The password never leaves this type without Reveal().
+	// (see validate). Each also accepts a file variant
+	// (FRONIUS_DEVICE_USER_FILE, FRONIUS_DEVICE_PASSWORD_FILE): when that
+	// variable is set, the file content is used and takes precedence over the
+	// inline variable — the Docker-secrets convention — with the trailing CR/LF
+	// Docker writes stripped; an unreadable file is a startup error, and an
+	// empty file means "no credential". The password never leaves this type
+	// without Reveal().
 	DeviceUser     string        // FRONIUS_DEVICE_USER       default ""
 	DevicePassword secret.String // FRONIUS_DEVICE_PASSWORD   default ""
 	DetectInterval time.Duration // FRONIUS_DETECT_INTERVAL   default 60s
@@ -93,7 +105,6 @@ func Load() (Config, error) {
 		LogLevel:     strings.ToLower(env(logLevelEnvVar, defaultLogLevel)),
 		LogFormat:    strings.ToLower(env(logFormatEnvVar, defaultLogFormat)),
 		WebDir:       env(webDirEnvVar, ""),
-		DeviceUser:   env(deviceUserEnvVar, ""),
 		AllowRemote:  false,
 		PollInterval: defaultPollInterval,
 		PollJitter:   defaultPollJitter,
@@ -102,11 +113,21 @@ func Load() (Config, error) {
 
 		DetectInterval: defaultDetectInterval,
 	}
-	if v, ok := lookup(devicePasswordEnvVar); ok {
-		c.DevicePassword = secret.New(v)
-	}
 
 	var errs []error
+
+	user, err := credential(deviceUserEnvVar, deviceUserFileEnvVar)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		c.DeviceUser = user
+	}
+	password, err := credential(devicePasswordEnvVar, devicePasswordFileEnvVar)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		c.DevicePassword = secret.New(password)
+	}
 
 	if v, ok := lookup(allowRemoteEnvVar); ok {
 		b, err := strconv.ParseBool(v)
@@ -255,6 +276,27 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// credential resolves a device credential, preferring the file named by
+// fileKey over the inline value in valueKey (the Docker-secrets convention).
+//
+// The file's trailing CR/LF are stripped: Docker secret files end with a
+// newline. Nothing else is trimmed, so a password may legitimately contain
+// spaces. An unreadable file is an error naming the variable and the path,
+// never the content; an empty file yields an empty credential, which validation
+// treats as "no credential".
+func credential(valueKey, fileKey string) (string, error) {
+	path, ok := lookup(fileKey)
+	if !ok {
+		v, _ := lookup(valueKey)
+		return v, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%s=%q: unreadable credentials file: %w", fileKey, path, err)
+	}
+	return strings.TrimRight(string(data), "\r\n"), nil
 }
 
 // lookup returns the variable if it is set and non-empty.

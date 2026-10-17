@@ -71,9 +71,20 @@ image therefore sets it, and the boundary becomes the **published port** — the
 compose file publishes on `127.0.0.1` only. The flag and the publication are
 documented together, because either alone is misleading.
 
-**Still deferred.** `go:embed` of the interface (a container does not need it; the
-SPA ships in the image), full NAS-specific installation documentation (the
-compose file covers the mechanics), and TLS/CORS/CSP.
+**Delivered since (same day).** `go:embed` of the interface: the build copies
+`apps/web/dist` into `internal/webui/assets`, `webui.FS()` embeds it, and the
+server prefers `FRONIUS_WEB_DIR` when set, then the embedded copy, then
+API-only; the image no longer carries an asset directory, and a path that looks
+like an asset but is missing answers the API's JSON 404 rather than the SPA
+index. Credentials may also come from files
+(`FRONIUS_DEVICE_USER_FILE` / `FRONIUS_DEVICE_PASSWORD_FILE`), which is how
+Docker secrets are used; the compose block is documented rather than enabled,
+because compose validates secret files at parse time and a fresh checkout has
+none — a commented block would otherwise break the demo profile. NAS guidance is
+in `docs/NAS.md`; it is **untested on a NAS**.
+
+**Still deferred.** TLS/CORS/CSP, and secret *distribution* at scale (Swarm or
+an external store) beyond files.
 
 **Consequences.** The image is the deployment unit on a NAS; the version comes
 from `--build-arg VERSION` and reads `dev` without one; a **bind mount** of the

@@ -9,6 +9,19 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **The interface embedded in the binary, credentials from files,
+  and NAS guidance.** `//go:embed` of `internal/webui/assets`: the build copies
+  `apps/web/dist` there, `webui.FS()` reports it only when it holds an
+  `index.html`, and the server prefers `FRONIUS_WEB_DIR` → embedded → API-only.
+  The image no longer ships an asset directory, and a missing path that looks
+  like an asset answers the API's JSON 404 instead of the SPA index.
+  `FRONIUS_DEVICE_USER_FILE` / `FRONIUS_DEVICE_PASSWORD_FILE` read a credential
+  from a file (trailing CR/LF stripped, `_FILE` wins, unreadable is a startup
+  error naming the variable and path, never the content) — the mechanism Docker
+  secrets use; the compose block is documented, not enabled. `docs/NAS.md` covers
+  image transport, local-storage-only databases (never CIFS/NFS), retention
+  (~4 MB/day), autostart, updates and the port boundary — and says it is
+  untested on a NAS.
 - 2026-10-17 — **Container packaging.** A multi-stage `Dockerfile` (Node builds
   the interface, Go builds the four binaries with `CGO_ENABLED=0`, a minimal
   `alpine` runtime carries them as a **non-root** user with `tzdata`,
@@ -20,7 +33,7 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   `FRONIUS_ALLOW_REMOTE=1`, which moves the boundary of ADR 0005 to the
   publication and is documented as such. `make docker` builds the image with the
   git revision stamped in (`-X main.buildVersion`). ADR 0007 amended: packaging
-  delivered, `go:embed` still deferred.
+  delivered.
 - 2026-10-17 — **Screenshots and a user guide.** `docs/USER-GUIDE.md` walks the
   ten screens — Overview, Energy, Events, Device detail, System, Capabilities,
   Settings with a **completed connectivity test**, Data sources, and the mobile

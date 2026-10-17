@@ -64,6 +64,13 @@ The image has three stages (`Dockerfile`): `node:22-alpine` builds
 database from the OS for `FRONIUS_TZ`) and `ca-certificates`, a `/data` volume
 and a healthcheck on `/api/v1/health`.
 
+The build stage copies `apps/web/dist` into `internal/webui/assets` **before**
+compiling, so the interface is embedded in the binary (`go:embed`) and the
+runtime carries only the binaries — there is no asset directory to ship.
+`make build` does the same copy for a local build; the copied files are
+gitignored, and only `internal/webui/assets/.gitkeep` is tracked, which keeps a
+plain `go build` valid when nothing is embedded.
+
 `.dockerignore` keeps the context to the two build stages: no `.git`, `docs`,
 `references`, `test`, `bin`, `data`, `node_modules` or `.env`. Because the
 context has no `.git`, the version comes from `--build-arg VERSION`

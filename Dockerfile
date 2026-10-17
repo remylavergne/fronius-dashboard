@@ -17,6 +17,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+# The interface is embedded in the binary: copy it into the go:embed directory
+# before compiling (the directory is tracked as an empty placeholder).
+COPY --from=web /src/dist ./internal/webui/assets/
 # CGO off: the SQLite driver is pure Go, so the binaries are static.
 # No .git in the context, hence -buildvcs=false and a stamped version.
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
@@ -34,7 +37,6 @@ RUN apk add --no-cache ca-certificates tzdata \
  && chown fronius:fronius /data
 WORKDIR /app
 COPY --from=build /out/ /app/
-COPY --from=web /src/dist /app/web
 COPY docker-entrypoint.sh /app/entrypoint.sh
 RUN chmod 0755 /app/entrypoint.sh
 USER 10001:10001
@@ -43,8 +45,7 @@ USER 10001:10001
 # compose publishes it on 127.0.0.1 by default because the API has no
 # authentication of its own (ADR 0005). FRONIUS_ALLOW_REMOTE only lifts the
 # in-container bind guard — it does not expose anything by itself.
-ENV FRONIUS_WEB_DIR=/app/web \
-    FRONIUS_HTTP_ADDR=0.0.0.0:8080 \
+ENV FRONIUS_HTTP_ADDR=0.0.0.0:8080 \
     FRONIUS_DB_PATH=/data/fronius.db \
     FRONIUS_TZ=Europe/Brussels \
     FRONIUS_ALLOW_REMOTE=1

@@ -121,9 +121,9 @@
 - [x] Verify the absence of secrets in the bundle, logs, localStorage, repository
 - [ ] Secure CORS, cookies, CSP and authentication if remote access
 - [ ] Configure localhost/LAN bind and HTTPS proxy according to the ADR
-- [ ] Compile the Go binary with embedded React assets
+- [x] Compile the Go binary with embedded React assets — `internal/webui` embeds `assets/` (`//go:embed all:assets`); `make build` and the Docker build copy `apps/web/dist` there first, and only `.gitkeep` is tracked so a plain `go build` stays valid. `webui.FS()` reports the embed only when it holds an `index.html`; serving prefers `FRONIUS_WEB_DIR` (explicit) → embedded → API-only, through one `fs.FS` handler. The image no longer carries `/app/web`. A deliberate behaviour change: a missing path that looks like an asset (`/missing.js`) is now the API's JSON 404, no longer the SPA index; extension-less paths still fall back
 - [x] Create a multi-stage Dockerfile and an optional compose — `Dockerfile` (Node → Go → `alpine`, four binaries, `CGO_ENABLED=0`, non-root uid `10001`, `tzdata` for `FRONIUS_TZ`, `/data` volume, `HEALTHCHECK` on `/api/v1/health`) and `docker-compose.yml` with two profiles: `app` (real inverter, `127.0.0.1:8080`) and `demo` (simulator + one day of synthetic history, its own volume, `127.0.0.1:8082`). The requirement for `FRONIUS_SOLARAPI_URL` lives in the image's entrypoint (compose interpolates inactive profiles, so `:?` there broke the demo); the build definition is a YAML anchor so `--profile demo up --build` can build; the published port is loopback-only while the container sets `FRONIUS_ALLOW_REMOTE=1` (ADR 0005's boundary moves to the publication). `make docker` stamps the git revision. Verified by building and running: healthy in 105 s, SPA + API served, `fronius-backup save` verified inside the container, image 71.1 MB
-- [ ] Add volumes, healthcheck, restart policy and secret management
+- [x] Add volumes, healthcheck, restart policy and secret management — volumes (`fronius-data`, `fronius-demo`), healthcheck (`/api/v1/health`), `restart: unless-stopped` and a `stop_grace_period` are in the compose file. Secrets: `FRONIUS_DEVICE_USER_FILE` / `FRONIUS_DEVICE_PASSWORD_FILE` read a credential from a file, strip trailing CR/LF, win over the inline variable, and make an unreadable file a startup error naming the variable and path — never the content; the value stays masked and never reaches the interface. The compose `secrets:` wiring is documented as a commented block, because compose validates secret files at parse time and a fresh checkout has none (enabling it would break the demo profile)
 - [ ] Test NAS/local installation, startup and updates
 - [x] Test backup and restore of the database
 - [x] Document installation, configuration, maintenance and troubleshooting
@@ -1007,3 +1007,39 @@
   delivered, `go:embed` still deferred, as are Docker secrets, NAS-specific
   notes and the HTTPS proxy. Box ticked: "Create a multi-stage Dockerfile and an
   optional compose" (phase 6).
+
+- 2026-10-17 — Step 34 (phase 6): **the interface embedded in the binary,
+  credentials from files, and NAS guidance.** `internal/webui` embeds `assets/`
+  (`//go:embed all:assets`); `make build` and the Docker build copy
+  `apps/web/dist` there first, only `.gitkeep` is tracked so a plain `go build`
+  stays valid, and `webui.FS()` reports the embed only when it holds an
+  `index.html`. Serving goes through one `fs.FS` handler with the precedence
+  `FRONIUS_WEB_DIR` → embedded → API-only; the image no longer carries
+  `/app/web`. A deliberate behaviour change: a missing path that looks like an
+  asset answers the API's JSON 404 instead of the SPA index. Credentials may come
+  from `FRONIUS_DEVICE_USER_FILE` / `FRONIUS_DEVICE_PASSWORD_FILE` (trailing
+  CR/LF stripped, `_FILE` wins, an unreadable file is a startup error naming the
+  variable and path — never the content), which is the mechanism Docker secrets
+  use; the compose block is documented as **commented**, because compose
+  validates secret files at parse time and a fresh checkout has none. `docs/NAS.md`
+  covers image transport (`docker save`/`load`), **local storage only** for the
+  database (SQLite locking over CIFS/NFS is unsafe), ~4 MB/day growth with
+  retention advice, the secrets permissions — a bind-mounted file must be
+  readable **and its directory traversable** by uid 10001, so `chmod 600` fails
+  while compose `secrets:` delivers `0444` and needs nothing — autostart,
+  updates and the port boundary; it states that it is **untested on a NAS** and
+  that box stays open. **Verified:** the host binary with no `WEB_DIR` served `/`
+  and `/energy` as HTML, a hashed asset as `text/javascript`, `/missing.js` as a
+  JSON 404, and reported `credentials_configured: true` from two files; the image
+  (71.1 MB) has no `/app/web`, serves the same three paths, reaches a host
+  simulator through `host.docker.internal` with credentials read from a
+  read-only mount (`device_events: present` — the trailing newlines were stripped
+  and the Digest accepted), and refuses a `0600` bind-mounted secret with
+  `permission denied`. Two tests were made build-state-independent: the root
+  test branches on `webui.FS()`, and the embed test now asserts the contract
+  (`ok` exactly when the embed has an `index.html`) instead of the current tree;
+  both pass with the assets copied in and in a fresh-clone state. ADR 0007
+  amended: `go:embed` and file credentials delivered; TLS/CORS/CSP and secret
+  *distribution* remain deferred. Boxes ticked: "Compile the Go binary with
+  embedded React assets" and "Add volumes, healthcheck, restart policy and secret
+  management".

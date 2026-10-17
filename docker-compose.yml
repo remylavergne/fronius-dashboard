@@ -31,6 +31,16 @@ services:
       FRONIUS_TZ: ${FRONIUS_TZ:-Europe/Brussels}
       FRONIUS_DEVICE_USER: ${FRONIUS_DEVICE_USER:-}
       FRONIUS_DEVICE_PASSWORD: ${FRONIUS_DEVICE_PASSWORD:-}
+      # Docker secrets (preferred): create ./secrets/device_user and
+      # ./secrets/device_password (mode 600), replace the two variables above by
+      #   FRONIUS_DEVICE_USER_FILE: /run/secrets/device_user
+      #   FRONIUS_DEVICE_PASSWORD_FILE: /run/secrets/device_password
+      # and uncomment the service's `secrets:` list below and the top-level
+      # `secrets:` block at the end of this file. The _FILE value wins over the
+      # inline one, and its trailing newline is stripped.
+      # secrets:
+      #   - device_user
+      #   - device_password
       FRONIUS_POLL_INTERVAL: ${FRONIUS_POLL_INTERVAL:-5s}
       FRONIUS_RETENTION_DAYS: ${FRONIUS_RETENTION_DAYS:-0}
     stop_grace_period: 20s
@@ -78,3 +88,13 @@ services:
 volumes:
   fronius-data:
   fronius-demo:
+
+# Docker secrets, for the `app` profile. Create the two files, uncomment the
+# service's `secrets:` list above, and use the two `_FILE` variables.
+# They are commented out because compose validates them at parse time, and a
+# fresh clone has no such files — which would break `--profile demo` too.
+# secrets:
+#   device_user:
+#     file: ./secrets/device_user
+#   device_password:
+#     file: ./secrets/device_password

@@ -6,6 +6,10 @@ data/
 apps/web/node_modules/
 apps/web/dist/
 apps/web/.vite/
+# Interface assets copied into the go:embed directory by `make build` and the
+# Docker build; only the placeholder is tracked.
+internal/webui/assets/*
+!internal/webui/assets/.gitkeep
 .env
 coverage/
 bin/
