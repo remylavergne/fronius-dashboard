@@ -871,3 +871,25 @@
   alert), suite **218**. Registers updated: `docs/ARCHITECTURE.md`,
   `docs/RUNBOOK.md` (what the test sends and how to read each state),
   `CHANGELOG.md`.
+
+- 2026-10-17 — Decision, no code: **technician-level information comes from an
+  account, never from circumvention** (`docs/adr/0008` decision 7). Prompted by a
+  request to reverse-engineer the API or firmware to reach the technician surface,
+  the bundle was re-read: the manufacturer's UI declares `technician` minimums on
+  **five client routes** (l. 43534, 43538, 43605, 43609, 43619, plus one `"profi"`
+  entry) and on **signal visibility** (`_getRequiredUsersTechnician` =
+  `technician|support|utility`, l. 128962-963), and on **no endpoint** — the only
+  role attached to a read path remains `customer`, on one registry entry. Since a
+  client role is a display condition (`_isUserAllowed` drops a stream,
+  `canActivate` cancels a navigation, a mapper hides a signal), the bundle cannot
+  say what the **device** reserves, and no reading of it can: inferring a matrix
+  from it would be inventing a permission. The ADR now fixes the boundary — an
+  operator-supplied technician account, read through the existing backend
+  credentials and the same GET-only path; the empirical matrix settled by
+  measurement (`fronius-probe --survey` per account, records diffed); never by
+  extracting credentials, patching or dissecting the firmware, bypassing Digest or
+  exploiting the device; and an account changes what may be **read**, never what
+  may be **done**. Cross-referenced from `docs/adr/0005`; `docs/UNKNOWNS.md` #6 now
+  names the sanctioned procedure (and its stale "eight internal paths" is
+  corrected to eleven), consistent with #7's existing "no confirmed secret or
+  autonomous means; **no attempt**".

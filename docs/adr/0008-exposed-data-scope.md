@@ -62,6 +62,39 @@ slightest device change would become a breaking interface change.
    when its method and its fields are proven by the bundle: the missing proof
    is the device's response, not the reading of the official client.
 6. **No secret to the frontend**, under any circumstance.
+7. **Technician-level information comes from an account, never from circumvention**
+   (2026-10-17). The manufacturer's UI declares `technician`/`support` minimums on
+   client **routes** (five of the ~37 entries of the route table, l. 43534, 43538,
+   43605, 43609, 43619; one entry declares `"profi"`, l. ~43623) and on **signal
+   visibility** (`_getRequiredUsersTechnician`, l. 128962-963, applied to the
+   `channels` mappers), and on **no endpoint**: the only role attached to a read
+   path is `customer`, on one registry entry (`/commands/GetUTCTime`,
+   l. 76037-76040). A client-side role is a display condition — `_isUserAllowed`
+   drops a stream, `canActivate` cancels a navigation, a mapper hides a signal —
+   so the bundle cannot say which paths the **device** reserves for a technician,
+   and no reading of it can. The application therefore:
+   - reads technician-gated information **only** with a technician account the
+     operator supplies, through the credentials already in the backend
+     (`FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD`) and the same GET-only
+     path; whatever that account may read is read like any other path, and still
+     needs a metric and a consumer (decisions 2 and 3) before it enters the
+     allowlist;
+   - settles the **empirical** matrix by measurement, not inference: the same
+     catalogue probed once per account (`cmd/fronius-probe --survey`, recorded in
+     `source_probe`), where `401`/`403` under one account and `200` under the
+     other **is** the gating evidence — the sanctioned answer to
+     `docs/UNKNOWNS.md` #6;
+   - **never** obtains access by extracting credentials, patching or dissecting
+     the firmware, bypassing or replaying Digest, or exploiting the device. This
+     is a boundary, not a preference: the technician surface is grid protection,
+     firmware and service operations — the `DANGEROUS` class of
+     `docs/ENDPOINTS.md` — where a mistake is an unsafe installation, and the
+     project's invariant is that no non-GET can leave the process (ADR 0004,
+     `internal/fronius/readonly.go`);
+   - keeps technician-gated **configuration** in the same read scope only if a
+     metric names it (decision 2). The `MUTATION`/`DANGEROUS` surface stays out of
+     the application entirely, whatever the account — an account changes what may
+     be *read*, never what may be *done*.
 
 ## Consequences
 
@@ -89,6 +122,11 @@ slightest device change would become a breaking interface change.
   `?sync=true` variants, `/config/logging`, `/config/solarweb`, `/config/gridcode`)
   remain out of scope until a metric names them.
 - The offline state remains tenable: the frontend depends only on the persisted model.
+- Technician-level information costs **an account, not a bypass** (decision 7). The
+  two-account survey is a measurement anyone holding the accounts can reproduce,
+  and it is the only honest answer to "which paths does the device reserve?" — the
+  role strings in the bundle stay what they are, display conditions, and this
+  document says so wherever it lists them.
 
 ## Rejected alternatives
 
@@ -102,6 +140,14 @@ slightest device change would become a breaking interface change.
   ADR 0004.
 - **Reproducing the manufacturer's interface**: forbidden by `AGENTS.md` (no
   dependency on the manufacturer's interface).
+- **Obtaining technician access by reversing the firmware or the API**
+  (credential extraction, Digest bypass, patching): circumventing an access
+  control on grid-connected equipment, on the very surface that carries grid
+  protection and firmware updates — illegal in several jurisdictions, unsafe in
+  all, and outside the GET-only invariant the code enforces (decision 7).
+- **Inferring a role matrix from the bundle's display conditions**: it would turn
+  a hidden button into a claimed permission — precisely the error `AGENTS.md`
+  forbids and `docs/UNKNOWNS.md` #6 keeps open.
 
 ## Sources
 

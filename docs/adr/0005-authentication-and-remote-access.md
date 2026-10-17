@@ -33,6 +33,11 @@ refusal: {addr} is not a local address; set FRONIUS_ALLOW_REMOTE=1 after reading
 - The need for application-level authentication (token or password, possibly proxied over HTTPS)
   will have to be decided by a later ADR before any permanent remote access.
 - The loopback guard is tested (`internal/config`, `froniusd` tests).
+- Access to technician-level information is **not** an authentication mechanism: it
+  is decided in `docs/adr/0008` (decision 7) — an operator-supplied technician
+  account, read through the same backend-held credentials and the same GET-only
+  path, never a bypass of the device's authentication. The account never reaches
+  the frontend (`docs/adr/0008` decision 6).
 
 ## Rejected alternatives
 
