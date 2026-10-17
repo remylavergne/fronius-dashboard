@@ -156,6 +156,10 @@ export const systemSchema = z.object({
   retention_days: z.number(),
   api_addr: z.string(),
   stale_after_s: z.number(),
+  detect_interval_s: z.number(),
+  http_timeout_s: z.number(),
+  /** Whether device credentials are set — never the values themselves. */
+  credentials_configured: z.boolean(),
   device: deviceSchema.nullable(),
   detection: detectionSchema.nullable(),
 })
@@ -737,11 +741,64 @@ export function parseDetailFamilyData<T>(family: DetailFamily | undefined, schem
 }
 
 // ---------------------------------------------------------------------------
+// Connectivity test
+// ---------------------------------------------------------------------------
+
+/**
+ * State of one probe (`GET /api/v1/connectivity`), mapped by the backend from
+ * the classified device error. The list is closed: a state added on the Go side
+ * fails validation here rather than rendering as an unlabelled badge.
+ */
+export const connectivityProbeStateSchema = z.enum([
+  'ok',
+  'skipped',
+  'unauthorized',
+  'absent',
+  'timeout',
+  'unreachable',
+  'error',
+])
+export type ConnectivityProbeState = z.infer<typeof connectivityProbeStateSchema>
+
+export const connectivityProbeSchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  state: connectivityProbeStateSchema,
+  /** Present when a response was received. */
+  http_status: z.number().optional(),
+  duration_ms: z.number(),
+  /** Firmware string for `internal_version` only; empty elsewhere. */
+  detail: z.string().optional(),
+  /** Classification of the failure, never a raw body. */
+  reason: z.string().optional(),
+})
+export type ConnectivityProbe = z.infer<typeof connectivityProbeSchema>
+
+/**
+ * Overall verdict: `ok` when every probe is `ok` or `skipped`, `failed` when
+ * the device is not reachable as the application reaches it, `partial` when it
+ * answers but the internal route or the credentials do not.
+ */
+export const connectivityOverallSchema = z.enum(['ok', 'partial', 'failed'])
+export type ConnectivityOverall = z.infer<typeof connectivityOverallSchema>
+
+export const connectivitySchema = z.object({
+  tested_at: timestamp,
+  /** The service reused a result younger than its 10 s window. */
+  cached: z.boolean(),
+  credentials_configured: z.boolean(),
+  overall: connectivityOverallSchema,
+  probes: z.array(connectivityProbeSchema),
+})
+export type Connectivity = z.infer<typeof connectivitySchema>
+
+// ---------------------------------------------------------------------------
 // Envelopes per endpoint
 // ---------------------------------------------------------------------------
 
 export const healthEnvelopeSchema = envelopeSchema(healthSchema)
 export const systemEnvelopeSchema = envelopeSchema(systemSchema)
+export const connectivityEnvelopeSchema = envelopeSchema(connectivitySchema)
 /** `data` is `null` when no measurement exists yet. */
 export const liveEnvelopeSchema = envelopeSchema(sampleSchema.nullable())
 export const timeseriesEnvelopeSchema = envelopeSchema(z.array(bucketSchema))
@@ -755,6 +812,7 @@ export const detailEnvelopeSchema = envelopeSchema(detailSchema)
 
 export type HealthEnvelope = z.infer<typeof healthEnvelopeSchema>
 export type SystemEnvelope = z.infer<typeof systemEnvelopeSchema>
+export type ConnectivityEnvelope = z.infer<typeof connectivityEnvelopeSchema>
 export type LiveEnvelope = z.infer<typeof liveEnvelopeSchema>
 export type TimeseriesEnvelope = z.infer<typeof timeseriesEnvelopeSchema>
 export type EnergyDailyEnvelope = z.infer<typeof energyDailyEnvelopeSchema>

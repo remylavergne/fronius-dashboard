@@ -9,6 +9,24 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **The Settings page, and a read-only connectivity test.** The
+  page now shows the whole effective configuration — including the detection
+  interval, the HTTP timeout and whether device credentials are configured
+  (**never** a value, never a masked one) — and carries a **Test the
+  connection** button. `GET /api/v1/connectivity` sends exactly **two `GET`s** to
+  the device and nothing else: the unauthenticated Solar API powerflow request
+  and `/status/version` with the configured credentials (the second probe is
+  `skipped`, never attempted, without credentials). Each probe reports its state
+  (`ok`, `skipped`, `unauthorized`, `absent`, `timeout`, `unreachable`),
+  its HTTP status when one was received, its duration, and a classified `reason`
+  — never a body. The verdict is `ok` when every probe is `ok` or `skipped`,
+  `failed` when the Solar API probe fails, `partial` otherwise. The answer is
+  cached **10 s** (`cached: true`, original `tested_at`) so a wrong password
+  pressed repeatedly cannot hammer the device's authentication counter, and every
+  JSON response now carries `Cache-Control: no-store` so a re-test is never
+  served from the browser cache. The page states what the test proves —
+  reachability and credential acceptance for those paths — and what it does not:
+  no write access, and a role is a display rule, not a firmware permission.
 - 2026-10-16 — **The device's own clock and the state of its grid-limits
   self-test, read end to end.** The two remaining read-only internal paths
   (`/commands/GetUTCTime`, `/commands/GetServiceState?serviceId=21`) are read by

@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fronius-supervisor/internal/config"
@@ -54,6 +55,13 @@ type Server struct {
 	version string
 	started time.Time
 	now     func() time.Time
+
+	// Connectivity test cache. connMu also serialises the probes themselves:
+	// the server is shared, and two simultaneous presses must not multiply
+	// the authentication attempts towards the device.
+	connMu       sync.Mutex
+	connResult   *connectivityDTO
+	connTestedAt time.Time
 }
 
 // New builds the API server.
@@ -96,6 +104,7 @@ func (s *Server) apiMux() http.Handler {
 
 	register("/api/v1/health", s.handleHealth)
 	register("/api/v1/system", s.handleSystem)
+	register("/api/v1/connectivity", s.handleConnectivity)
 	register("/api/v1/live", s.handleLive)
 	register("/api/v1/timeseries", s.handleTimeSeries)
 	register("/api/v1/energy/daily", s.handleDailyEnergy)
@@ -203,6 +212,10 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 		RetentionDays: cfg.RetentionDays,
 		APIAddr:       cfg.HTTPAddr,
 		StaleAfterS:   cfg.StaleAfter.Seconds(),
+
+		DetectIntervalS:       cfg.DetectInterval.Seconds(),
+		HTTPTimeoutS:          cfg.HTTPTimeout.Seconds(),
+		CredentialsConfigured: s.credentialsConfigured(),
 	}
 	out.Device, out.Detection = s.deviceAndDetection(ctx)
 	s.writeData(w, http.StatusOK, out, s.baseMeta())
@@ -649,6 +662,12 @@ func (s *Server) internalError(w http.ResponseWriter, what string, err error) {
 func (s *Server) writeEnvelope(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Every JSON response goes through here; the static assets do not. Without
+	// this header a browser may serve a cached body and a diagnostic re-test
+	// would show a stale verdict. The 10 s cache of /connectivity is the
+	// server's own and says `cached: true`; this header keeps the browser from
+	// hiding even that.
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)

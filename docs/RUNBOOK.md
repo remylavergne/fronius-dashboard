@@ -72,6 +72,35 @@ read instant (§ Device detail).
 The displayed values remain the last known ones — they are not wrong, they are
 old.
 
+### The connectivity test (Settings page)
+
+`GET /api/v1/connectivity` — the Settings page's *Test the connection* button —
+sends **two `GET`s** to the device and nothing else:
+
+1. `/solar_api/v1/GetPowerFlowRealtimeData.fcgi` — the unauthenticated Solar API
+   route: the device answers at all, through the application's own client path;
+2. `/status/version` with the configured credentials — the Digest route accepts
+   them (probe **skipped**, never attempted, when no credentials are configured).
+
+```bash
+curl -s localhost:8080/api/v1/connectivity | jq '.data.overall, .data.probes[]'
+```
+
+Each probe carries a state — `ok`, `skipped`, `unauthorized`, `absent`,
+`timeout`, `unreachable`, `error` — its HTTP status when one was received, and
+its duration. The overall verdict is `ok` when every probe is `ok` or `skipped`,
+`failed` when the Solar API probe fails (the device is not reachable as the
+application reaches it), `partial` otherwise. Read a state with § "Diagnosis by
+symptom": `unauthorized` → the credentials or the account; `absent` → the path
+differs on this firmware; `timeout`/`unreachable` → the address or the network.
+
+The answer is **cached for 10 s** (`cached: true`, with the original
+`tested_at`): a wrong password pressed repeatedly must not hammer the device's
+authentication counter. The test is a diagnostic — it proves the device answers
+`GET` and that the credentials are accepted **for the paths probed**. It proves
+nothing about write access, and a role shown in the manufacturer's interface is a
+display rule, not a firmware permission.
+
 ## Diagnosis by symptom
 
 | Symptom | Probable cause | Action |

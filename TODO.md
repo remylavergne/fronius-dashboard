@@ -73,6 +73,7 @@
 - [x] Implement `/api/v1/live` and `/api/v1/timeseries`
 - [x] Implement `/api/v1/energy/daily` and `/api/v1/events`
 - [x] Implement `/api/v1/capabilities` and non-sensitive settings
+- [x] Add the Settings page and a **read-only connectivity test** — `GET /api/v1/connectivity` sends exactly **two `GET`s** to the device (the unauthenticated Solar API powerflow request, then `/status/version` through the Digest transport — **skipped, never attempted**, without credentials) and reports each probe's state (`ok`/`skipped`/`unauthorized`/`absent`/`timeout`/`unreachable`/`error`), its HTTP status when one was received, its duration and a classified reason; the overall verdict is `ok`/`partial`/`failed`. The answer is cached **10 s** (`cached: true`, original `tested_at`) so a wrong password pressed repeatedly cannot hammer the device's authentication counter, and every JSON response now carries `Cache-Control: no-store` so a re-test is never served from the browser cache. The page prints the whole effective configuration — detection interval, HTTP timeout, and the credentials **state** (configured or not, never a value, not even masked) — and states what the test proves (reachability, credential acceptance for those paths) and what it does not (write access; a role is a display rule, not a firmware permission). **Verified live:** `ok 200` ×2 → a second press `(cached)` → device stopped: `unreachable · transport`, overall `failed` → wrong password: `ok 200` + `unauthorized 401`, overall `partial` — the last one distinguishable from a network failure only thanks to the taxonomy fix of Step 27
 - [x] Publish the source catalogue: machine-readable register of every endpoint and field, served by /api/v1/sources
 - [x] Run a read-only survey of every catalogued path and record its outcome (class, shape, firmware) in `source_probe`, merged into `/api/v1/sources`
 - [x] Read and publish the device detail families (inverter, system, network, devices, emrs) served by `GET /api/v1/detail` — a snapshot per family in `device_detail` (migration `0008_detail.sql`), the inverter family with the collector, the four diagnostics with the detector, so each family carries its own read instant; the five new readings documented in `docs/ENDPOINTS.md` § Executable allowlist and `docs/SOURCES.md` § Endpoint inventory
@@ -840,3 +841,33 @@
   group row no longer says "never called"), `docs/UNKNOWNS.md` #16,
   `docs/adr/0008` (the two reads, with their named consumers),
   `docs/ARCHITECTURE.md`, `docs/RUNBOOK.md`, `CHANGELOG.md`.
+
+- 2026-10-17 — Step 29 (phase 4/5): **the Settings page and the read-only
+  connectivity test.** The page was a flat list of seven fields; it now shows the
+  whole effective configuration — adding the **detection interval**, the **HTTP
+  timeout** and the device **credentials state** (`configured` / `not
+  configured`; never a value, not even a masked one) — and carries a *Test the
+  connection* button backed by `GET /api/v1/connectivity`. The handler builds the
+  same client chain as the daemon (Digest transport → `fronius.ReadOnly` →
+  `solarapi`/`internalapi`) and sends exactly **two `GET`s**: the unauthenticated
+  powerflow request, then `/status/version` with the credentials (the probe is
+  `skipped` and **no request is made** when none is configured — asserted with a
+  counting origin). States come from `froniuserr.KindOf` (`ok`, `skipped`,
+  `unauthorized`, `absent`, `timeout`, `unreachable`, `error`), with the HTTP
+  status only when a response arrived and the classified kind as the reason —
+  never a body. Overall: `ok` / `partial` / `failed`. The result is cached **10 s**
+  through the injectable clock (so a wrong password cannot hammer the device's
+  authentication counter) and every JSON response now carries
+  `Cache-Control: no-store` (SPA assets untouched). **Verified live** on the
+  simulator: both probes `ok 200` (with `firmware 1.24.3-sim`), a second press
+  `(cached)`, the device stopped → `unreachable · transport` / overall `failed`,
+  and a wrong password → `ok 200` + `unauthorized 401` / overall `partial` — the
+  refusal distinguishable from a network failure only because Step 27's taxonomy
+  fix lets the outermost kind survive the Digest transport. Tests: 14 Go cases in
+  `internal/api` (states, `skipped` with zero requests, the 10 s boundary at 9 s
+  and 10 s, concurrent presses, no secret on success **and** failure, the header)
+  and 11 web tests (the two credential states without a value, one fetch per
+  press, the three verdicts, the cached note, the empty pre-press state, the error
+  alert), suite **218**. Registers updated: `docs/ARCHITECTURE.md`,
+  `docs/RUNBOOK.md` (what the test sends and how to read each state),
+  `CHANGELOG.md`.

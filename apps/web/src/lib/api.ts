@@ -46,15 +46,23 @@ function describeFailure(cause: unknown): string {
  * Three failures are distinguished: `network` (the API is unreachable), `http`
  * (the API returned an error) and `schema` (unexpected response — the signal of
  * a drift between the Go DTOs and these schemas).
+ *
+ * `options.cache` is forwarded to `fetch`. The connectivity test passes
+ * `no-store`: a re-test must reach the service, whose own 10 s window is the
+ * only cache allowed to answer it.
  */
 export async function fetchJSON<T>(
   path: string,
   schema: ZodType<T>,
   signal?: AbortSignal,
+  options: { cache?: RequestCache } = {},
 ): Promise<T> {
   const init: RequestInit = { headers: { Accept: 'application/json' } }
   if (signal) {
     init.signal = signal
+  }
+  if (options.cache !== undefined) {
+    init.cache = options.cache
   }
 
   let response: Response

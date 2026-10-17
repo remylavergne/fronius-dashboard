@@ -297,17 +297,23 @@ type collectorHealthDTO struct {
 // as no identity read has succeeded: the Solar API provides neither model,
 // nor firmware version, nor serial number (see docs/UNKNOWNS.md).
 type systemDTO struct {
-	Version       string        `json:"version"`
-	GoVersion     string        `json:"go_version"`
-	SolarAPIURL   string        `json:"solarapi_url"`
-	PollIntervalS float64       `json:"poll_interval_s"`
-	TZ            string        `json:"tz"`
-	DBPath        string        `json:"db_path"`
-	RetentionDays int           `json:"retention_days"`
-	APIAddr       string        `json:"api_addr"`
-	StaleAfterS   float64       `json:"stale_after_s"`
-	Device        *deviceDTO    `json:"device"`
-	Detection     *detectionDTO `json:"detection"`
+	Version       string  `json:"version"`
+	GoVersion     string  `json:"go_version"`
+	SolarAPIURL   string  `json:"solarapi_url"`
+	PollIntervalS float64 `json:"poll_interval_s"`
+	TZ            string  `json:"tz"`
+	DBPath        string  `json:"db_path"`
+	RetentionDays int     `json:"retention_days"`
+	APIAddr       string  `json:"api_addr"`
+	StaleAfterS   float64 `json:"stale_after_s"`
+	// DetectIntervalS is how often the internal detections are read;
+	// HTTPTimeoutS bounds each device request. CredentialsConfigured says
+	// whether the pair is set — never a value, never a masked value.
+	DetectIntervalS       float64       `json:"detect_interval_s"`
+	HTTPTimeoutS          float64       `json:"http_timeout_s"`
+	CredentialsConfigured bool          `json:"credentials_configured"`
+	Device                *deviceDTO    `json:"device"`
+	Detection             *detectionDTO `json:"detection"`
 }
 
 // deviceDTO is the device identity as it was read.
@@ -362,6 +368,36 @@ type clockResourceDTO struct {
 type serviceResourceDTO struct {
 	detectionResourceDTO
 	Value *string `json:"value,omitempty"`
+}
+
+// connectivityDTO is the answer of the read-only connectivity test.
+//
+// It contains no username, no password and no header: only the states the
+// probes produced. `tested_at` is the instant of the run, kept unchanged when
+// the result is reused from the cache (`cached` then says so).
+type connectivityDTO struct {
+	TestedAt              string                 `json:"tested_at"`
+	Cached                bool                   `json:"cached"`
+	CredentialsConfigured bool                   `json:"credentials_configured"`
+	Overall               string                 `json:"overall"`
+	Probes                []connectivityProbeDTO `json:"probes"`
+}
+
+// connectivityProbeDTO is one probe's outcome.
+//
+// `http_status` is present when a response was received; `duration_ms` is
+// always present. `reason` is a classification (a froniuserr.Kind, or
+// credentials_not_configured), never a body and never a URL. `detail` carries
+// a device fact already published by /system — the firmware — and nothing
+// else.
+type connectivityProbeDTO struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	State      string `json:"state"`
+	HTTPStatus *int   `json:"http_status,omitempty"`
+	DurationMS int64  `json:"duration_ms"`
+	Reason     string `json:"reason,omitempty"`
+	Detail     string `json:"detail,omitempty"`
 }
 
 func formatTime(t time.Time) string {

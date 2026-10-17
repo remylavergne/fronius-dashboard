@@ -14,6 +14,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { fetchJSON } from './api'
 import {
   capabilitiesEnvelopeSchema,
+  connectivityEnvelopeSchema,
   detailEnvelopeSchema,
   energyDailyEnvelopeSchema,
   eventsEnvelopeSchema,
@@ -23,7 +24,7 @@ import {
   systemEnvelopeSchema,
   timeseriesEnvelopeSchema,
 } from './schema'
-import type { CapabilitiesEnvelope, DetailEnvelope, EnergyDailyEnvelope, EventsEnvelope, HealthEnvelope, LiveEnvelope, SourcesEnvelope, SystemEnvelope, TimeseriesEnvelope } from './schema'
+import type { CapabilitiesEnvelope, ConnectivityEnvelope, DetailEnvelope, EnergyDailyEnvelope, EventsEnvelope, HealthEnvelope, LiveEnvelope, SourcesEnvelope, SystemEnvelope, TimeseriesEnvelope } from './schema'
 
 const POLL_MS = 5000
 
@@ -71,6 +72,29 @@ export function useSources(): UseQueryResult<SourcesEnvelope> {
     queryKey: ['sources'],
     queryFn: ({ signal }) => fetchJSON('/api/v1/sources', sourcesEnvelopeSchema, signal),
     ...pollOptions,
+  })
+}
+
+/**
+ * Read-only connectivity test, on demand.
+ *
+ * `enabled: false`: nothing probes the device on mount — only the operator's
+ * press does. `retry: false`: an automatic second attempt would hide the very
+ * failure the test exists to report. `cache: 'no-store'`: a re-test must reach
+ * the service; the service's own 10 s window is the only cache allowed to
+ * answer it, and it says so through `cached`.
+ *
+ * The query refetches on every press, including inside that window: the fresh
+ * payload then carries `cached: true` and the original `tested_at`.
+ */
+export function useConnectivity(): UseQueryResult<ConnectivityEnvelope> {
+  return useQuery({
+    queryKey: ['connectivity'],
+    queryFn: ({ signal }) =>
+      fetchJSON('/api/v1/connectivity', connectivityEnvelopeSchema, signal, { cache: 'no-store' }),
+    enabled: false,
+    retry: false,
+    throwOnError: false,
   })
 }
 
