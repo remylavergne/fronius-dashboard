@@ -801,6 +801,7 @@ var internalAPISources = []Source{
 		Provides:  "The device's own clock (epoch, seconds). The System screen shows the drift between it and the host clock: the inverter's own day counter resets on ITS midnight, so a skewed clock silently shifts what \"today\" means",
 		State:     StateCalled,
 		Called:    true,
+		Fixture:   "test/fixtures/internalapi/commands_utc_time.json",
 		Fields: []Field{
 			{Path: "resultData.epoch", Type: "int", Status: FieldDisplayed,
 				Why: "the device's time in seconds; a drift beyond ±60 s is a warning — the daily derivation tolerates a baseline reading only within ten minutes of the local midnight"},
@@ -809,7 +810,9 @@ var internalAPISources = []Source{
 		},
 		Proofs: []Proof{
 			{Tag: bundleTag, Detail: "polled registry entry (l. 76037-76040), interval 15 s, envelope CommandResult, the single entry declaring user: \"customer\"; direct site l. 90579; consumers reading epoch l. 128622/128767; envelope unwrapped at l. 75960"},
-			{Tag: bundleTag, Detail: "served by cmd/fronius-sim (the -clock-offset flag shifts it on purpose); UNVERIFIED on hardware — no capture exists for this path"},
+			{Tag: verifiedTag, Firmware: registeredFirmware,
+				Detail: "captured 2026-10-17 on hardware (probe, GET): 200, 51 bytes, {\"resultData\":{\"epoch\":1792272194},\"success\":true} — epoch in seconds, and that instant matched the probe's own clock to the second. Read by the detector, shown on the System screen"},
+			{Tag: bundleTag, Detail: "served by cmd/fronius-sim too (the -clock-offset flag shifts it on purpose)"},
 		},
 		Docs: []string{"docs/ENDPOINTS.md § Executable allowlist", "docs/SOURCES.md"},
 	},
@@ -830,7 +833,9 @@ var internalAPISources = []Source{
 		},
 		Proofs: []Proof{
 			{Tag: bundleTag, Detail: "polled registry entry (l. 76043), interval 5 s, envelope CommandResult, the only argument of the registry: serviceId from T_SystemServiceId; direct sites l. 90935/90939; consumer reading state l. 136831; GridlimitsAutotest = 21 (l. 116025)"},
-			{Tag: bundleTag, Detail: "served by cmd/fronius-sim (an unknown serviceId answers success: false, the shape that drives the BLOCKED fallback); UNVERIFIED on hardware — no capture exists for this path"},
+			{Tag: verifiedTag, Firmware: registeredFirmware,
+				Detail: "on hardware 2026-10-17 the path exists and is Digest-protected: the probe was challenged, then refused with HTTP 403 after presenting its account — that account has no permission for the grid-limits self-test. The response shape (resultData.state) remains UNVERIFIED; the application reports the state as unknown with this reason"},
+			{Tag: bundleTag, Detail: "served by cmd/fronius-sim (an unknown serviceId answers success: false, the shape that drives the BLOCKED fallback)"},
 		},
 		Docs: []string{"docs/ENDPOINTS.md § Executable allowlist", "docs/SOURCES.md"},
 	},

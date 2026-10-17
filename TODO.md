@@ -1121,3 +1121,28 @@
   hardware probes themselves are **waiting on the owner's credentials** — none are
   present in this checkout, and no unauthenticated attempt was made. Box ticked:
   the design-system/theme/responsive box, the last shell item.
+
+- 2026-10-17 — Step 38 (phase 2/3): **the device clock verified on hardware; the
+  service state found to be permission-gated.** With the owner's consent, two
+  read-only `GET`s were sent to the reference installation
+  (`192.0.2.10`, firmware `1.19.7-1`), one attempt each, no retries:
+  `/commands/GetUTCTime` → **`200`, 51 bytes,
+  `{"resultData":{"epoch":1792272194},"success":true}`** — the extracted DTO
+  exactly, `epoch` in seconds, and that instant matched the probe's own clock to
+  the second; the path is now `[VERIFIED]`, the response promoted to
+  `test/fixtures/internalapi/commands_utc_time.json`, the catalogue entry gains a
+  `[VERIFIED]` proof and its fixture, and UNKNOWNS #16, ENDPOINTS, SOURCES and the
+  runbook say so. `/commands/GetServiceState?serviceId=21` → **challenged, then
+  refused `403`** after presenting the account: the path exists and is
+  Digest-protected (a challenge proves it, a `404` would not), the account lacks
+  the role, the response shape stays **`unverified`**, and the application already
+  degrades it to `unknown` with this reason. This is the project's **first
+  server-side permission evidence** (UNKNOWNS #6): the device enforces a role —
+  the account reads the clock and cannot read the self-test. The complete matrix
+  still needs one account per role. Preparation: the probe used to put the
+  catalogue's `serviceId=<id>` placeholder on the wire; it now refuses
+  placeholders before any request, takes `--query serviceId=21` for a single
+  `--endpoint`, and skips them in a survey (7 tests). While the credentials were
+  missing, one unauthenticated attempt was deliberately **not** made: on a device
+  that counts failed authentications, that request would have been worse than
+  useless.

@@ -604,6 +604,19 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Changed
 
+- 2026-10-17 — **The device clock read is verified on hardware; the service state
+  is not.** The consented probe on the reference installation (`1.19.7-1`) read
+  `/commands/GetUTCTime`: `200`, 51 bytes,
+  `{"resultData":{"epoch":1792272194},"success":true}` — the extracted DTO
+  exactly, in seconds, and the instant matched the probe's own clock to the
+  second; captured as `test/fixtures/internalapi/commands_utc_time.json`.
+  `/commands/GetServiceState?serviceId=21` was **challenged, then refused with
+  `403`**: the path exists and is Digest-protected, but that account has no
+  permission for the grid-limits self-test, so its response shape stays
+  `unverified` and the application reports the state as unknown with this reason.
+  This is the project's first **server-side** permission evidence
+  (`docs/UNKNOWNS.md` #6): the device enforces the role, and the account used does
+  not carry the one that unlocks the self-test.
 - 2026-10-16 — **The probe's `--endpoint` selector disambiguates the
   realtime-data collections.** Three collections share
   `/solar_api/v1/GetInverterRealtimeData.cgi` and differ only by their query;
