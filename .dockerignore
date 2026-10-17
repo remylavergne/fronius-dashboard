@@ -1,0 +1,18 @@
+# Keep the build context to what the two build stages need.
+.git
+.github
+apps/web/node_modules
+apps/web/dist
+apps/web/.vite
+bin
+data
+docs
+references
+test
+**/*.md
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm

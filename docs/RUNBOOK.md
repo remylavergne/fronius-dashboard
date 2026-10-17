@@ -38,6 +38,39 @@ Development backfill:
 Backfill refuses a non-local target (protection: do not hammer the inverter);
 `--force-backfill` lifts that refusal knowingly.
 
+## Docker
+
+The image is built by `make docker` (or by compose, below). It runs as uid
+`10001`, from `/app`, with the interface in `/app/web` and the database in the
+`/data` volume.
+
+```bash
+docker compose --profile app up -d --build     # the real installation, 127.0.0.1:8080
+docker compose --profile demo up --build       # simulator + a day of history, 127.0.0.1:8082
+docker compose ps                              # the healthcheck state
+docker compose logs -f froniusd
+docker compose down                            # keeps the volume
+docker compose down -v                         # deletes the database with it
+```
+
+- **The published port is the boundary.** The container binds `0.0.0.0`, so the
+  image sets `FRONIUS_ALLOW_REMOTE=1` — and compose publishes `127.0.0.1` only.
+  Widening the publication re-exposes an API that has no authentication of its
+  own (ADR 0005); put a TLS reverse proxy in front instead.
+- **Backup and restore** run inside the container, on the mounted volume:
+  `docker compose exec froniusd /app/fronius-backup save -out /data/backup.db`;
+  for a restore, stop the service first (`docker compose stop froniusd`).
+- **A bind mount instead of the named volume** needs its host directory owned by
+  uid `10001` (`sudo chown -R 10001:10001 ./data`), or SQLite cannot open the
+  database. The named volume has no such requirement.
+- **A clean stop** is `SIGTERM` with a 20 s grace period, already set in the
+  compose file.
+- **Two profiles, deliberately**: `app` (a real inverter, fails fast if
+  `FRONIUS_SOLARAPI_URL` is unset) and `demo` (simulator, synthetic data, its own
+  volume and port, never touching the real database).
+- The version shown in the interface comes from `--build-arg VERSION`; without it
+  the image reports `dev`.
+
 ## Checking everything is fine
 
 ```bash

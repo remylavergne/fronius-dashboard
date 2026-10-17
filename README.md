@@ -22,26 +22,26 @@ browser tab.
   and exports come from the local database — a sleeping inverter, a dead network
   or a power cut do not blank your screen.
 - **It cannot change your inverter.** Every client is wrapped in a guard that
-  refuses any method but `GET` *before* a request leaves the process. No
+  refuses any method but `GET` _before_ a request leaves the process. No
   commands, no configuration writes, no firmware, no self-test triggers. Ever.
 - **It tells you what it knows, and what it does not.** A value is labelled
-  *measured* or *derived*; a missing value is a dash **with its reason**; a gap is
+  _measured_ or _derived_; a missing value is a dash **with its reason**; a gap is
   never interpolated; a total that is a lower bound says so.
 - **Real history, not a live widget.** Hourly aggregates, daily energy derived
   from the device's stored total, an event journal, and CSV export of all three.
 
 ## What you get
 
-| Screen | What it answers |
-|---|---|
-| **Overview** | What is the installation doing right now, and how fresh are those numbers? |
-| **Energy** | What did each local day produce — from the device's counter or derived from the stored total — and what is the week, month, year total? |
-| **Events** | What did the collector and the inverter report, when, and how bad? |
-| **Device detail** | Identity, system, network, devices, EMRS and cache — each with availability and its reason. |
-| **System** | The device's own clock and its drift (warned beyond ±60 s), its grid-limits self-test state, the detection resources. |
-| **Capabilities** | What this installation can and cannot measure, and why. |
-| **Data sources** | The machine-readable catalogue: which path, which fields, which evidence. |
-| **Settings** | The effective configuration, plus a read-only connectivity test. |
+| Screen            | What it answers                                                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Overview**      | What is the installation doing right now, and how fresh are those numbers?                                                              |
+| **Energy**        | What did each local day produce — from the device's counter or derived from the stored total — and what is the week, month, year total? |
+| **Events**        | What did the collector and the inverter report, when, and how bad?                                                                      |
+| **Device detail** | Identity, system, network, devices, EMRS and cache — each with availability and its reason.                                             |
+| **System**        | The device's own clock and its drift (warned beyond ±60 s), its grid-limits self-test state, the detection resources.                   |
+| **Capabilities**  | What this installation can and cannot measure, and why.                                                                                 |
+| **Data sources**  | The machine-readable catalogue: which path, which fields, which evidence.                                                               |
+| **Settings**      | The effective configuration, plus a read-only connectivity test.                                                                        |
 
 Plus: a keyboard-accessible, mobile-ready shell; a connectivity test that tells
 you whether the device answers and whether your credentials work; and a CSV
@@ -49,10 +49,10 @@ download on every history screen.
 
 ![The Energy screen: three rollups and the per-day table with its device-counter and derived markers](docs/screenshots/02-energy.png)
 
-*The Energy screen: each day says whether its value is the device's own counter
+_The Energy screen: each day says whether its value is the device's own counter
 or was derived from the stored total; the rollups state how many days
 contributed, how many were excluded, and that the total is a lower bound while
-the day in progress is included.*
+the day in progress is included._
 
 ## Quick start
 
@@ -90,30 +90,58 @@ make seed                           # seven days of synthetic history
 FRONIUS_WEB_DIR=apps/web/dist ./bin/froniusd
 ```
 
+### Run it in Docker
+
+```bash
+cp .env.example .env                # set FRONIUS_SOLARAPI_URL (and the credentials if you have them)
+docker compose --profile app up -d --build
+# http://127.0.0.1:8080
+```
+
+The interface is built into the image; the database lives in the `fronius-data`
+volume. The port is published on **127.0.0.1 only** — the API has no
+authentication of its own, so put a TLS reverse proxy in front before exposing it
+further.
+
+No inverter? The same image runs a complete demo — simulator, a day of synthetic
+history, its own volume and port:
+
+```bash
+docker compose --profile demo up --build
+# http://127.0.0.1:8082
+```
+
+Maintenance works from inside the container too:
+
+```bash
+docker compose exec froniusd /app/fronius-backup save -out /data/backup.db
+docker compose logs -f froniusd
+```
+
 ### Configuration
 
-| Variable | Default | What it does |
-|---|---|---|
-| `FRONIUS_SOLARAPI_URL` | `http://127.0.0.1:8081` | The inverter's base URL. |
-| `FRONIUS_WEB_DIR` | *(empty — API only)* | Where the built interface lives; `apps/web/dist` after `make build`. |
-| `FRONIUS_HTTP_ADDR` | `127.0.0.1:8080` | Where the interface listens. Loopback only unless you knowingly set `FRONIUS_ALLOW_REMOTE=1`. |
-| `FRONIUS_DB_PATH` | `./data/fronius.db` | Your database. Back it up freely. |
-| `FRONIUS_TZ` | `Europe/Brussels` | The **installation's** time zone — it decides where a day starts and ends. |
-| `FRONIUS_POLL_INTERVAL` | `5s` | Collection interval. |
-| `FRONIUS_RETENTION_DAYS` | `0` | Purge samples older than N days. `0` keeps everything. |
-| `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` | *(empty)* | Only for the device's internal read paths. They never reach the browser. |
+| Variable                                          | Default                 | What it does                                                                                  |
+| ------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------- |
+| `FRONIUS_SOLARAPI_URL`                            | `http://127.0.0.1:8081` | The inverter's base URL.                                                                      |
+| `FRONIUS_WEB_DIR`                                 | _(empty — API only)_    | Where the built interface lives; `apps/web/dist` after `make build`.                          |
+| `FRONIUS_HTTP_ADDR`                               | `127.0.0.1:8080`        | Where the interface listens. Loopback only unless you knowingly set `FRONIUS_ALLOW_REMOTE=1`. |
+| `FRONIUS_DB_PATH`                                 | `./data/fronius.db`     | Your database. Back it up freely.                                                             |
+| `FRONIUS_TZ`                                      | `Europe/Brussels`       | The **installation's** time zone — it decides where a day starts and ends.                    |
+| `FRONIUS_POLL_INTERVAL`                           | `5s`                    | Collection interval.                                                                          |
+| `FRONIUS_RETENTION_DAYS`                          | `0`                     | Purge samples older than N days. `0` keeps everything.                                        |
+| `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` | _(empty)_               | Only for the device's internal read paths. They never reach the browser.                      |
 
 The full list is in the [runbook](docs/RUNBOOK.md).
 
 ## Different by design
 
-| | The inverter's own web console | This application |
-|---|---|---|
-| Where it runs | on the inverter | on your machine |
-| When the inverter is offline | nothing to see | history, events and exports keep working |
-| What it can change | configuration and commands | **nothing** — `GET` only, by construction |
-| History | what the device reports now | hourly aggregates, daily energy, an event journal, CSV export |
-| Numbers | as reported | *measured* / *derived* / *unavailable*, with reasons |
+|                              | The inverter's own web console | This application                                              |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------- |
+| Where it runs                | on the inverter                | on your machine                                               |
+| When the inverter is offline | nothing to see                 | history, events and exports keep working                      |
+| What it can change           | configuration and commands     | **nothing** — `GET` only, by construction                     |
+| History                      | what the device reports now    | hourly aggregates, daily energy, an event journal, CSV export |
+| Numbers                      | as reported                    | _measured_ / _derived_ / _unavailable_, with reasons          |
 
 Use both: the console for configuration, this for the record.
 

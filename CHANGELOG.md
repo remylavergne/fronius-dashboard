@@ -9,6 +9,18 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **Container packaging.** A multi-stage `Dockerfile` (Node builds
+  the interface, Go builds the four binaries with `CGO_ENABLED=0`, a minimal
+  `alpine` runtime carries them as a **non-root** user with `tzdata`,
+  `ca-certificates`, a `/data` volume and a `HEALTHCHECK` on `/api/v1/health`),
+  plus a `docker-compose.yml` with two profiles: `app` for a real installation
+  (fails fast when `FRONIUS_SOLARAPI_URL` is unset) and `demo` for the simulator
+  with a day of synthetic history on its own volume and port. The published
+  port is `127.0.0.1` only — the container must bind `0.0.0.0` and therefore sets
+  `FRONIUS_ALLOW_REMOTE=1`, which moves the boundary of ADR 0005 to the
+  publication and is documented as such. `make docker` builds the image with the
+  git revision stamped in (`-X main.buildVersion`). ADR 0007 amended: packaging
+  delivered, `go:embed` still deferred.
 - 2026-10-17 — **Screenshots and a user guide.** `docs/USER-GUIDE.md` walks the
   ten screens — Overview, Energy, Events, Device detail, System, Capabilities,
   Settings with a **completed connectivity test**, Data sources, and the mobile

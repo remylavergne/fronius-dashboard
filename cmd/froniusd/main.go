@@ -298,9 +298,17 @@ func parseLevel(s string) (slog.Level, error) {
 	}
 }
 
-// version returns the binary version: the module version if it is
-// known, otherwise the VCS revision, otherwise "dev".
+// buildVersion is stamped at build time (-X main.buildVersion=…). It is empty in
+// a plain `go build`, where version() falls back to the module or VCS
+// information — which a container build has neither of, having no .git.
+var buildVersion string
+
+// version returns the binary version: the stamped value, else the module
+// version if it is known, otherwise the VCS revision, otherwise "dev".
 func version() string {
+	if buildVersion != "" {
+		return buildVersion
+	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "dev"

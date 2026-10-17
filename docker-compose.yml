@@ -1,0 +1,80 @@
+name: fronius-monitoring
+
+# The API has no authentication of its own (ADR 0005). Inside a container it must
+# bind 0.0.0.0 — the boundary is the *published* port, and every service here
+# publishes on 127.0.0.1 only. Put a reverse proxy with TLS in front before you
+# widen that.
+#
+#   real installation:  cp .env.example .env   # set FRONIUS_SOLARAPI_URL, credentials
+#                       docker compose --profile app up -d --build
+#   no hardware:        docker compose --profile demo up --build
+#                       -> http://127.0.0.1:8082
+
+services:
+  froniusd:
+    profiles: ["app"]
+    build: &build
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+    image: fronius-monitoring:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - fronius-data:/data
+    environment:
+      # Empty by default: the image's entrypoint refuses to start without it
+      # (the requirement cannot live here — compose interpolates the whole file
+      # even for inactive profiles, which would break the demo profile).
+      FRONIUS_SOLARAPI_URL: ${FRONIUS_SOLARAPI_URL:-}
+      FRONIUS_TZ: ${FRONIUS_TZ:-Europe/Brussels}
+      FRONIUS_DEVICE_USER: ${FRONIUS_DEVICE_USER:-}
+      FRONIUS_DEVICE_PASSWORD: ${FRONIUS_DEVICE_PASSWORD:-}
+      FRONIUS_POLL_INTERVAL: ${FRONIUS_POLL_INTERVAL:-5s}
+      FRONIUS_RETENTION_DAYS: ${FRONIUS_RETENTION_DAYS:-0}
+    stop_grace_period: 20s
+
+  # ---- demo: the simulator, synthetic history, its own volume and port -------
+  # It never touches the real database.
+  simulator:
+    profiles: ["demo"]
+    image: fronius-monitoring:local
+    entrypoint: ["/app/fronius-sim"]
+    command: ["-addr", "0.0.0.0:8081", "-log-level", "info"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/sim/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  demo:
+    profiles: ["demo"]
+    build: *build
+    image: fronius-monitoring:local
+    entrypoint: ["/app/froniusd"]
+    # One day of history on start, then serve (idempotent if restarted).
+    # --force-backfill is required and legitimate here: the backfill refuses a
+    # non-loopback target, and across containers the simulator is not loopback.
+    # One day, not seven: the backfill runs before the server binds, and seven
+    # days takes minutes.
+    command: ["--backfill-days", "1", "--force-backfill"]
+    healthcheck:
+      # The backfill precedes the listener; leave the first start room to breathe.
+      start_period: 300s
+    depends_on:
+      simulator:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8082:8080"
+    volumes:
+      - fronius-demo:/data
+    environment:
+      FRONIUS_SOLARAPI_URL: http://simulator:8081
+      FRONIUS_TZ: Europe/Brussels
+    restart: unless-stopped
+
+volumes:
+  fronius-data:
+  fronius-demo:

@@ -122,7 +122,7 @@
 - [ ] Secure CORS, cookies, CSP and authentication if remote access
 - [ ] Configure localhost/LAN bind and HTTPS proxy according to the ADR
 - [ ] Compile the Go binary with embedded React assets
-- [ ] Create a multi-stage Dockerfile and an optional compose
+- [x] Create a multi-stage Dockerfile and an optional compose — `Dockerfile` (Node → Go → `alpine`, four binaries, `CGO_ENABLED=0`, non-root uid `10001`, `tzdata` for `FRONIUS_TZ`, `/data` volume, `HEALTHCHECK` on `/api/v1/health`) and `docker-compose.yml` with two profiles: `app` (real inverter, `127.0.0.1:8080`) and `demo` (simulator + one day of synthetic history, its own volume, `127.0.0.1:8082`). The requirement for `FRONIUS_SOLARAPI_URL` lives in the image's entrypoint (compose interpolates inactive profiles, so `:?` there broke the demo); the build definition is a YAML anchor so `--profile demo up --build` can build; the published port is loopback-only while the container sets `FRONIUS_ALLOW_REMOTE=1` (ADR 0005's boundary moves to the publication). `make docker` stamps the git revision. Verified by building and running: healthy in 105 s, SPA + API served, `fronius-backup save` verified inside the container, image 71.1 MB
 - [ ] Add volumes, healthcheck, restart policy and secret management
 - [ ] Test NAS/local installation, startup and updates
 - [x] Test backup and restore of the database
@@ -976,3 +976,34 @@
   rather than one vocabulary. The capture procedure is in `docs/DEVELOPMENT.md`
   (simulator, backfill, viewports), so the set is reproducible; `README.md` links
   the guide. Box ticked: "Create screenshots and a user guide" (phase 6).
+
+- 2026-10-17 — Step 33 (phase 6): **container packaging.** A multi-stage
+  `Dockerfile` — Node builds the SPA, Go builds the four binaries
+  (`CGO_ENABLED=0`, `-trimpath`, a stamped `-X main.buildVersion`), `alpine`
+  carries them as uid `10001` with `tzdata` (Go reads the zone database from the
+  OS for `FRONIUS_TZ`), `ca-certificates`, a `/data` volume and a `HEALTHCHECK`
+  on `/api/v1/health` — plus a `docker-compose.yml` with two profiles: `app` (a
+  real inverter, `127.0.0.1:8080`) and `demo` (simulator + one day of synthetic
+  history, its own volume, `127.0.0.1:8082`). The published port is loopback
+  only; the container must bind `0.0.0.0` and therefore sets
+  `FRONIUS_ALLOW_REMOTE=1`, which moves ADR 0005's boundary to the publication —
+  the flag and the publication are documented together. `make docker` stamps the
+  git revision. **Built and run, not just written**: the image built (273 s, then
+  cached), the demo container reached `healthy` **105 s** after a one-day
+  backfill, `/` and `/energy` answered `200 text/html` through the SPA fallback,
+  `/api/v1/system` reported the stamped `dd69481`, the publication resolved to
+  `127.0.0.1:8082`, the process ran as `uid=10001` with `/data` owned
+  accordingly, `fronius-backup save` inside the container produced a verified
+  snapshot (17,283 samples, 9 migrations, 24 aggregated hours), and the UI showed
+  live data with the Energy rollups ("2 days contributed · 4 days excluded ·
+  lower bound"). The no-URL guard exits non-zero with a clear message. Image:
+  **71.1 MB**. **Three findings while doing it:** (1) a compose `:?` requirement
+  is interpolated even for inactive profiles, so it broke the demo — the
+  requirement moved into the image's entrypoint; (2) `--profile demo up --build`
+  could not build, the only `build:` sitting on the inactive `app` service — the
+  build definition is now a YAML anchor used by both; (3) seven days of backfill
+  take ~11 minutes because it precedes the listener, so the demo backfills one
+  day and its healthcheck gets a 300 s start period. ADR 0007 amended: packaging
+  delivered, `go:embed` still deferred, as are Docker secrets, NAS-specific
+  notes and the HTTPS proxy. Box ticked: "Create a multi-stage Dockerfile and an
+  optional compose" (phase 6).

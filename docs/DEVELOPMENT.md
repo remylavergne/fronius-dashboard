@@ -51,6 +51,29 @@ be local: history filling refuses a non-local target without
 Then <http://127.0.0.1:5173>. The Vite proxy relays `/api` to `froniusd`: the
 frontend never has the inverter address.
 
+## Building the container image
+
+`make docker` builds `fronius-monitoring:local` with the git revision as its
+version; `docker compose --profile demo up --build` builds it and starts a
+complete simulator demo.
+
+The image has three stages (`Dockerfile`): `node:22-alpine` builds
+`apps/web/dist`, `golang:1.26-alpine` builds the four binaries with
+`CGO_ENABLED=0` (the SQLite driver is pure Go, so they are static), and
+`alpine:3.22` carries them as a non-root user with `tzdata` (Go reads the zone
+database from the OS for `FRONIUS_TZ`) and `ca-certificates`, a `/data` volume
+and a healthcheck on `/api/v1/health`.
+
+`.dockerignore` keeps the context to the two build stages: no `.git`, `docs`,
+`references`, `test`, `bin`, `data`, `node_modules` or `.env`. Because the
+context has no `.git`, the version comes from `--build-arg VERSION`
+(`-X main.buildVersion=…`, read first by `cmd/froniusd`'s `version()`); without
+it the binary reports `dev`.
+
+The image sets `FRONIUS_HTTP_ADDR=0.0.0.0:8080` and `FRONIUS_ALLOW_REMOTE=1`,
+because a container cannot bind the loopback guard's address and be reachable.
+The boundary is the published port: compose publishes `127.0.0.1` only.
+
 ## Capturing the guide screenshots
 
 The images of `docs/USER-GUIDE.md` are captured against the simulator, never

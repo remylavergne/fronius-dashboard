@@ -12,6 +12,9 @@ build: ## Build the backend (static, CGO off) and the frontend
 	CGO_ENABLED=0 $(GO) build -o bin/ ./cmd/...
 	$(PNPM) --dir $(WEB) build
 
+docker: ## Build the container image (VERSION from git, else dev)
+	docker build --build-arg VERSION=$$(git rev-parse --short HEAD 2>/dev/null || echo dev) -t fronius-monitoring:local .
+
 test: test-go test-web ## Run all tests
 
 test-go: ## Go tests with race detector

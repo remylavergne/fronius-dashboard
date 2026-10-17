@@ -48,3 +48,37 @@ assets by `go:embed` are deferred to phase 5.
 - `cmd/froniusd/main.go` (`FRONIUS_WEB_DIR`, SPA fallback)
 - `.github/workflows/ci.yml` (`CGO_ENABLED=0 go build ./...`)
 - Phase 5 roadmap (packaging, `go:embed`, multi-stage Dockerfile, compose, E2E)
+
+## Amendment (2026-10-17) — container packaging delivered
+
+The deferred packaging is now implemented; the phase-1 decision above stands
+unchanged for the binaries.
+
+**Delivered.** A multi-stage image (`Dockerfile`): Node builds the interface,
+Go builds the four binaries (`CGO_ENABLED=0`, `-trimpath`, a stamped
+`-X main.buildVersion`), and a minimal `alpine` runtime carries them with
+`tzdata` (a time zone database is required for `FRONIUS_TZ`), `ca-certificates`,
+a **non-root** user (uid 10001), a `/data` volume, and a `HEALTHCHECK` on
+`/api/v1/health`. A `docker-compose.yml` exposes two profiles: `app` for a real
+installation, `demo` for the simulator plus a day of synthetic history on
+its own volume and port (the backfill precedes the listener, so its first start
+takes about a minute). `make docker` builds the image with the git revision as
+its version.
+
+**Where the ADR 0005 boundary moved.** Inside a container the process must bind
+`0.0.0.0`, which the loopback guard refuses unless `FRONIUS_ALLOW_REMOTE=1`; the
+image therefore sets it, and the boundary becomes the **published port** — the
+compose file publishes on `127.0.0.1` only. The flag and the publication are
+documented together, because either alone is misleading.
+
+**Still deferred.** `go:embed` of the interface (a container does not need it; the
+SPA ships in the image), full NAS-specific installation documentation (the
+compose file covers the mechanics), and TLS/CORS/CSP.
+
+**Consequences.** The image is the deployment unit on a NAS; the version comes
+from `--build-arg VERSION` and reads `dev` without one; a **bind mount** of the
+data directory needs its host ownership adjusted for uid 10001, which the
+runbook states — the named volume does not.
+
+**Sources.** `Dockerfile`, `docker-compose.yml`, `Makefile` (`docker`),
+`docs/RUNBOOK.md` § Docker, `docs/adr/0005`.
