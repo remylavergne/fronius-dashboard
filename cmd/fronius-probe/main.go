@@ -132,7 +132,15 @@ type options struct {
 	// endpointSet records that --endpoint was given explicitly: the flag has a
 	// default value ("all"), which must not be mistaken for a choice.
 	endpointSet bool
-	out         io.Writer
+	// query overrides the frozen query of ONE explicitly selected --endpoint,
+	// and only when the selected entry declares a query. Several catalogue
+	// entries document their argument as a placeholder ("serviceId=<id>"); the
+	// probe must never send one, so the operator supplies the value here.
+	query string
+	// querySet records that --query was given explicitly: an empty override
+	// must be refused rather than silently read as "no override".
+	querySet bool
+	out      io.Writer
 	// stdin feeds --password-stdin (injectable in tests).
 	stdin io.Reader
 }
@@ -145,6 +153,8 @@ func main() {
 	flag.DurationVar(&opt.timeout, "timeout", 5*time.Second, "per-request timeout")
 	flag.BoolVar(&opt.list, "list", false, "prints the allowlist of endpoints and exits")
 	flag.StringVar(&opt.endpoint, "endpoint", allowAllEndpoints, "path to probe ("+allowAllEndpoints+" or a path from the allowlist)")
+	flag.StringVar(&opt.query, "query", "",
+		"query string of a single --endpoint whose catalogue entry declares one (for example serviceId=21); never sent as a placeholder")
 	flag.BoolVar(&opt.passwordStdin, "password-stdin", false, "reads the password on the first line of standard input")
 	flag.BoolVar(&opt.survey, "survey", false, "walks the whole catalogued allowlist, one GET per path, and records what each one answers")
 	flag.DurationVar(&opt.delay, "delay", 4*time.Second,
@@ -152,8 +162,11 @@ func main() {
 	flag.StringVar(&opt.dbPath, "db", os.Getenv("FRONIUS_DB_PATH"), "database that records the survey (empty = write the report only)")
 	flag.Parse()
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "endpoint" {
+		switch f.Name {
+		case "endpoint":
 			opt.endpointSet = true
+		case "query":
+			opt.querySet = true
 		}
 	})
 	opt.out = os.Stdout
@@ -174,10 +187,19 @@ func run(opt options) error {
 	if opt.survey && opt.endpointSet {
 		return errors.New("--survey walks the whole catalogue: do not combine it with --endpoint")
 	}
+	if opt.survey && opt.querySet {
+		return errors.New("--survey walks the whole catalogue: --query does not apply, since it overrides a single --endpoint")
+	}
 	selected := []endpoint(nil)
 	if !opt.survey {
 		var err error
 		selected, err = selectEndpoints(opt.endpoint)
+		if err != nil {
+			return err
+		}
+		// The override is applied after selection: it can never change the
+		// path, only the argument of an entry that declares one.
+		selected, err = applyQuery(selected, opt)
 		if err != nil {
 			return err
 		}
@@ -282,6 +304,90 @@ func selectEndpoints(name string) ([]endpoint, error) {
 		"(cmd/fronius-probe --survey --list prints them)", errNotWhitelisted, trimmed)
 }
 
+// hasPlaceholderQuery reports whether the frozen query is a documentation
+// placeholder rather than a value the probe may send.
+//
+// The catalogue describes the argument of some entries as "serviceId=<id>": it
+// documents the shape, it is not a value. Sending it would be a wasted request
+// and, on hardware, a pointless failed authentication.
+func (e endpoint) hasPlaceholderQuery() bool {
+	return strings.ContainsAny(e.query, "<>")
+}
+
+// applyQuery resolves --query against the selection.
+//
+// An override exists because a placeholder must never reach the device: it
+// applies to ONE explicitly selected --endpoint, only when that entry declares
+// a query, and only to its query (the path, and therefore the allowlist, stays
+// exact). Without an override, a lone placeholder entry is an error; a walk of
+// several entries skips it with one notice per entry, since a run over the whole
+// list must not fail on a path the operator did not single out.
+func applyQuery(selected []endpoint, opt options) ([]endpoint, error) {
+	if !opt.querySet {
+		kept := make([]endpoint, 0, len(selected))
+		for _, ep := range selected {
+			if !ep.hasPlaceholderQuery() {
+				kept = append(kept, ep)
+				continue
+			}
+			if len(selected) == 1 {
+				return nil, fmt.Errorf(
+					"refusal: %s declares the documentation placeholder %q; give the real value with --query "+
+						"(for example --query serviceId=21)", ep.displayPath(), ep.query)
+			}
+			fmt.Fprintf(opt.out,
+				"Skipping %s: its query %q is a documentation placeholder; target it alone with --query to send a real value.\n",
+				ep.displayPath(), ep.query)
+		}
+		return kept, nil
+	}
+
+	if !opt.endpointSet || len(selected) != 1 {
+		return nil, fmt.Errorf(
+			"--query applies only to a single --endpoint, never to %q: select one entry and give its value",
+			opt.endpoint)
+	}
+	raw := opt.query
+	if strings.TrimSpace(raw) == "" {
+		return nil, errors.New("--query is empty: give a value such as serviceId=21")
+	}
+	if strings.ContainsAny(raw, "<>") {
+		return nil, fmt.Errorf("--query %q contains a placeholder marker (< or >): give the real value", raw)
+	}
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return nil, fmt.Errorf("--query %q: %w", raw, err)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("--query %q carries no key", raw)
+	}
+	for key, vals := range values {
+		if strings.TrimSpace(key) == "" {
+			return nil, fmt.Errorf("--query %q carries a keyless value", raw)
+		}
+		if len(vals) == 0 || strings.TrimSpace(vals[0]) == "" {
+			return nil, fmt.Errorf("--query %q: the key %q carries no value", raw, key)
+		}
+		// Percent-encoding must not smuggle a placeholder marker past the
+		// literal check above.
+		if strings.ContainsAny(key, "<>") {
+			return nil, fmt.Errorf("--query %q contains a placeholder marker (< or >): give the real value", raw)
+		}
+		for _, v := range vals {
+			if strings.ContainsAny(v, "<>") {
+				return nil, fmt.Errorf("--query %q contains a placeholder marker (< or >): give the real value", raw)
+			}
+		}
+	}
+
+	ep := selected[0]
+	if ep.query == "" {
+		return nil, fmt.Errorf("--query: %s declares no query; it takes no argument", ep.path)
+	}
+	ep.query = values.Encode()
+	return []endpoint{ep}, nil
+}
+
 // credentials gathers the credentials, without ever logging them.
 type credentials struct {
 	user     string
@@ -321,6 +427,12 @@ func readCredentials(opt options) (credentials, error) {
 }
 
 func probe(ctx context.Context, doer fronius.Doer, base *url.URL, ep endpoint, opt options, logger *slog.Logger) error {
+	// Last-resort guard: a documentation placeholder never reaches the network,
+	// even if a caller built the entry without going through the selection.
+	if ep.hasPlaceholderQuery() {
+		return fmt.Errorf("refusal: %s declares the documentation placeholder %q; give the real value with --query",
+			ep.displayPath(), ep.query)
+	}
 	endpointURL := base.JoinPath(ep.path)
 	if ep.query != "" {
 		endpointURL.RawQuery = ep.query

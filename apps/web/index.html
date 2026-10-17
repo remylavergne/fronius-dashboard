@@ -8,6 +8,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <title>Fronius Monitoring</title>
+    <script>
+      // No flash: apply the stored/system theme before the bundle loads.
+      // Keep in step with applyTheme() in src/lib/theme.tsx.
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var mode = stored === 'light' || stored === 'dark' ? stored : 'system'
+          var dark =
+            mode === 'dark' ||
+            (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          var root = document.documentElement
+          root.classList.toggle('dark', dark)
+          root.style.colorScheme = dark ? 'dark' : 'light'
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', dark ? '#171717' : '#ffffff')
+        } catch (error) {
+          // Storage or matchMedia unavailable: the light default still paints.
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

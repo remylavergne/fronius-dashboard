@@ -95,6 +95,20 @@ that change is kept at
 `/tmp/probe-real/probe_solar_api_v1_getinverterrealtimedata_20261016T170038Z.json`
 (§ 6).
 
+One catalogue entry documents its argument as a **placeholder**:
+`/commands/GetServiceState?serviceId=<id>` (`serviceId` is the registry's only
+argument). The probe never sends a placeholder. A single `--endpoint` naming
+such an entry without an override is refused, naming the placeholder and
+`--query`; with `--query serviceId=21` (any value that parses as `url.Values`
+with a non-empty key and no `<`/`>`) the request carries that value on the same
+allowlisted path. `--query` applies to one explicitly selected entry only, and
+only when that entry declares a query — it can never add an argument to an
+argument-less path, change the path, or be combined with `--endpoint all` or
+`--survey`. A walk (`--survey`, or the default multi-path run) skips the
+placeholder entry with one notice and sends nothing for it; the value has to be
+supplied deliberately, because only the operator knows which service to ask
+about.
+
 ### What the capture must confirm, path by path
 
 The bundle extraction (`docs/ENDPOINTS.md`) replaced the unknowns with

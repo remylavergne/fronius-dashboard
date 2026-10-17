@@ -1,10 +1,14 @@
-import { Menu, SunMedium, X } from 'lucide-react'
+import { Menu, Moon, Sun, SunMedium, SunMoon, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { useT } from '@/i18n'
+import type { TranslationKey } from '@/i18n'
 import { NAV_GROUPS, NAV_ITEMS } from '@/lib/navigation'
+import { ThemeProvider } from '@/lib/theme.tsx'
+import { useTheme } from '@/lib/theme'
+import type { ThemeMode } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
 export type AppShellProps = {
@@ -13,6 +17,43 @@ export type AppShellProps = {
 
 const FOCUS_RING =
   'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+
+const THEME_LABEL_KEYS: Record<ThemeMode, TranslationKey> = {
+  system: 'theme.mode.system',
+  light: 'theme.mode.light',
+  dark: 'theme.mode.dark',
+}
+
+const THEME_ICONS: Record<ThemeMode, typeof Sun> = {
+  system: SunMoon,
+  light: Sun,
+  dark: Moon,
+}
+
+/** Header control: the visible text and the accessible name are the current mode. */
+function ThemeToggle() {
+  const { t } = useT()
+  const { mode, cycleMode } = useTheme()
+  const label = t(THEME_LABEL_KEYS[mode])
+  const Icon = THEME_ICONS[mode]
+
+  return (
+    <button
+      type="button"
+      onClick={cycleMode}
+      title={t('theme.hint')}
+      aria-label={`${t('theme.label')}: ${label}`}
+      className={cn(
+        'ml-auto inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium',
+        'text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:px-2.5 sm:text-sm',
+        FOCUS_RING,
+      )}
+    >
+      <Icon aria-hidden="true" className="size-4 shrink-0" />
+      <span>{label}</span>
+    </button>
+  )
+}
 
 /** Brand block shared by the sidebar and the drawer; links back to the overview. */
 function Brand({ onNavigate }: { onNavigate?: () => void }) {
@@ -77,15 +118,26 @@ function SidebarNav() {
 }
 
 /**
- * Application structure: skip link, sidebar, sticky header with breadcrumb,
- * content, and a hand-written mobile drawer.
+ * Application structure: skip link, sidebar, sticky header with breadcrumb and
+ * theme toggle, content, and a hand-written mobile drawer.
  *
  * The navigation table in `lib/navigation` is the single source of truth; the
  * sidebar and the drawer render the same items, and the breadcrumb reads the
  * same table. The drawer is not a `<dialog>`: its focus handling and scroll
  * lock are written out, which keeps them observable in jsdom.
+ *
+ * `ThemeProvider` lives here, around the shell, so every routed page gets the
+ * same preference without each page having to mount it.
  */
 export function AppShell({ children }: AppShellProps) {
+  return (
+    <ThemeProvider>
+      <AppShellLayout>{children}</AppShellLayout>
+    </ThemeProvider>
+  )
+}
+
+function AppShellLayout({ children }: AppShellProps) {
   const { t } = useT()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -170,7 +222,10 @@ export function AppShell({ children }: AppShellProps) {
           >
             <Menu aria-hidden="true" className="size-5" />
           </button>
-          <Breadcrumb />
+          <div className="min-w-0 overflow-hidden py-1">
+            <Breadcrumb />
+          </div>
+          <ThemeToggle />
         </header>
 
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 outline-none lg:px-8">

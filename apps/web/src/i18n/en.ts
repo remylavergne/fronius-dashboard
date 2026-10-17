@@ -27,6 +27,12 @@ export const en = {
   'shell.menu.close': 'Close navigation',
   'shell.skip': 'Skip to content',
 
+  'theme.label': 'Theme',
+  'theme.mode.system': 'System',
+  'theme.mode.light': 'Light',
+  'theme.mode.dark': 'Dark',
+  'theme.hint': 'Switch theme: system, light or dark',
+
   'kpi.production': 'Instantaneous production',
   'kpi.energyToday': 'Energy of the day',
   'kpi.energyYear': 'Energy of the year',

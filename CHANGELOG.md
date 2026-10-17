@@ -9,6 +9,17 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **The shell is finished with light/dark themes.** A three-mode
+  toggle in the header (`system` → `light` → `dark`, `system` by default) applies
+  `.dark` on the root, sets `color-scheme` so native controls follow, and updates
+  `theme-color` (`#ffffff` / `#171717`). The choice persists in `localStorage`,
+  other tabs follow through a `storage` listener, and the system mode reacts live
+  to the OS. A tiny inline script applies the stored/system theme **before** the
+  bundle, so there is no flash of the wrong theme. Verified in a real browser:
+  system + OS-dark flips the class and background live, an explicit light
+  overrides the OS, and both explicit modes survive a reload. Contrast was
+  computed, not guessed (foreground/background 18.96:1, muted 6.91:1, destructive
+  badge 4.63:1); no token needed changing.
 - 2026-10-17 — **An OpenAPI contract, generated TypeScript types, and a real
   favicon.** `api/openapi.json` (OpenAPI 3.1) documents every registered route
   and DTO. `internal/api/openapi_test.go` fails when a DTO field or a registered
@@ -749,6 +760,16 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-17 — **The probe no longer puts a documentation placeholder on the
+  wire.** The service-state entry declares `Query: "serviceId=<id>"`, and
+  `--endpoint /commands/GetServiceState` used to send that literal — a wasted
+  request and, on hardware, a pointless failed authentication. It is now refused
+  **before any request**, naming the placeholder and the new `--query` flag
+  (`--query serviceId=21`), which applies only to a single `--endpoint` whose
+  catalogue entry declares a query. A survey skips such entries with one notice
+  and never sends them. The path stays the allowlisted one, so the executable
+  allowlist is unchanged. Seven tests assert the refusals send nothing and the
+  override produces exactly `/commands/GetServiceState?serviceId=21`.
 - 2026-10-16 — **Wrong Solar API suffixes in the catalogue — the catalogue's
   error, not the firmware's.** Eight Solar API paths had been probed with a
   `.fcgi` suffix and their `404`s were read as "this firmware does not serve

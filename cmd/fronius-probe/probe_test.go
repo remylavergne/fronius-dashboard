@@ -17,6 +17,19 @@ import (
 	"fronius-supervisor/internal/sources"
 )
 
+// defaultTargets is what a default run actually sends: the default allowlist
+// minus the entries whose query is a documentation placeholder, which is
+// skipped rather than sent.
+func defaultTargets() []endpoint {
+	out := make([]endpoint, 0, len(whitelist))
+	for _, ep := range whitelist {
+		if !ep.hasPlaceholderQuery() {
+			out = append(out, ep)
+		}
+	}
+	return out
+}
+
 func TestRedactJSONPreservesMeasurements(t *testing.T) {
 	body := []byte(`{
 	  "Body": {"Data": {"Site": {
@@ -280,7 +293,7 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 	if hitsPerPath["/status/version"] != 2 {
 		t.Fatalf("version: %d requests, want 2 (bare then authenticated)", hitsPerPath["/status/version"])
 	}
-	for _, ep := range whitelist {
+	for _, ep := range defaultTargets() {
 		if ep.path == "/status/version" || !ep.digest {
 			continue
 		}
@@ -334,8 +347,8 @@ func TestProbeSendsNoCredentialsPreemptively(t *testing.T) {
 		t.Fatalf("the password appears in the output:\n%s", buf.String())
 	}
 	files, err := filepath.Glob(filepath.Join(dir, "*.json"))
-	if err != nil || len(files) != len(whitelist) {
-		t.Fatalf("written files = %v (err=%v), want %d", files, err, len(whitelist))
+	if err != nil || len(files) != len(defaultTargets()) {
+		t.Fatalf("written files = %v (err=%v), want %d", files, err, len(defaultTargets()))
 	}
 	for _, f := range files {
 		body, err := os.ReadFile(f)
@@ -431,10 +444,11 @@ func TestProbeSendsGetAndSavesRedactedBody(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	if len(paths) != len(whitelist) {
-		t.Fatalf("requests sent = %d, want %d (one per endpoint)", len(paths), len(whitelist))
+	targets := defaultTargets()
+	if len(paths) != len(targets) {
+		t.Fatalf("requests sent = %d, want %d (one per sendable endpoint)", len(paths), len(targets))
 	}
-	for i, ep := range whitelist {
+	for i, ep := range targets {
 		if methods[i] != http.MethodGet {
 			t.Fatalf("%s: method sent = %q, want GET", ep.path, methods[i])
 		}
@@ -541,5 +555,221 @@ func TestRedactBodyIsIdempotent(t *testing.T) {
 	twice := redactBody(once)
 	if string(once) != string(twice) {
 		t.Fatalf("redaction not idempotent:\n%s\n%s", once, twice)
+	}
+}
+
+// recordingServer answers every request with 200 and records the URLs it
+// received, so a test can assert what the probe actually sent (and what it did
+// not send).
+func recordingServer(t *testing.T, body string) (*httptest.Server, func() []string) {
+	t.Helper()
+	var (
+		mu  sync.Mutex
+		got []string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		got = append(got, r.URL.String())
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), got...)
+	}
+}
+
+// TestQueryOverrideSendsExactlyTheValueOnTheAllowlistedPath: --query replaces
+// the catalogue's placeholder, and nothing else.
+func TestQueryOverrideSendsExactlyTheValueOnTheAllowlistedPath(t *testing.T) {
+	srv, requests := recordingServer(t, `{"resultData":{"state":"ok"},"success":true}`)
+
+	var buf bytes.Buffer
+	err := run(options{
+		baseURL:     srv.URL,
+		endpoint:    "/commands/GetServiceState",
+		endpointSet: true,
+		query:       "serviceId=21",
+		querySet:    true,
+		timeout:     2 * time.Second,
+		out:         &buf,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	got := requests()
+	if len(got) != 1 {
+		t.Fatalf("requests sent = %d, want exactly 1: %q", len(got), got)
+	}
+	if want := "/commands/GetServiceState?serviceId=21"; got[0] != want {
+		t.Fatalf("request URL = %q, want %q", got[0], want)
+	}
+	if strings.Contains(buf.String(), "<id>") {
+		t.Fatalf("the placeholder appears in the output:\n%s", buf.String())
+	}
+}
+
+// TestQueryOnAllIsRefused: an override has no meaning for a walk.
+func TestQueryOnAllIsRefused(t *testing.T) {
+	srv, requests := recordingServer(t, `{}`)
+
+	var buf bytes.Buffer
+	err := run(options{
+		baseURL:     srv.URL,
+		endpoint:    "all",
+		endpointSet: true,
+		query:       "serviceId=21",
+		querySet:    true,
+		timeout:     2 * time.Second,
+		out:         &buf,
+	})
+	if err == nil {
+		t.Fatal("--query with --endpoint all must be refused")
+	}
+	for _, want := range []string{"--query", "single --endpoint"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
+	}
+	if got := requests(); len(got) != 0 {
+		t.Fatalf("refused run sent %d request(s): %q", len(got), got)
+	}
+}
+
+// TestQueryOnArgumentLessEntryIsRefused: an override must not invent an
+// argument on a path that declares none.
+func TestQueryOnArgumentLessEntryIsRefused(t *testing.T) {
+	var buf bytes.Buffer
+	err := run(options{
+		baseURL:     "http://127.0.0.1:8081",
+		endpoint:    "/status/version",
+		endpointSet: true,
+		query:       "serviceId=21",
+		querySet:    true,
+		timeout:     time.Second,
+		out:         &buf,
+	})
+	if err == nil {
+		t.Fatal("--query on an argument-less entry must be refused")
+	}
+	for _, want := range []string{"--query", "declares no query"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// TestPlaceholderIsRefusedWithoutOverrideAndSendsNothing: a single explicit
+// placeholder target fails, before any request exists.
+func TestPlaceholderIsRefusedWithoutOverrideAndSendsNothing(t *testing.T) {
+	srv, requests := recordingServer(t, `{}`)
+
+	var buf bytes.Buffer
+	err := run(options{
+		baseURL:     srv.URL,
+		endpoint:    "/commands/GetServiceState",
+		endpointSet: true,
+		timeout:     2 * time.Second,
+		out:         &buf,
+	})
+	if err == nil {
+		t.Fatal("a placeholder target without --query must be refused")
+	}
+	for _, want := range []string{"serviceId=<id>", "--query"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q", err, want)
+		}
+	}
+	if got := requests(); len(got) != 0 {
+		t.Fatalf("the refused target sent %d request(s): %q", len(got), got)
+	}
+}
+
+// TestSurveySkipsThePlaceholderOnceAndSendsNothing: a walk cannot supply a
+// value, so the entry is left out with one notice.
+func TestSurveySkipsThePlaceholderOnceAndSendsNothing(t *testing.T) {
+	srv, requests := recordingServer(t, `{}`)
+
+	var buf bytes.Buffer
+	err := run(options{
+		baseURL: srv.URL,
+		survey:  true,
+		delay:   0,
+		timeout: 2 * time.Second,
+		out:     &buf,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	for _, got := range requests() {
+		if strings.HasPrefix(got, "/commands/GetServiceState") {
+			t.Fatalf("the survey sent the placeholder entry: %q", got)
+		}
+		if strings.Contains(got, "<") || strings.Contains(got, ">") {
+			t.Fatalf("the survey sent a placeholder marker: %q", got)
+		}
+	}
+	if n := strings.Count(buf.String(), "Skipping /commands/GetServiceState?serviceId=<id>"); n != 1 {
+		t.Fatalf("the skip notice appears %d times, want 1:\n%s", n, buf.String())
+	}
+}
+
+// TestQueryRejectsPlaceholderMarkerAndEmptyValues: the override is a value,
+// not a second placeholder.
+func TestQueryRejectsPlaceholderMarkerAndEmptyValues(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"a marker", "serviceId=<id>"},
+		{"a greater-than marker", "serviceId=21>1"},
+		{"an encoded marker", "serviceId=%3Cid%3E"},
+		{"empty", ""},
+		{"blank", "   "},
+		{"keyless", "=21"},
+		{"separator only", "?"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := run(options{
+				baseURL:     "http://127.0.0.1:8081",
+				endpoint:    "/commands/GetServiceState",
+				endpointSet: true,
+				query:       tc.query,
+				querySet:    true,
+				timeout:     time.Second,
+				out:         &buf,
+			})
+			if err == nil {
+				t.Fatalf("--query %q must be refused", tc.query)
+			}
+			if !strings.Contains(err.Error(), "--query") {
+				t.Fatalf("error %q does not mention the flag", err)
+			}
+		})
+	}
+}
+
+// TestDefaultRunSkipsThePlaceholderWithOneNotice pins the default walk: no
+// request carries the placeholder, and the operator is told once.
+func TestDefaultRunSkipsThePlaceholderWithOneNotice(t *testing.T) {
+	srv, requests := recordingServer(t, `{}`)
+
+	var buf bytes.Buffer
+	if err := run(options{baseURL: srv.URL, timeout: 2 * time.Second, out: &buf}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	for _, got := range requests() {
+		if strings.Contains(got, "<") || strings.Contains(got, ">") {
+			t.Fatalf("the default run sent a placeholder: %q", got)
+		}
+	}
+	if n := strings.Count(buf.String(), "Skipping /commands/GetServiceState?serviceId=<id>"); n != 1 {
+		t.Fatalf("the skip notice appears %d times, want 1:\n%s", n, buf.String())
 	}
 }

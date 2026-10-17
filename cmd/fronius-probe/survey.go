@@ -105,8 +105,24 @@ type surveyReport struct {
 // A failing path is recorded, never fatal: the survey's value is precisely the
 // paths that answer nothing or refuse to answer.
 func runSurvey(ctx context.Context, opt options, base *url.URL, cred credentials, logger *slog.Logger) error {
-	targets := surveyWhitelist
+	// A placeholder is never sent: the survey has no target to attach a value
+	// to, so the entry is skipped with one notice and stays in neither the
+	// report nor the database. Its classification remains in the catalogue.
+	targets := make([]endpoint, 0, len(surveyWhitelist))
+	skipped := make([]endpoint, 0, 1)
+	for _, ep := range surveyWhitelist {
+		if ep.hasPlaceholderQuery() {
+			skipped = append(skipped, ep)
+			continue
+		}
+		targets = append(targets, ep)
+	}
 	fmt.Fprintf(opt.out, "Survey of %d catalogued paths, one GET each, %s apart\n", len(targets), opt.delay)
+	for _, ep := range skipped {
+		fmt.Fprintf(opt.out,
+			"Skipping %s: its query %q is a documentation placeholder; a survey never sends one (use --endpoint with --query).\n",
+			ep.displayPath(), ep.query)
+	}
 	fmt.Fprintf(opt.out, "Base: %s\n", opt.baseURL)
 	fmt.Fprintf(opt.out, "Credentials: %s\n\n", map[bool]string{
 		true:  "given (a path behind authentication is read once more with them)",
@@ -281,6 +297,12 @@ func readBounded(r io.Reader) ([]byte, error) {
 
 // surveyGet performs one GET and returns the status with the body, bounded.
 func surveyGet(ctx context.Context, opt options, base *url.URL, ep endpoint, doer fronius.Doer) (int, []byte, error) {
+	// Last-resort guard, as in probe(): the placeholder filter runs before this,
+	// but a placeholder must never reach the network by any route.
+	if ep.hasPlaceholderQuery() {
+		return 0, nil, fmt.Errorf("refusal: %s declares the documentation placeholder %q",
+			ep.displayPath(), ep.query)
+	}
 	endpointURL := base.JoinPath(ep.path)
 	if ep.query != "" {
 		endpointURL.RawQuery = ep.query

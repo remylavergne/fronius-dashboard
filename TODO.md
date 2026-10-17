@@ -90,7 +90,7 @@
 
 ## 5 — React/shadcn UI
 
-- [ ] Define the design system, light/dark themes and responsive navigation
+- [x] Define the design system, light/dark themes and responsive navigation — the token set (`:root`/`.dark` + `@theme inline`), the shell (sidebar, sticky header, breadcrumb, mobile drawer), the responsive behaviour verified at five widths, and **three-mode themes** (`system`/`light`/`dark`) that persist, follow the OS live, update `theme-color`, and apply before the bundle so there is no flash. Contrast computed rather than assumed (18.96:1 foreground/background, 6.91:1 muted, 4.63:1 destructive badge), no token changed
 - [x] Build the shell (sidebar, header, breadcrumb, mobile navigation) — one `NAV_ITEMS` table feeds the sidebar, the drawer and the breadcrumb (order and labels cannot drift); `aria-current="page"`, a skip link to `main#main`, and a drawer with Escape/overlay/link close, focus returned to the trigger and a scroll lock restored on close and on unmount. Verified live at 1440/1280×900, 1024×768, 768×1024 and 390×844 (step 31)
 - [x] Build the instantaneous production / energy of the day / state KPI cards
 - [x] Build the 24h power curve with tooltips, units and period selection
@@ -1100,3 +1100,24 @@
   the accepted risk written down: those joins have **no automated regression
   net**, so a UI change that breaks one is caught by the next live check, not by
   CI. Worth revisiting only if this becomes multi-user or remotely exposed.
+
+- 2026-10-17 — Step 37 (phase 5/6): **the shell finished with themes, and a probe
+  defect fixed while preparing the consented hardware probes.** Themes: a
+  three-mode header toggle (system → light → dark, system by default) applying
+  `.dark` on the root, `color-scheme` on the document and `theme-color`
+  (`#ffffff`/`#171717`); persistence in `localStorage`, a `storage` listener for
+  other tabs, a live `matchMedia` listener for the system mode, and a tiny inline
+  script before the bundle so there is no flash. Verified in a real browser:
+  system + OS-dark flips the class and background live, an explicit light
+  overrides the OS, and both explicit modes survive a reload. 11 tests (247
+  total); contrast computed (18.96:1 / 6.91:1 / 4.63:1), no token changed.
+  **Probe:** the service-state entry declares `serviceId=<id>` and
+  `--endpoint …` put that literal on the wire — a wasted request and, on
+  hardware, a pointless failed authentication. It is now refused before any
+  request, `--query serviceId=21` applies only to a single `--endpoint` declaring
+  a query, and a survey skips such entries with one notice. 7 new tests assert the
+  refusals send nothing and the override produces exactly
+  `/commands/GetServiceState?serviceId=21`; documented in PROBE-READONLY. The
+  hardware probes themselves are **waiting on the owner's credentials** — none are
+  present in this checkout, and no unauthenticated attempt was made. Box ticked:
+  the design-system/theme/responsive box, the last shell item.
