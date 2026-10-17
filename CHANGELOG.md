@@ -9,6 +9,16 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **The application shell.** A real structure replaces the static
+  header and the flat wrapped link list: a **sidebar** on desktop (brand, then
+  the three groups — Monitoring, Device, Application — fed by a single
+  `NAV_ITEMS` table so order and labels cannot drift, the active link marked with
+  `aria-current="page"`), a **sticky header** carrying the **breadcrumb** and the
+  mobile trigger, a **skip link** to `#main`, and a **mobile drawer** rendered
+  only while open (`role="dialog"`, `aria-modal`, closed by Escape, the overlay or
+  a chosen link; focus moved to the close button and returned to the trigger; body
+  scroll locked and restored, including on unmount). One navigation landmark per
+  viewport, no second `<h1>` on any page, no new dependency.
 - 2026-10-17 — **CSV export of the histories.** `?format=csv` on
   `/api/v1/timeseries`, `/api/v1/energy/daily` and `/api/v1/events` — the same
   parameters and the same data as the JSON routes, streamed through

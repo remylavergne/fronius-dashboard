@@ -11,6 +11,9 @@ export const en = {
   'app.tagline': 'Local monitoring of a Fronius GEN24 inverter',
 
   'nav.aria': 'Main navigation',
+  'nav.group.monitoring': 'Monitoring',
+  'nav.group.device': 'Device',
+  'nav.group.application': 'Application',
   'nav.overview': 'Overview',
   'nav.energy': 'Energy',
   'nav.system': 'System',
@@ -18,6 +21,11 @@ export const en = {
   'nav.settings': 'Settings',
   'nav.detail': 'Device detail',
   'nav.events': 'Events',
+
+  'breadcrumb.aria': 'Breadcrumb',
+  'shell.menu.open': 'Open navigation',
+  'shell.menu.close': 'Close navigation',
+  'shell.skip': 'Skip to content',
 
   'kpi.production': 'Instantaneous production',
   'kpi.energyToday': 'Energy of the day',

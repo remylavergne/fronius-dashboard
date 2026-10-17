@@ -927,3 +927,27 @@
   `events.ts_utc` (no millisecond suffix) makes every `/events` read fail — a
   row-level resilience item, pre-existing and unrelated to the export, now a
   `- [ ]` box.
+
+- 2026-10-17 — Step 31 (phase 5): **the application shell.** The static header and
+  the flat wrapped link list became: a **sidebar** (desktop, sticky, 15 rem) with
+  the brand and three groups — Monitoring, Device, Application — fed by a single
+  `NAV_ITEMS`/`NAV_GROUPS` table that also feeds the drawer and the breadcrumb, so
+  order and labels cannot drift; a **sticky header** (h-14) carrying the mobile
+  trigger and the **breadcrumb** (`<nav aria-label="Breadcrumb">`: the root link,
+  then the current page as text with `aria-current="page"`, a single item on `/`,
+  and **nothing** on an unknown path rather than a claim the user is not on it); a
+  **skip link** to a focusable `main#main`; and a **mobile drawer** rendered only
+  while open — overlay + panel, `role="dialog"`, `aria-modal`, a close button, the
+  same items as a plain `<ul>` so there is exactly **one** navigation landmark per
+  viewport — closed by Escape, the overlay or a chosen link, with focus moved to
+  the close button on open and **returned to the trigger** on close, and the body
+  scroll locked and restored on close **and on unmount**. **Verified live** at
+  1280×800 and 390×844: the aside `flex` → `none`, the trigger `none` → `flex`, the
+  breadcrumb present at both, **0 px** horizontal overflow, the drawer open with
+  body `hidden` and focus on "Close navigation", Escape restoring both focus and
+  overflow, and a drawer link navigating to `/events` with the breadcrumb following
+  ("Overview Events"). Tests: 13 in `AppShell.test.tsx` (groups and order,
+  `aria-current`, breadcrumb per path, skip link, the drawer's focus/Escape/link/
+  overlay behaviours, scroll lock including unmount, the single landmark); suite
+  **236**. The §5 box stays open for the rest of "design system, light/dark themes"
+  — the responsive-navigation half is done.

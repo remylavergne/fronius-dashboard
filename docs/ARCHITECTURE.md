@@ -204,6 +204,7 @@ imports a `cmd/`.
 | `src/lib/chart.ts` | Buckets → chart points, **materialized gaps** |
 | `src/lib/energy.ts` | Per-day resolution (`measured` vs `derived`), **materialized day gaps**, the three rollups |
 | `src/lib/freshness.ts` | Staleness decision displayed |
+| `src/components/AppShell.tsx`, `src/lib/navigation.ts` | The shell: sidebar (desktop), sticky header, breadcrumb, mobile drawer — one `NAV_ITEMS` table feeds all three, so order and labels cannot drift; skip link, one navigation landmark per viewport |
 | `src/routes/*` | Overview, Energy, Events, System, Capabilities, Detail, Settings, Sources |
 | `src/i18n/*` | Flat FR dictionary, ready for EN/DE |
 
