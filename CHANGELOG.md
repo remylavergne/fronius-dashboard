@@ -773,6 +773,12 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-17 — **The CI's "no versioned device password" step was red, on
+  documentation.** Three examples carried the credential variable with a value —
+  two placeholders and a simulator password — and the workflow greps for exactly
+  that pattern. The rule is right; the examples now use the `_FILE` form (README,
+  runbook) or `--password-stdin` (the probe example in Sources), and the
+  development notes say why a placeholder fails too.
 - 2026-10-17 — **The probe no longer puts a documentation placeholder on the
   wire.** The service-state entry declares `Query: "serviceId=<id>"`, and
   `--endpoint /commands/GetServiceState` used to send that literal — a wasted

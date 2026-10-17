@@ -51,6 +51,12 @@ be local: history filling refuses a non-local target without
 Then <http://127.0.0.1:5173>. The Vite proxy relays `/api` to `froniusd`: the
 frontend never has the inverter address.
 
+**Never write the device-password variable with a value, verbatim, in any file** —
+not even with an obvious placeholder — because the CI greps the repository for that
+pattern and fails with "non-empty device password versioned". Use the `_FILE` form
+in examples (`FRONIUS_DEVICE_USER_FILE` / `FRONIUS_DEVICE_PASSWORD_FILE`), or
+`--password-stdin` for the probe.
+
 ## The API contract
 
 `api/openapi.json` is the machine-readable description of the REST API (OpenAPI

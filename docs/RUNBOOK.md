@@ -345,9 +345,11 @@ purpose, which is how the warning is exercised without a device:
 # terminal 1 — the simulator, with its internal paths behind Digest
 ./bin/fronius-sim -addr 127.0.0.1:8081 -api-user web -api-password pw -clock-offset 90s
 
-# terminal 2 — the service, with the same credentials
+# terminal 2 — the service, with the same credentials, read from two files
+printf '%s' web > /tmp/fx-user && printf '%s' pw > /tmp/fx-pass
 FRONIUS_SOLARAPI_URL=http://127.0.0.1:8081 \
-FRONIUS_DEVICE_USER=web FRONIUS_DEVICE_PASSWORD=pw ./bin/froniusd
+FRONIUS_DEVICE_USER_FILE=/tmp/fx-user FRONIUS_DEVICE_PASSWORD_FILE=/tmp/fx-pass \
+./bin/froniusd
 
 # then http://127.0.0.1:8080/system shows the clock row and its warning;
 # the payload is the same thing for a script:

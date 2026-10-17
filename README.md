@@ -72,15 +72,20 @@ Open <http://127.0.0.1:8080>.
 The Solar API needs **no credential**: production, energy and the device's own
 detail families work out of the box. Add the inverter's credentials only for the
 internal read paths (device events, the clock, the self-test state) — the same
-command, two more variables:
+command, plus two variables. The cleanest form points at **files** (the
+Docker-secrets route, and the one that keeps the password out of the process
+environment):
 
 ```bash
 FRONIUS_SOLARAPI_URL=http://<inverter-ip> \
 FRONIUS_WEB_DIR=apps/web/dist \
-FRONIUS_DEVICE_USER=<user> \
-FRONIUS_DEVICE_PASSWORD=<password> \
+FRONIUS_DEVICE_USER_FILE=/path/to/device_user \
+FRONIUS_DEVICE_PASSWORD_FILE=/path/to/device_password \
 ./bin/froniusd
 ```
+
+Setting the two credential variables directly in your shell works as well; the
+runbook has the details either way.
 
 No inverter at hand? Reproduce the whole thing against the included simulator:
 

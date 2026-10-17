@@ -590,8 +590,8 @@ from the command line):
 
 ```
 cmd/fronius-probe --base-url http://192.0.2.10 --allow-non-loopback
-FRONIUS_DEVICE_USER=… FRONIUS_DEVICE_PASSWORD=… \
-  cmd/fronius-probe --base-url http://192.0.2.10 --allow-non-loopback
+printf '%s' "$DEVICE_PASSWORD" | cmd/fronius-probe --password-stdin \
+  --base-url http://192.0.2.10 --allow-non-loopback
 ```
 
 Both runs returned `200 OK` on every allowlisted path, with **no** `Authorization`
