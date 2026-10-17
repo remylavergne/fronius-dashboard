@@ -77,9 +77,21 @@ Schedule that, and keep the retention in mind (§ 5).
 
 ## 4. Credentials
 
-Do not put a password in the compose file or in `.env`. Both credential
-variables have a `_FILE` form, which reads the value from a file and strips the
-trailing newline Docker writes:
+Credentials can live in `.env`: compose interpolates them into
+`FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD`, and the service reads them from
+its environment. That is the simplest setup, and it is what the compose file
+enables by default. The trade-off is visibility — an environment variable shows
+in `docker inspect` and in `docker compose config`, so anyone who can use the
+Docker daemon on the NAS can read it (the same set of people who could `exec`
+into the container anyway). Keep the file at `chmod 600` and out of git, and do
+not paste the output of `docker compose config` anywhere.
+
+If you share the NAS, or simply want the password out of the environment, use the
+`_FILE` form instead: the service reads the value from a file and it never enters
+the process environment. Both are supported; nothing else changes.
+
+Both credential variables have a `_FILE` form, which reads the value from a file
+and strips the trailing newline Docker writes:
 
 Create the files, readable only by you on the host:
 
@@ -153,7 +165,8 @@ detection cycle every minute.
 
 ## What not to do
 
-- No credentials in `.env`, the compose file, or the image.
+- No credentials in the **compose file** or the **image**. `.env` is acceptable
+  (§ 4); secrets are preferable when the NAS is shared.
 - No database on a network filesystem.
 - No `0.0.0.0` publication without a proxy in front.
 - No `--force-backfill` against the real inverter: the backfill is for the
