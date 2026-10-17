@@ -475,9 +475,23 @@ func (s *Server) handleTimeSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The representation is decided after every range and step check, so a bad
+	// query stays a JSON 400 even when the client asks for CSV.
+	format, ok := exportFormat(q)
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, CodeInvalidFormat, invalidFormatMessage)
+		return
+	}
+
 	buckets, err := s.store.TimeSeries(ctx, storage.TimeSeriesQuery{From: from, To: to, Step: step})
 	if err != nil {
 		s.internalError(w, "reading the time series", err)
+		return
+	}
+
+	if format == "csv" {
+		s.writeCSV(w, exportFilename("timeseries", from, to), timeSeriesCSVHeader,
+			timeSeriesCSVRows(bucketsToDTO(buckets)))
 		return
 	}
 
@@ -525,6 +539,12 @@ func (s *Server) handleDailyEnergy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	format, ok := exportFormat(q)
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, CodeInvalidFormat, invalidFormatMessage)
+		return
+	}
+
 	measured, err := s.store.DailyEnergy(ctx, from, to)
 	if err != nil {
 		s.internalError(w, "reading daily energy", err)
@@ -544,6 +564,12 @@ func (s *Server) handleDailyEnergy(w http.ResponseWriter, r *http.Request) {
 	// of the range is published — with its value, or with the reason it has none.
 	if !anyDerivedValue(derived) && len(measured) == 0 {
 		derived = nil
+	}
+
+	if format == "csv" {
+		s.writeCSV(w, exportFilename("energy-daily", from, to), dailyEnergyCSVHeader,
+			dailyEnergyCSVRows(dailyToDTO(measured, derived)))
+		return
 	}
 
 	m := s.baseMeta()
@@ -595,9 +621,23 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	format, ok := exportFormat(q)
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, CodeInvalidFormat, invalidFormatMessage)
+		return
+	}
+
 	events, err := s.store.Events(ctx, query)
 	if err != nil {
 		s.internalError(w, "reading events", err)
+		return
+	}
+
+	if format == "csv" {
+		// An absent bound stays absent: exportFilename renders it `all` rather
+		// than inventing an instant.
+		s.writeCSV(w, exportFilename("events", query.From, query.To), eventsCSVHeader,
+			eventsCSVRows(eventsToDTO(events)))
 		return
 	}
 	s.writeData(w, http.StatusOK, eventsToDTO(events), s.baseMeta())

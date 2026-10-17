@@ -375,3 +375,28 @@ describe('EnergyPage empty range', () => {
     expect(screen.getByText('network failure')).toBeInTheDocument()
   })
 })
+
+describe('EnergyPage export', () => {
+  beforeEach(() => {
+    dailyMock.mockReset()
+    askedParams.length = 0
+    mockDaily(RANGE)
+  })
+
+  it('offers the fetched year as a plain CSV download', () => {
+    render(<EnergyPage />)
+
+    const asked = askedParams.at(-1) as EnergyDailyParams
+    const search = new URLSearchParams({
+      from: String(asked.from),
+      to: String(asked.to),
+      format: 'csv',
+    })
+    const link = screen.getByRole('link', { name: 'Download this year of daily energy as CSV' })
+
+    // A plain anchor, built from the boundaries the page asked for.
+    expect(link.tagName).toBe('A')
+    expect(link).toHaveAttribute('download')
+    expect(link.getAttribute('href')).toBe(`/api/v1/energy/daily?${search.toString()}`)
+  })
+})

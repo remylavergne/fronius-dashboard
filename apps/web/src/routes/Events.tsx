@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useT } from '@/i18n'
 import type { TranslationKey } from '@/i18n'
+import { csvDownloadUrl } from '@/lib/export'
 import { formatDateTime } from '@/lib/format'
 import { EVENT_LIMITS, EVENT_RANGES, eventsRangeToQuery, useEvents, useMinuteTick } from '@/lib/queries'
 import type { EventRangeKey } from '@/lib/queries'
@@ -325,6 +326,19 @@ export function EventsPage() {
           </TableBody>
         </Table>
       ) : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        {/* A plain download link, never a fetch: the browser handles the file
+            and nothing passes through React state. */}
+        <a
+          href={csvDownloadUrl('/api/v1/events', params)}
+          download
+          className="text-sm font-medium text-primary underline underline-offset-4"
+        >
+          {t('events.export')}
+        </a>
+        <p className="text-xs text-muted-foreground">{t('events.exportNote')}</p>
+      </div>
     </div>
   )
 }

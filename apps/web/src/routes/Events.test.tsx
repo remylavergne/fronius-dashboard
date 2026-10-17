@@ -306,3 +306,52 @@ describe('EventsPage empty window', () => {
     expect(screen.getByText('network failure')).toBeInTheDocument()
   })
 })
+
+describe('EventsPage export', () => {
+  beforeEach(() => {
+    eventsMock.mockReset()
+    askedParams.length = 0
+    mockEvents([failed, recovered, warning])
+  })
+
+  /** The href the page must offer for the parameters it last fetched with. */
+  function expectedHref(params: EventsParams): string {
+    const search = new URLSearchParams({ limit: String(params.limit) })
+    if (params.from !== undefined) {
+      search.set('from', params.from)
+    }
+    if (params.to !== undefined) {
+      search.set('to', params.to)
+    }
+    search.set('format', 'csv')
+    return `/api/v1/events?${search.toString()}`
+  }
+
+  it('offers the fetched range and limit as a plain CSV download', async () => {
+    render(<EventsPage />)
+
+    const link = screen.getByRole('link', { name: 'Download the fetched events as CSV' })
+    // A plain anchor: the browser handles the request, React does not.
+    expect(link.tagName).toBe('A')
+    expect(link).toHaveAttribute('download')
+    // The URL is built from what the page actually asked the API for, never
+    // from a date recomputed here.
+    expect(link.getAttribute('href')).toBe(expectedHref(askedParams.at(-1) as EventsParams))
+
+    await userEvent.selectOptions(screen.getByLabelText('Range'), 'all')
+
+    expect(link.getAttribute('href')).toBe(expectedHref(askedParams.at(-1) as EventsParams))
+    // `all` sends no bound: the export must not invent one.
+    expect(link.getAttribute('href')).toBe('/api/v1/events?limit=100&format=csv')
+  })
+
+  it('says the export ignores the on-screen severity and kind filters', () => {
+    render(<EventsPage />)
+
+    expect(
+      screen.getByText(
+        'The file carries the fetched range and limit. The severity and kind filters are applied on screen only: they do not change what the file contains.',
+      ),
+    ).toBeInTheDocument()
+  })
+})

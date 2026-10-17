@@ -86,6 +86,7 @@
 - [x] Paginate and bound large requests
 - [ ] Generate OpenAPI and typed TS clients
 - [x] Add API+SQLite integration tests
+- [ ] Make a stored timestamp that does not parse cost **its row**, not the whole read — found 2026-10-17 while exercising the CSV export: one `events.ts_utc` written without the millisecond suffix (`…T10:00:00Z` instead of `…T10:00:00.000Z`) made **every** `/api/v1/events` answer (JSON *and* CSV) `500 invalid timestamp`. The application only ever writes the canonical format, so this is the manual-tamper or older-data case — but one bad row currently blinds the whole journal. Fix direction: skip and log a row that does not parse (or validate at write and at open), and pin it with a test that inserts a malformed row directly
 
 ## 5 — React/shadcn UI
 
@@ -106,7 +107,7 @@
 - [x] Implement loading/error/empty/offline/stale states
 - [x] Implement cache and refresh via TanStack Query
 - [x] Implement responsive and accessible Recharts charts
-- [ ] Implement CSV export of the histories
+- [x] Implement CSV export of the histories — `?format=csv` on `/api/v1/timeseries`, `/api/v1/energy/daily` and `/api/v1/events`: the same parameters, validation and data as the JSON routes, streamed through `encoding/csv` with `Content-Disposition` (an absent bound renders `all`, never a year-1 instant) and `Cache-Control: no-store`. Columns are the JSON field names in order; **a missing value is an empty cell** — never `0`, never `null`; and text cells are neutralised against spreadsheet formula injection (a leading `=`, `+`, `-`, `@`, TAB or CR gets `'`, numeric cells untouched so a negative number keeps its sign — event messages and derived reasons come from the device). Bounds stay the JSON routes' own, so a bad range answers the JSON `400` before any CSV byte. The Events, Energy and Overview pages carry plain `<a href download>` links built from the params they already fetched (no fetch, no bytes through React state); the Events link states that its client-side severity and kind filters are not part of the file
 - [x] Add FR translation with an i18n DE/EN structure
 - [x] Add keyboard navigation and WCAG AA checks
 - [ ] Test responsive desktop/tablet/mobile
@@ -893,3 +894,36 @@
   names the sanctioned procedure (and its stale "eight internal paths" is
   corrected to eleven), consistent with #7's existing "no confirmed secret or
   autonomous means; **no attempt**".
+
+- 2026-10-17 — Step 30 (phase 6): **CSV export of the histories.** `?format=csv`
+  on `/api/v1/timeseries`, `/api/v1/energy/daily` and `/api/v1/events` — the same
+  parameters, validation and data as the JSON routes, so the file is what the
+  screen shows. Columns are the JSON field names in order; **a missing value is an
+  empty cell** (never `0`, never `null`); numbers are plain (`strconv`, `.`
+  decimal); and **text cells are neutralised against spreadsheet formula
+  injection** — a leading `=`, `+`, `-`, `@`, TAB or CR gets one `'`, while
+  numeric cells are untouched so a negative number keeps its sign. Streaming
+  through `encoding/csv` (`Flush` + logged writer error), `Content-Type:
+  text/csv; charset=utf-8`, `Content-Disposition` with
+  `fronius-<route>_<from>_<to>.csv` built from the **parsed** instants (an absent
+  bound renders `all` — never a year-1 instant, which the first cut produced for
+  the page's "all" preset and was corrected before shipping), and
+  `Cache-Control: no-store`. Errors stay the JSON envelope *before* the first
+  byte, so a bad range yields `400` with no `Content-Disposition` and no CSV
+  header. The Events, Energy and Overview pages carry plain `<a href download>`
+  links built from the params they already fetched (no fetch, no bytes through
+  React state); the Events note says the file carries the fetched range and limit
+  and that the client-side severity/kind filters are **not** part of it
+  (`docs/UNKNOWNS.md` #15). **Verified live** (simulator + a day of backfill): the
+  energy CSV with `date,energy_wh,derived_wh,derived_reason,partial`, a valueless
+  day as `2026-10-15,,,no sample carries a total…,false`; an unbounded events
+  export named `fronius-events_all_all.csv`; a hostile device message
+  (`=cmd|' /C calc'!A0, "quoted"` + a newline) exported as one cell starting
+  `'=`, round-tripped through a strict `csv.Reader`; `step=1h` timeseries with six
+  columns; `format=xml` → `400 invalid_format`; and from the rendered Events page,
+  a **real download** to disk (`391` bytes, the right filename, the right
+  header and rows). Tests: 6 Go behaviour tests in `internal/api/csv_test.go` and
+  5 web tests; suite **223**. Finding recorded open: one malformed
+  `events.ts_utc` (no millisecond suffix) makes every `/events` read fail — a
+  row-level resilience item, pre-existing and unrelated to the export, now a
+  `- [ ]` box.

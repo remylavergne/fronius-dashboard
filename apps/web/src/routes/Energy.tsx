@@ -12,6 +12,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { useT } from '@/i18n'
 import type { TranslationKey } from '@/i18n'
 import { summarizeRollups, toDailyPoints } from '@/lib/energy'
+import { csvDownloadUrl } from '@/lib/export'
 import type { DailyPoint, EnergySource, RollupPeriod } from '@/lib/energy'
 import { formatDateTime, formatKWh } from '@/lib/format'
 import { useEnergyDaily, useMinuteTick } from '@/lib/queries'
@@ -249,6 +250,14 @@ export function EnergyPage() {
         <p className="text-xs text-muted-foreground">
           {`${t('energy.window')}: ${formatDateTime(bounds.from)} → ${formatDateTime(bounds.to)}. ${t('energy.windowHint')}`}
         </p>
+        {/* The same bounds the page fetched with: the browser downloads the file. */}
+        <a
+          href={csvDownloadUrl('/api/v1/energy/daily', bounds)}
+          download
+          className="inline-block text-sm font-medium text-primary underline underline-offset-4"
+        >
+          {t('energy.export')}
+        </a>
       </div>
 
       {energy.isLoading ? <Skeleton className="h-64 w-full" /> : null}

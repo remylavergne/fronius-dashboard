@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CODE_NO_DATA, sampleSchema, type Sample } from '@/lib/schema'
 import type { DetailFamily } from '@/lib/schema'
 import { resolveEnergy } from '@/lib/energy'
 import { Overview } from './Overview'
 
+// jsdom implements no Pointer Events capture API, which Radix Select calls when
+// it opens or picks an option. Minimal shims so the custom range can be driven.
+Element.prototype.hasPointerCapture ??= () => false
+Element.prototype.setPointerCapture ??= () => undefined
+Element.prototype.releasePointerCapture ??= () => undefined
+Element.prototype.scrollIntoView ??= () => undefined
+
 // `vi.mock` is hoisted above the imports: the query results must live in a
 // hoisted binding to be referenced by the factory.
-const { liveMock, detailMock, noDetail } = vi.hoisted(() => ({
+const { liveMock, detailMock, noDetail, seriesParams, localISO } = vi.hoisted(() => ({
   liveMock: vi.fn(),
   detailMock: vi.fn(),
   /**
@@ -16,20 +23,31 @@ const { liveMock, detailMock, noDetail } = vi.hoisted(() => ({
    * fallback of the factory below, whose mock result is reset between tests.
    */
   noDetail: { data: undefined, isLoading: false, isError: false, error: undefined, refetch: vi.fn() },
+  /** Every parameter set the chart asked for, in order. */
+  seriesParams: [] as { from: string; to: string; step: string }[],
+  /**
+   * What the custom inputs parse to. A test sets it to `null` to make the
+   * custom range invalid, as a malformed input would.
+   */
+  localISO: { value: undefined as string | null | undefined },
 }))
 
 vi.mock('@/lib/queries', () => ({
   RANGES: ['24h', '7d', '30d'],
   STEPS: ['auto', '1m', '5m', '15m', '1h', '1d'],
-  isoToLocalInput: () => '2026-10-16T10:00',
-  localInputToISO: () => '2026-10-16T10:00:00.000Z',
+  isoToLocalInput: (iso: string | Date) => new Date(iso).toISOString().slice(0, 16),
+  localInputToISO: (value: string) =>
+    localISO.value === undefined ? new Date(value).toISOString() : localISO.value,
   rangeToQuery: () => ({ from: '2026-10-15T10:00:00.000Z', to: '2026-10-16T10:00:00.000Z', step: 'auto' }),
   useLive: () => liveMock(),
   useHealth: () => ({ data: undefined }),
   useCapabilities: () => ({ data: undefined }),
   useDetail: () => detailMock() ?? noDetail,
   useMinuteTick: () => new Date('2026-10-16T10:00:00.000Z'),
-  useTimeseries: () => ({ data: undefined }),
+  useTimeseries: (params: { from: string; to: string; step: string }) => {
+    seriesParams.push(params)
+    return { data: undefined }
+  },
 }))
 
 /** The inverter family of the detail answer, as the chip receives it. */
@@ -361,5 +379,51 @@ describe('Overview load states', () => {
 
     expect(screen.getByText('No data')).toBeInTheDocument()
     expect(screen.queryByTestId('api-error')).not.toBeInTheDocument()
+  })
+})
+
+describe('Overview export', () => {
+  beforeEach(() => {
+    liveMock.mockReset()
+    detailMock.mockReset()
+    mockLive(baseSample)
+    seriesParams.length = 0
+    localISO.value = undefined
+  })
+
+  /** The href the page must offer for the chart parameters it last asked for. */
+  function hrefFor(params: { from: string; to: string; step: string }): string {
+    return `/api/v1/timeseries?${new URLSearchParams({ ...params, format: 'csv' }).toString()}`
+  }
+
+  const LABEL = 'Download the chart range as CSV (from, to and step as fetched)'
+
+  it('offers the chart range and step as a plain CSV download', () => {
+    render(<Overview />)
+
+    const link = screen.getByRole('link', { name: LABEL })
+    // A plain anchor carrying exactly what the chart queried.
+    expect(link.tagName).toBe('A')
+    expect(link).toHaveAttribute('download')
+    expect(link.getAttribute('href')).toBe(hrefFor(seriesParams.at(-1) as { from: string; to: string; step: string }))
+  })
+
+  it('offers the custom range while valid, and no link at all while invalid', async () => {
+    const user = userEvent.setup()
+    render(<Overview />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Displayed period' }))
+    await user.click(screen.getByRole('option', { name: 'Custom' }))
+
+    const link = screen.getByRole('link', { name: LABEL })
+    expect(link.getAttribute('href')).toBe(hrefFor(seriesParams.at(-1) as { from: string; to: string; step: string }))
+
+    // A malformed input makes the custom range invalid: the link goes with the
+    // query it would have described.
+    localISO.value = null
+    fireEvent.change(screen.getByLabelText('Start'), { target: { value: '2026-10-16T11:00' } })
+
+    expect(screen.queryByRole('link', { name: LABEL })).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Invalid range')
   })
 })

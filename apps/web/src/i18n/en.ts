@@ -33,6 +33,7 @@ export const en = {
   'overview.inverterState': 'Inverter state',
   'overview.statusCode': 'Status code',
   'overview.errorCode': 'Error code',
+  'overview.export': 'Download the chart range as CSV (from, to and step as fetched)',
 
   'chart.title': 'Produced power',
   'chart.range.24h': '24 hours',
@@ -326,6 +327,9 @@ export const en = {
 
   'events.limit': 'Fetched at once',
   'events.limitHint': 'The API accepts 1 to 500 events per request, newest first.',
+  'events.export': 'Download the fetched events as CSV',
+  'events.exportNote':
+    'The file carries the fetched range and limit. The severity and kind filters are applied on screen only: they do not change what the file contains.',
 
   'events.filter.severity': 'Severity',
   'events.filter.allSeverities': 'All severities',
@@ -376,6 +380,7 @@ export const en = {
   'energy.shown.all': 'The whole window',
   'energy.windowHint':
     'Requested from the API in UTC instants, from 1 January to tomorrow: the days themselves are the local days of the installation.',
+  'energy.export': 'Download this year of daily energy as CSV',
 
   'energy.table.caption': 'Energy per local day',
   'energy.col.date': 'Day',

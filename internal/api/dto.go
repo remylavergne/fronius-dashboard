@@ -26,6 +26,7 @@ const apiTimeLayout = "2006-01-02T15:04:05.000Z"
 const (
 	CodeInvalidRange     = "invalid_range"
 	CodeInvalidStep      = "invalid_step"
+	CodeInvalidFormat    = "invalid_format"
 	CodeNotFound         = "not_found"
 	CodeMethodNotAllowed = "method_not_allowed"
 	CodeInternal         = "internal"

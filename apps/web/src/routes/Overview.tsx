@@ -13,6 +13,7 @@ import { ApiError } from '@/lib/api'
 import { inferStepSeconds, toPowerPoints } from '@/lib/chart'
 import { formatAge, formatKWh, formatW } from '@/lib/format'
 import { resolveEnergy, type ResolvedEnergy } from '@/lib/energy'
+import { csvDownloadUrl } from '@/lib/export'
 import { resolveStale } from '@/lib/freshness'
 import {
   RANGES,
@@ -336,6 +337,18 @@ export function Overview() {
         </div>
 
         {isCustom ? <p className="text-xs text-muted-foreground">{t('chart.stepHelp')}</p> : null}
+
+        {/* The chart's own parameters; the link is absent while the custom range
+            is invalid, the same predicate that gates the query. */}
+        {!isCustom || custom.valid ? (
+          <a
+            href={csvDownloadUrl('/api/v1/timeseries', params)}
+            download
+            className="inline-block text-sm font-medium text-primary underline underline-offset-4"
+          >
+            {t('overview.export')}
+          </a>
+        ) : null}
 
         {isCustom && !custom.valid ? (
           <p role="alert" className="text-sm text-destructive">

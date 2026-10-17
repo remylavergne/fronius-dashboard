@@ -9,6 +9,20 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-17 — **CSV export of the histories.** `?format=csv` on
+  `/api/v1/timeseries`, `/api/v1/energy/daily` and `/api/v1/events` — the same
+  parameters and the same data as the JSON routes, streamed through
+  `encoding/csv`, with `Content-Disposition` and `Cache-Control: no-store`.
+  Columns are the JSON field names in order; **a missing value is an empty cell**
+  (never `0`, never `null`); and text cells are neutralised against spreadsheet
+  formula injection — a leading `=`, `+`, `-`, `@`, TAB or CR gets a `'`, while
+  numeric cells are untouched so a negative number keeps its sign (event messages
+  and derived reasons come from the device). Bounds are the JSON routes' own
+  (`maxRangeDays`, the step, the events' `1..500` limit), so an invalid range
+  still answers the JSON `400` before a single CSV byte. The Events, Energy and
+  Overview pages gain a plain download link (`<a href download>`, no fetch)
+  carrying the current range/limit/step; the Events page states that its
+  client-side severity and kind filters are not part of the file.
 - 2026-10-17 — **The Settings page, and a read-only connectivity test.** The
   page now shows the whole effective configuration — including the detection
   interval, the HTTP timeout and whether device credentials are configured

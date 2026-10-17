@@ -585,6 +585,37 @@ boundary, a counter that went backwards). The reason is printed **only beside a
 dash** — beside a value it would read as a defect. A valueless day reads, for
 instance, `no sample carries a total at or before the day's start`.
 
+## Exporting a history as CSV
+
+The three history routes answer `?format=csv` with the same parameters and the
+same data as their JSON form — the export is what the screen shows, not a second
+dataset:
+
+```bash
+curl -s "localhost:8080/api/v1/events?format=csv&from=2026-10-10T00:00:00Z&to=2026-10-17T00:00:00Z&limit=500" -o events.csv
+curl -s "localhost:8080/api/v1/energy/daily?format=csv&from=2026-01-01T00:00:00Z&to=2026-10-18T00:00:00Z" -o energy-daily.csv
+curl -s "localhost:8080/api/v1/timeseries?format=csv&from=2026-10-16T00:00:00Z&to=2026-10-17T00:00:00Z&step=300" -o timeseries.csv
+```
+
+- Columns are the JSON field names, in order; the units live in the names
+  (`_w`, `_wh`, `_pct`), and the times are the API's own (`start`/`ts` RFC 3339,
+  `date` `YYYY-MM-DD`).
+- **A missing value is an empty cell** — never `0`, never `null` — the same rule
+  as everywhere else in the model.
+- **Text cells are neutralised against spreadsheet formula injection**: a cell
+  starting with `=`, `+`, `-`, `@`, TAB or CR gets a leading `'`, which a
+  spreadsheet reads as "this is text". Numeric cells are untouched, so a negative
+  number keeps its sign. This matters because event messages and derived reasons
+  come from the device.
+- **Bounds are the JSON routes' own** — `maxRangeDays`, the step, and the events'
+  `1..500` limit (`100` by default). The export is not a bulk dump: choose the
+  range you mean.
+- On the Events page the **severity and kind filters are client-side**
+  (`docs/UNKNOWNS.md` #15), so its CSV carries the fetched range and limit and
+  **not** those filters; the page says so next to the link.
+- Errors before the first byte are still the JSON error envelope (`400`), so an
+  invalid range never produces a half-written file.
+
 ## Logging
 
 `log/slog` on stderr. `FRONIUS_LOG_FORMAT=json` for ingestion by a log
