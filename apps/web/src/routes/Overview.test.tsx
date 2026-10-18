@@ -89,6 +89,9 @@ const derived = {
   year_wh: 512345.6,
   year_baseline_utc: '2026-01-01T00:00:00+01:00',
   year_reason: '',
+  since_wh: 872345.6,
+  since_baseline_utc: '2026-10-14T09:53:30+02:00',
+  since_reason: '',
 }
 
 function mockLive(sample: Sample) {
@@ -168,6 +171,17 @@ describe('Overview energy cards', () => {
     expect(screen.queryByText('estimated from the total')).not.toBeInTheDocument()
     expect(screen.queryByText('0')).not.toBeInTheDocument()
   })
+
+  it('shows the energy since monitoring with its baseline date', () => {
+    mockLive({ ...baseSample, energy_derived: derived })
+
+    render(<Overview />)
+
+    const card = screen.getByText('Energy since monitoring').closest('[data-slot="card"]')
+    expect(card).not.toBeNull()
+    expect(within(card as HTMLElement).getByText('872.35')).toBeInTheDocument()
+    expect(within(card as HTMLElement).getByText(/Monitoring since:/)).toBeInTheDocument()
+  })
 })
 
 describe('Overview energy dashes', () => {
@@ -182,6 +196,9 @@ describe('Overview energy dashes', () => {
     year_wh: null,
     year_baseline_utc: '',
     year_reason: 'no sample carries a total energy at or before 2026-01-01T00:00:00+01:00',
+    since_wh: null,
+    since_baseline_utc: '',
+    since_reason: 'no stored sample carries a total energy',
   }
 
   it('prints the reason of a refused day energy instead of a bare dash', () => {

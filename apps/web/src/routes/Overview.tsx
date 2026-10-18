@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useT } from '@/i18n'
 import { ApiError } from '@/lib/api'
 import { inferStepSeconds, toPowerPoints } from '@/lib/chart'
-import { formatAge, formatKWh, formatW } from '@/lib/format'
+import { formatAge, formatDateTime, formatKWh, formatW } from '@/lib/format'
 import { resolveEnergy, type ResolvedEnergy } from '@/lib/energy'
 import { csvDownloadUrl } from '@/lib/export'
 import { resolveStale } from '@/lib/freshness'
@@ -158,6 +158,7 @@ export function Overview() {
   const meta = live.data?.meta
   const dayEnergy = resolveEnergy(sample?.energy_day_wh, sample?.energy_derived?.day_wh)
   const yearEnergy = resolveEnergy(sample?.energy_year_wh, sample?.energy_derived?.year_wh)
+  const sinceEnergy = sample?.energy_derived?.since_wh ?? null
   const noData = live.data?.error?.code === CODE_NO_DATA
   // "Unreachable" covers two situations indistinguishable to the user: the API
   // does not answer (`network`) or it answers with a server error — which the
@@ -212,8 +213,8 @@ export function Overview() {
       ) : null}
 
       {live.isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {[0, 1, 2, 3].map((key) => (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {[0, 1, 2, 3, 4].map((key) => (
             <Skeleton key={key} className="h-28 w-full" />
           ))}
         </div>
@@ -224,7 +225,7 @@ export function Overview() {
       ) : null}
 
       {sample ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard
             label={t('kpi.production')}
             value={formatW(sample.power_pv_w)}
@@ -249,6 +250,19 @@ export function Overview() {
                     yearEnergy,
                     sample.energy_derived?.year_reason,
                     `${t('kpi.energyTotal')}: ${formatKWh(sample.energy_total_wh).value} ${formatKWh(sample.energy_total_wh).unit}`.trim(),
+                  )
+            }
+          />
+          <KpiCard
+            label={t('kpi.energySince')}
+            value={formatKWh(sinceEnergy)}
+            hint={
+              sinceEnergy !== null
+                ? `${t('kpi.sinceBaseline')}: ${formatDateTime(sample.energy_derived?.since_baseline_utc)}`
+                : energyHint(
+                    { wh: null, estimated: false },
+                    sample.energy_derived?.since_reason,
+                    t('state.unavailable'),
                   )
             }
           />

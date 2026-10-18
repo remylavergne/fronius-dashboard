@@ -58,7 +58,30 @@ func (s *Server) derivedEnergyFromTotal(ctx context.Context, sm model.Sample) *d
 		ctx, sm, time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc))
 	out.YearWh, out.YearBaselineUTC, out.YearReason = s.deriveSince(
 		ctx, sm, time.Date(local.Year(), time.January, 1, 0, 0, 0, 0, loc))
+	out.SinceWh, out.SinceBaselineUTC, out.SinceReason = s.deriveSinceFirst(ctx, sm)
 	return out
+}
+
+// deriveSinceFirst measures the total energy produced since the earliest stored
+// sample. Unlike the day and year values it needs no boundary tolerance: the
+// baseline is wherever monitoring began, and the label says so.
+func (s *Server) deriveSinceFirst(ctx context.Context, sm model.Sample) (*float64, string, string) {
+	if sm.EnergyTotalWh == nil {
+		return nil, "", "the current sample carries no total energy"
+	}
+	base, baseTS, ok, err := s.store.FirstTotalEnergy(ctx)
+	if err != nil {
+		s.log.Error("reading the first total energy baseline failed", "error", err)
+		return nil, "", "the baseline could not be read"
+	}
+	if !ok {
+		return nil, "", "no stored sample carries a total energy"
+	}
+	if *sm.EnergyTotalWh < base {
+		return nil, "", "the total energy counter went backwards since the first sample"
+	}
+	value := *sm.EnergyTotalWh - base
+	return &value, baseTS.UTC().Format(time.RFC3339), ""
 }
 
 // deriveSince returns the total energy produced since the local boundary, the

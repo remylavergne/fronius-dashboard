@@ -1076,7 +1076,7 @@
       },
       "DerivedEnergyDTO": {
         "type": "object",
-        "description": "Day and year energies computed from the stored total, kept separate from measured fields. from names the derivation baseline source.",
+        "description": "Day, year and since-monitoring energies computed from the stored total, kept separate from measured fields. from names the derivation baseline source.",
         "additionalProperties": false,
         "required": [
           "from",
@@ -1085,7 +1085,10 @@
           "day_reason",
           "year_wh",
           "year_baseline_utc",
-          "year_reason"
+          "year_reason",
+          "since_wh",
+          "since_baseline_utc",
+          "since_reason"
         ],
         "properties": {
           "from": {
@@ -1109,6 +1112,16 @@
             "format": "date-time"
           },
           "year_reason": {
+            "type": "string"
+          },
+          "since_wh": {
+            "type": ["number", "null"]
+          },
+          "since_baseline_utc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "since_reason": {
             "type": "string"
           }
         }

@@ -103,6 +103,14 @@ func TestDerivedDayAndYearEnergiesFromTheStoredTotal(t *testing.T) {
 	if got.DayBaselineUTC == "" || got.YearBaselineUTC == "" {
 		t.Fatalf("the baselines must be named: %+v", got)
 	}
+	// Since monitoring: measured from the very first stored total, with no
+	// boundary tolerance — the baseline is wherever monitoring began.
+	if got.SinceWh == nil || !almostEqual(*got.SinceWh, 89_627.58) {
+		t.Fatalf("since_wh = %v, want 89627.58", got.SinceWh)
+	}
+	if got.SinceBaselineUTC == "" || got.SinceReason != "" {
+		t.Fatalf("since = (%q, %q), want a baseline and no reason", got.SinceBaselineUTC, got.SinceReason)
+	}
 }
 
 // TestMeasuredEnergiesAreLeftAlone: the derivation never touches the measured
@@ -176,6 +184,11 @@ func TestDerivationWithoutAnyBaseline(t *testing.T) {
 	}
 	if got.DayReason == "" || got.YearReason == "" {
 		t.Fatalf("both reasons must be given: %+v", got)
+	}
+	// A fresh installation still knows what it produced since monitoring began:
+	// the first stored sample is its own baseline.
+	if got.SinceWh == nil || *got.SinceWh != 0 || got.SinceReason != "" {
+		t.Fatalf("since = (%v, %q), want 0 without a reason", got.SinceWh, got.SinceReason)
 	}
 }
 

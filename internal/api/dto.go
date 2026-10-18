@@ -110,13 +110,16 @@ type inverterDTO struct {
 // it could not be established, the reason — an absent value with a reason beats a
 // wrong value.
 type derivedEnergyDTO struct {
-	From            string   `json:"from"`
-	DayWh           *float64 `json:"day_wh"`
-	DayBaselineUTC  string   `json:"day_baseline_utc"`
-	DayReason       string   `json:"day_reason"`
-	YearWh          *float64 `json:"year_wh"`
-	YearBaselineUTC string   `json:"year_baseline_utc"`
-	YearReason      string   `json:"year_reason"`
+	From             string   `json:"from"`
+	DayWh            *float64 `json:"day_wh"`
+	DayBaselineUTC   string   `json:"day_baseline_utc"`
+	DayReason        string   `json:"day_reason"`
+	YearWh           *float64 `json:"year_wh"`
+	YearBaselineUTC  string   `json:"year_baseline_utc"`
+	YearReason       string   `json:"year_reason"`
+	SinceWh          *float64 `json:"since_wh"`
+	SinceBaselineUTC string   `json:"since_baseline_utc"`
+	SinceReason      string   `json:"since_reason"`
 }
 
 func sampleToDTO(sm model.Sample) sampleDTO {

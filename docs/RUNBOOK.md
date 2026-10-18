@@ -542,14 +542,14 @@ to the raw measurements, more slowly. So it is never a failure, only a catch-up
 to wait for (or to trigger by restarting). `make test-perf` measures the gain on
 one year of data (ADR 0006).
 
-## Day, year and daily energies (derived)
+## Day, year, since-monitoring and daily energies (derived)
 
 The reference firmware publishes **no** day, year or daily counter on any local
 endpoint — and the specification **documents it** (`42,0410,2012,EN 02115052025`,
 §4.1.5: on GEN24/Tauro/Verto `DAY_ENERGY` and `YEAR_ENERGY` "will always report
 null"; `docs/UNKNOWNS.md` #13). The measured fields `energy_day_wh` /
 `energy_year_wh` stay `null`, and so does the daily counter `energy_wh`
-(`E_Day`). To fill the two KPIs, `/api/v1/live` carries an `energy_derived`
+(`E_Day`). To fill the energy KPIs, `/api/v1/live` carries an `energy_derived`
 object **computed from our own stored total**:
 
 - `day_wh` / `year_wh` — the difference between the current sample's total energy
@@ -557,7 +557,12 @@ object **computed from our own stored total**:
   for the day, 1 January for the year, store timezone `Europe/Brussels`);
 - `day_baseline_utc` / `year_baseline_utc` — the timestamp the value was measured
   from;
-- `day_reason` / `year_reason` — why a value is absent, when it is.
+- `day_reason` / `year_reason` — why a value is absent, when it is;
+- `since_wh` — the total produced **since monitoring began**: the difference
+  against the earliest stored sample carrying a total. It needs no boundary
+  tolerance, so it is the one energy that works from the first stored sample,
+  and `since_baseline_utc` says when monitoring started. The Overview shows it
+  as "Energy since monitoring".
 
 **These are estimates, never measurements.** The interface shows the measured
 counter whenever the device reports it, and marks the derived one **"estimated

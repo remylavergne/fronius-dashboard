@@ -343,7 +343,7 @@ export interface components {
             power_w: number | null;
             energy_day_wh: number | null;
         };
-        /** @description Day and year energies computed from the stored total, kept separate from measured fields. from names the derivation baseline source. */
+        /** @description Day, year and since-monitoring energies computed from the stored total, kept separate from measured fields. from names the derivation baseline source. */
         DerivedEnergyDTO: {
             from: string;
             day_wh: number | null;
@@ -354,6 +354,10 @@ export interface components {
             /** Format: date-time */
             year_baseline_utc: string;
             year_reason: string;
+            since_wh: number | null;
+            /** Format: date-time */
+            since_baseline_utc: string;
+            since_reason: string;
         };
         BucketDTO: {
             /** Format: date-time */

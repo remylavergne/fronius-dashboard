@@ -198,6 +198,9 @@ export const derivedEnergySchema = z.object({
   year_wh: nullableNumber,
   year_baseline_utc: z.string(),
   year_reason: z.string(),
+  since_wh: nullableNumber,
+  since_baseline_utc: z.string(),
+  since_reason: z.string(),
 })
 export type DerivedEnergy = z.infer<typeof derivedEnergySchema>
 

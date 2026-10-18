@@ -9,6 +9,16 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-18 — **An "Energy since monitoring" KPI.** `/api/v1/live` gains
+  `since_wh` in `energy_derived`: the difference between the current total and
+  the **earliest stored sample** carrying one, with `since_baseline_utc` naming
+  when monitoring began and `since_reason` explaining an absence. Unlike the day
+  and year values it needs no boundary tolerance, so it is available from the
+  very first sample — which is the only energy the Overview can show on an
+  installation younger than its last midnight or the current year. The Overview
+  now renders five KPI cards (production, day, year, since monitoring,
+  collector); the contract, the zod schema and the derivation tests follow.
+
 - 2026-10-17 — **The image is built for amd64 on the workstation and deployed
   from the Forgejo registry, without BuildKit.** `make docker` and `make
   docker-push` take `DOCKER` (any daemon, e.g.

@@ -36,6 +36,8 @@ export const en = {
   'kpi.production': 'Instantaneous production',
   'kpi.energyToday': 'Energy of the day',
   'kpi.energyYear': 'Energy of the year',
+  'kpi.energySince': 'Energy since monitoring',
+  'kpi.sinceBaseline': 'Monitoring since',
   'kpi.energyTotal': 'Total energy',
   'kpi.energyDerived': 'estimated from the total',
   'kpi.collector': 'Collector',
