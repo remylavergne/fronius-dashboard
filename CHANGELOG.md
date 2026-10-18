@@ -802,6 +802,14 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-18 — **A cancelled client is no longer logged as a server error.**
+  Reloading the page, closing a tab or the Vite proxy aborting upstream cancels
+  the request context; the store wraps that cancellation, and every handler
+  logged it at ERROR — one reload produced `internal error` plus three health
+  reads and two device reads. Nobody is left to answer and nothing failed: a
+  cancelled request now returns silently, neither logged nor written. A real
+  deadline still counts as an error.
+
 - 2026-10-17 — **The CI's "no versioned device password" step was red, on
   documentation.** Three examples carried the credential variable with a value —
   two placeholders and a simulator password — and the workflow greps for exactly

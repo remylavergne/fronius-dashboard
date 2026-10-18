@@ -137,6 +137,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	count, err := s.store.SampleCount(ctx)
 	if err != nil {
+		if isCanceled(err) {
+			return
+		}
 		// The raw error message may contain a file path: it stays
 		// in the logs, not in the response.
 		s.log.Error("health: counting samples failed", "error", err)
@@ -149,6 +152,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	degraded := false
 	if state, err := s.store.State(ctx); err != nil {
+		if isCanceled(err) {
+			return
+		}
 		s.log.Error("health: reading collector state failed", "error", err)
 	} else {
 		out.Collector.LastSuccessUTC = state["last_success_utc"]
@@ -156,6 +162,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if run, ok, err := s.store.LatestRun(ctx); err != nil {
+		if isCanceled(err) {
+			return
+		}
 		s.log.Error("health: reading the last cycle failed", "error", err)
 	} else if ok {
 		out.Collector.LastRunMS = run.DurationMS
@@ -206,6 +215,9 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detectionDTO) {
 	record, hasRecord, err := s.store.Device(ctx)
 	if err != nil {
+		if isCanceled(err) {
+			return nil, detectionFrom(storage.DeviceRecord{}, false, storage.DeviceHealth{}, false, "")
+		}
 		s.log.Error("reading device state failed", "error", err)
 		return nil, detectionFrom(storage.DeviceRecord{}, false, storage.DeviceHealth{}, false, "")
 	}
@@ -216,12 +228,18 @@ func (s *Server) deviceAndDetection(ctx context.Context) (*deviceDTO, *detection
 	// that was never read.
 	health, hasHealth, err := s.store.DeviceHealth(ctx)
 	if err != nil {
+		if isCanceled(err) {
+			return nil, detectionFrom(record, hasRecord, storage.DeviceHealth{}, false, "")
+		}
 		s.log.Error("reading device health failed", "error", err)
 		health, hasHealth = storage.DeviceHealth{}, false
 	}
 
 	state, err := s.store.State(ctx)
 	if err != nil {
+		if isCanceled(err) {
+			return nil, detectionFrom(record, hasRecord, health, hasHealth, "")
+		}
 		s.log.Error("reading collector state failed", "error", err)
 		state = map[string]string{}
 	}
@@ -346,7 +364,9 @@ func serviceFrom(health storage.DeviceHealth, hasHealth bool) serviceResourceDTO
 func (s *Server) detectionForCapabilities(ctx context.Context) model.Detection {
 	record, hasRecord, err := s.store.Device(ctx)
 	if err != nil {
-		s.log.Error("reading device state failed", "error", err)
+		if !isCanceled(err) {
+			s.log.Error("reading device state failed", "error", err)
+		}
 		return unknownDetection(detect.ReasonNoReadYet)
 	}
 	return detectionModel(record, hasRecord)
@@ -656,7 +676,9 @@ func (s *Server) freshnessMeta(ctx context.Context, m *meta) {
 		return
 	}
 	if err != nil {
-		s.log.Error("reading the latest sample failed", "error", err)
+		if !isCanceled(err) {
+			s.log.Error("reading the latest sample failed", "error", err)
+		}
 		return
 	}
 	s.applyFreshness(m, sm.TS)
@@ -671,9 +693,18 @@ func (s *Server) writeError(w http.ResponseWriter, status int, code, message str
 }
 
 func (s *Server) internalError(w http.ResponseWriter, what string, err error) {
+	if isCanceled(err) {
+		return
+	}
 	s.log.Error("internal error", "operation", what, "error", err)
 	s.writeError(w, http.StatusInternalServerError, CodeInternal, "internal error")
 }
+
+// isCanceled reports a client going away: a page reload, a closed tab or a
+// proxy abort cancels the request context, and the store then returns it
+// wrapped. That is not a server failure — there is nobody to answer — and
+// logging it as one blames the server for a normal disconnect.
+func isCanceled(err error) bool { return errors.Is(err, context.Canceled) }
 
 func (s *Server) writeEnvelope(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
