@@ -20,3 +20,7 @@ bin/
 /fronius-sim
 /froniusd
 /fronius-probe
+
+# Manufacturer documentation and the original interface bundle: kept locally,
+# never redistributed.
+references/
