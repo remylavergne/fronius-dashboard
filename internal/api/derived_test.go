@@ -208,4 +208,36 @@ func TestDerivationRefusesACounterGoingBackwards(t *testing.T) {
 	if got.DayReason != "the total energy counter went backwards since the boundary" {
 		t.Fatalf("day_reason = %q", got.DayReason)
 	}
+	// Since monitoring is measured from the run that started at the reset, so it
+	// is a value rather than a refusal — the current sample is its baseline.
+	if got.SinceWh == nil || *got.SinceWh != 0 || got.SinceReason != "" {
+		t.Fatalf("since = (%v, %q), want 0 from the reset without a reason", got.SinceWh, got.SinceReason)
+	}
+}
+
+// TestDerivedSinceRestartsAtTheLastCounterDecrease: the stored series may hold
+// more than one counter run (a simulator in the same database, then the device;
+// or a device reset). The run's first sample is the baseline, so the KPI reflects
+// what the current counter has produced.
+func TestDerivedSinceRestartsAtTheLastCounterDecrease(t *testing.T) {
+	_, srv, store := newTestServer(t, nil)
+	loc := store.Location()
+	base := time.Date(2026, 10, 16, 10, 0, 0, 0, loc)
+	reset := base.Add(2 * time.Hour)
+
+	insertTotal(t, store, base, 17_000_000)
+	insertTotal(t, store, base.Add(time.Hour), 17_000_500)
+	insertTotal(t, store, reset, 15_000_000)
+	insertTotal(t, store, base.Add(3*time.Hour), 15_000_250)
+
+	got := liveDerived(t, srv)
+	if got.SinceWh == nil || !almostEqual(*got.SinceWh, 250) {
+		t.Fatalf("since_wh = %v, want 250 measured from the reset", got.SinceWh)
+	}
+	if got.SinceBaselineUTC != reset.UTC().Format(time.RFC3339) {
+		t.Fatalf("since_baseline_utc = %q, want the reset instant", got.SinceBaselineUTC)
+	}
+	if got.SinceReason != "" {
+		t.Fatalf("since_reason = %q, want empty", got.SinceReason)
+	}
 }

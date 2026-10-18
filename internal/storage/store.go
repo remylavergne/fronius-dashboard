@@ -216,31 +216,6 @@ func (s *Store) TotalEnergyAt(ctx context.Context, t time.Time) (float64, time.T
 	return value, parsed, true, nil
 }
 
-// FirstTotalEnergy returns the earliest recorded total energy and its timestamp:
-// the baseline of a "since monitoring" delta. An unreadable stamp yields absent,
-// like TotalEnergyAt.
-func (s *Store) FirstTotalEnergy(ctx context.Context) (float64, time.Time, bool, error) {
-	var (
-		ts    string
-		value float64
-	)
-	err := s.db.QueryRowContext(ctx,
-		`SELECT ts_utc, energy_total_wh FROM samples
-		 WHERE energy_total_wh IS NOT NULL
-		 ORDER BY ts_utc ASC LIMIT 1`).Scan(&ts, &value)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, time.Time{}, false, nil
-	}
-	if err != nil {
-		return 0, time.Time{}, false, fmt.Errorf("reading the first total energy: %w", err)
-	}
-	parsed, err := parseTS(ts)
-	if err != nil {
-		return 0, time.Time{}, false, nil
-	}
-	return value, parsed, true, nil
-}
-
 // SampleCount returns the number of retained samples.
 func (s *Store) SampleCount(ctx context.Context) (int64, error) {
 	var n int64

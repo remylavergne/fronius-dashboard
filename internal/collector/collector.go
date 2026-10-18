@@ -53,6 +53,9 @@ type Source interface {
 // with anti-duplication, and recovery event).
 type Sink interface {
 	InsertSample(context.Context, model.Sample) error
+	// NoteTotalRun keeps the "since monitoring" baseline in step with the
+	// counter's continuity: a decrease starts a new run.
+	NoteTotalRun(context.Context, model.Sample) error
 	SaveDetails(context.Context, []storage.Detail) error
 	InsertEvent(context.Context, model.Event) error
 	InsertRun(context.Context, storage.RunRecord) error
@@ -135,6 +138,9 @@ func (c *Collector) CollectOnce(ctx context.Context) (model.Sample, error) {
 	if err := c.Sink.InsertSample(ctx, sm); err != nil {
 		// The persistence failure is not a device failure: no
 		// hardware-failure event, and the error is returned as is.
+		return model.Sample{}, err
+	}
+	if err := c.Sink.NoteTotalRun(ctx, sm); err != nil {
 		return model.Sample{}, err
 	}
 

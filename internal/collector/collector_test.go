@@ -95,6 +95,8 @@ func (f *fakeSink) InsertSample(_ context.Context, sm model.Sample) error {
 	return nil
 }
 
+func (f *fakeSink) NoteTotalRun(_ context.Context, _ model.Sample) error { return nil }
+
 func (f *fakeSink) InsertEvent(_ context.Context, e model.Event) error {
 	if f.eventErr != nil {
 		return f.eventErr

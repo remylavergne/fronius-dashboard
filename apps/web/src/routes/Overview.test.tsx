@@ -180,7 +180,7 @@ describe('Overview energy cards', () => {
     const card = screen.getByText('Energy since monitoring').closest('[data-slot="card"]')
     expect(card).not.toBeNull()
     expect(within(card as HTMLElement).getByText('872.35')).toBeInTheDocument()
-    expect(within(card as HTMLElement).getByText(/Monitoring since:/)).toBeInTheDocument()
+    expect(within(card as HTMLElement).getByText(/Since:/)).toBeInTheDocument()
   })
 })
 

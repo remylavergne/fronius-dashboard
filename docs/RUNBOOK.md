@@ -558,11 +558,14 @@ object **computed from our own stored total**:
 - `day_baseline_utc` / `year_baseline_utc` — the timestamp the value was measured
   from;
 - `day_reason` / `year_reason` — why a value is absent, when it is;
-- `since_wh` — the total produced **since monitoring began**: the difference
-  against the earliest stored sample carrying a total. It needs no boundary
-  tolerance, so it is the one energy that works from the first stored sample,
-  and `since_baseline_utc` says when monitoring started. The Overview shows it
-  as "Energy since monitoring".
+- `since_wh` — the total produced **since the current counter run began**: the
+  difference against the first sample after the last time the counter went
+  backwards (a device reset, a reinitialised firmware, or another inverter
+  writing to the same database). A run needs no boundary tolerance, so the value
+  works from the first stored sample; `since_baseline_utc` says where it starts.
+  The Overview shows it as "Energy since monitoring", with that baseline date —
+  after a reset it measures from the reset, because the energy before it cannot
+  be recovered from the counter.
 
 **These are estimates, never measurements.** The interface shows the measured
 counter whenever the device reports it, and marks the derived one **"estimated

@@ -802,6 +802,18 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Fixed
 
+- 2026-10-18 — **"Energy since monitoring" survives a counter reset.** The KPI
+  subtracted the earliest stored total from the current one, so a database
+  holding two counter runs — a simulator and then the device, or a device
+  reset — answered "the total energy counter went backwards since the first
+  sample" and the card stayed empty. The baseline now follows the counter's
+  continuity: a run starts at the first sample after the last decrease, cached
+  in `collector_state` and maintained at each collection cycle; backfilled
+  samples never move it. An existing database gets the one-time scan that finds
+  the last decrease. On the reference database the card goes from empty to
+  **7.37 kWh since 2026-10-16T20:04:32Z**, and its hint now reads
+  "Since <baseline>" instead of implying monitoring began there.
+
 - 2026-10-18 — **A cancelled client is no longer logged as a server error.**
   Reloading the page, closing a tab or the Vite proxy aborting upstream cancels
   the request context; the store wraps that cancellation, and every handler
