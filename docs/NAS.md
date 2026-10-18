@@ -10,10 +10,12 @@ Tested on a development machine, not on a NAS: treat this as guidance, and the
 
 ## 1. Get the image onto the NAS
 
-Building on a NAS needs Go and Node, which most do not ship. Build on a
+Building on a NAS natively needs Go and Node, which most do not ship. Build on a
 workstation, then either push it to the Forgejo container registry (recommended:
 the NAS pulls it with one command and every version stays addressable) or move
-it as a tarball (the offline fallback).
+it as a tarball (the offline fallback). A NAS can also build the image itself
+with nothing but Docker — § C — which is the route when the engine has no
+BuildKit API (a Colima install without the `buildx` plugin, for example).
 
 ### A. Through the Forgejo container registry (recommended)
 
@@ -46,10 +48,12 @@ Notes:
   *Packages*. To show it on a repository's tab, either name the image after the
   repository or add `LABEL org.opencontainers.image.source=<repository URL>` to
   the image.
-- The image has the architecture of the machine that built it. Nothing in it
-  uses CGO, so a NAS of another architecture takes a cross-build:
-  `docker buildx build --platform linux/amd64 --push -t <host>/<owner>/fronius-monitoring:<tag> .`
-  (use `linux/arm64` for an ARM NAS).
+- The image has the architecture of the machine that built it. Cross-building
+  needs a builder with the BuildKit API; where that is unavailable, build on a
+  machine of the NAS's architecture instead (§ C, the NAS itself included).
+  `buildx` may be missing while the classic builder still works: the same
+  Dockerfile builds with `DOCKER_BUILDKIT=0` — it uses only features both
+  builders share — and `make docker` honours the variable too.
 - A registry served over plain HTTP is refused by the daemon unless it is listed
   in `insecure-registries`; HTTPS on the forge is the better answer.
 - The image does not carry `docker-compose.yml` or `.env`; those stay on the NAS
@@ -67,6 +71,25 @@ gunzip -c fronius-monitoring.tgz | docker load
 ```
 
 The image embeds the interface: there is no asset directory to copy.
+
+### C. Built on the NAS itself (classic builder, no registry)
+
+The Dockerfile is self-contained: its stages pull the Node, Go and Alpine images
+themselves, so the NAS needs **only Docker** — no Go, no Node, no buildx, no
+registry. Check the repository out on the NAS (or copy it there), then:
+
+```bash
+docker build -t fronius-monitoring:local .
+# no BuildKit API? the classic builder builds the same Dockerfile:
+DOCKER_BUILDKIT=0 docker build -t fronius-monitoring:local .
+```
+
+The Dockerfile uses only features the classic builder supports (`COPY --from`,
+build arguments; the `# syntax=` line is a comment to it), so both builders
+produce the same image. `make docker` honours `DOCKER_BUILDKIT=0` too. The first
+build downloads the whole toolchain, and without BuildKit there is **no
+cross-architecture build**: this route is for a NAS whose architecture the NAS
+itself has. The compose file then uses the local name directly (§ 2).
 
 ## 2. The compose file
 

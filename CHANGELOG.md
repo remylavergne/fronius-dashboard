@@ -13,11 +13,13 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
   documented, and `make docker-push` performs it.** Forgejo serves an OCI
   registry on the forge's own host, so an image is named
   `{host}/{owner}/fronius-monitoring:{tag}`. The NAS page covers the token login
-  (2FA and OAuth need one), the tag/push pair, the cross-architecture case
-  (`docker buildx --platform linux/amd64|arm64`, legitimate because the image
-  uses no CGO), and pulling on the NAS — including the retag that keeps the
-  shipped compose file, and its demo profile, unchanged. The tarball route stays
-  as the offline fallback.
+  (2FA and OAuth need one), the tag/push pair, pulling on the NAS — including
+  the retag that keeps the shipped compose file, and its demo profile,
+  unchanged — and building the image on the NAS with **only Docker**, through
+  the classic builder (`DOCKER_BUILDKIT=0`), for engines that have no BuildKit
+  API such as a Colima without the `buildx` plugin. Cross-architecture builds
+  need BuildKit; without it, the build runs on the target architecture. The
+  tarball route stays as the offline fallback.
 
 - 2026-10-17 — **The shell is finished with light/dark themes.** A three-mode
   toggle in the header (`system` → `light` → `dark`, `system` by default) applies
