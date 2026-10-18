@@ -1,0 +1,81 @@
+# Service widget for gethomepage/homepage.
+#
+# This file is a SERVICE entry, not a services.yaml: Homepage only accepts
+# services inside the list of a group. Place it like this:
+#
+#   - Solar:
+#       - Fronius:
+#           href: http://<froniusd-host>:8080
+#           icon: mdi-solar-power
+#           widget:
+#             ... (this file, indented under the service)
+#
+# Replace both urls with your deployment. The widget url is fetched by the
+# Homepage *server*, so 127.0.0.1 is the Homepage container itself:
+#   - Homepage on another host:   http://<nas-ip>:<published-port>  (e.g. :8085)
+#   - same compose network:       http://froniusd:8080
+#
+# Fields: on the reference firmware the measured day/year counters are null
+# (docs/UNKNOWNS.md #13), so the mappings read the derived values — what the
+# application's own Overview displays. The year value stays null until a sample
+# at or before 1 January exists, hence "Since monitoring" instead.
+- Fronius:
+    href: http://<froniusd-host>:8080
+    icon: mdi-solar-power
+    widget:
+      type: customapi
+      url: http://<froniusd-host>:8080/api/v1/live
+      refreshInterval: 10000
+      display: list
+      mappings:
+        - field: data.mode
+          label: Site mode
+          remap:
+            - value: produce-only
+              to: Producing
+            - value: bidirectional
+              to: Bidirectional
+            - any: true
+              to: Unknown
+        - field: data.power_pv_w
+          label: PV power
+          format: number
+          suffix: " W"
+        - field: data.energy_derived.day_wh
+          label: Today
+          format: float
+          scale: 0.001
+          suffix: " kWh"
+        - field: data.energy_derived.since_wh
+          label: Since monitoring
+          format: float
+          scale: 0.001
+          suffix: " kWh"
+        - field: data.ts
+          label: Last sample
+          format: date
+          dateStyle: short
+          timeStyle: medium
+        - field: meta.stale
+          label: Freshness
+          remap:
+            - value: true
+              to: Stale
+            - value: false
+              to: Fresh
+            - any: true
+              to: No data
+        # Requires a Smart Meter (AGENTS.md: no consumption without a
+        # validated measurement) — these fields are null without one, so they
+        # stay commented out:
+        # - field: data.power_load_w
+        #   label: Consumption
+        #   format: number
+        #   suffix: " W"
+        # - field: data.power_grid_w
+        #   label: Grid
+        #   format: number
+        #   suffix: " W"
+        #   additionalField:
+        #     field: data.rel_self_consumption_pct
+        #     format: percent
