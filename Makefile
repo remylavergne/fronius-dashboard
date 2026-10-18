@@ -2,6 +2,8 @@ SHELL := /bin/bash
 GO ?= go
 PNPM ?= pnpm
 WEB := apps/web
+DOCKER ?= docker
+IMAGE ?= fronius-monitoring:local
 REGISTRY ?=
 TAG ?= latest
 
@@ -16,12 +18,12 @@ build: ## Build the frontend, then the backend with it embedded (static, CGO off
 	cp -R $(WEB)/dist/. internal/webui/assets/
 	CGO_ENABLED=0 $(GO) build -o bin/ ./cmd/...
 
-docker: ## Build the container image (VERSION from git, else dev)
-	docker build --build-arg VERSION=$$(git rev-parse --short HEAD 2>/dev/null || echo dev) -t fronius-monitoring:local .
+docker: ## Build the image for the daemon's architecture (VERSION from git, else dev)
+	$(DOCKER) build --build-arg VERSION=$$(git rev-parse --short HEAD 2>/dev/null || echo dev) -t $(IMAGE) .
 
 docker-push: registry-check docker ## Tag and push the image (REGISTRY=host/owner TAG=version)
-	docker tag fronius-monitoring:local $(REGISTRY)/fronius-monitoring:$(TAG)
-	docker push $(REGISTRY)/fronius-monitoring:$(TAG)
+	$(DOCKER) tag $(IMAGE) $(REGISTRY)/fronius-monitoring:$(TAG)
+	$(DOCKER) push $(REGISTRY)/fronius-monitoring:$(TAG)
 
 registry-check:
 	@test -n "$(REGISTRY)" || { echo "usage: make docker-push REGISTRY=<host>/<owner> [TAG=<version>]"; exit 1; }

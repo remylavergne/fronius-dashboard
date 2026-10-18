@@ -9,17 +9,16 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
-- 2026-10-17 — **Pushing the image to a Forgejo container registry is
-  documented, and `make docker-push` performs it.** Forgejo serves an OCI
-  registry on the forge's own host, so an image is named
-  `{host}/{owner}/fronius-monitoring:{tag}`. The NAS page covers the token login
-  (2FA and OAuth need one), the tag/push pair, pulling on the NAS — including
-  the retag that keeps the shipped compose file, and its demo profile,
-  unchanged — and building the image on the NAS with **only Docker**, through
-  the classic builder (`DOCKER_BUILDKIT=0`), for engines that have no BuildKit
-  API such as a Colima without the `buildx` plugin. Cross-architecture builds
-  need BuildKit; without it, the build runs on the target architecture. The
-  tarball route stays as the offline fallback.
+- 2026-10-17 — **The image is built for amd64 on the workstation and deployed
+  from the Forgejo registry, without BuildKit.** `make docker` and `make
+  docker-push` take `DOCKER` (any daemon, e.g.
+  `docker --context colima-amd64`, started with
+  `colima start --arch x86_64`) and `IMAGE`; the Dockerfile follows the
+  daemon's architecture — multi-arch base images, CGO off, no `--platform` — so
+  the classic builder produces `linux/amd64`. `docker-compose.yml` takes the
+  image from `FRONIUS_IMAGE`, and the NAS starts with `--no-build`: it pulls the
+  pushed image and never builds. The NAS page covers the token login, the
+  tag/push pair, architecture selection and the offline tarball fallback.
 
 - 2026-10-17 — **The shell is finished with light/dark themes.** A three-mode
   toggle in the header (`system` → `light` → `dark`, `system` by default) applies

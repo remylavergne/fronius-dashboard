@@ -17,7 +17,7 @@ services:
       context: .
       args:
         VERSION: ${VERSION:-dev}
-    image: fronius-monitoring:local
+    image: ${FRONIUS_IMAGE:-fronius-monitoring:local}
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
@@ -49,7 +49,7 @@ services:
   # It never touches the real database.
   simulator:
     profiles: ["demo"]
-    image: fronius-monitoring:local
+    image: ${FRONIUS_IMAGE:-fronius-monitoring:local}
     entrypoint: ["/app/fronius-sim"]
     command: ["-addr", "0.0.0.0:8081", "-log-level", "info"]
     healthcheck:
@@ -62,7 +62,7 @@ services:
   demo:
     profiles: ["demo"]
     build: *build
-    image: fronius-monitoring:local
+    image: ${FRONIUS_IMAGE:-fronius-monitoring:local}
     entrypoint: ["/app/froniusd"]
     # One day of history on start, then serve (idempotent if restarted).
     # --force-backfill is required and legitimate here: the backfill refuses a

@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1
 
+# Architecture follows the build daemon, not the host: every stage uses
+# multi-arch base images and CGO is off, so an amd64 daemon (a Colima profile
+# started with --arch x86_64, for example) produces an amd64 image with the
+# classic builder — no --platform flag is needed or accepted here.
+
 # ---- interface --------------------------------------------------------------
 # Built separately so the Go layer caches independently of the pnpm install.
 FROM node:22-alpine AS web

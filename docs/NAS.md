@@ -24,22 +24,31 @@ Forgejo serves an OCI registry on the forge's own host, and an image is named
 the reference installation's forge at `forgejo.example.com` and the
 owner `testuser`:
 
+The image must match the NAS's architecture. The **classic builder builds for the
+daemon's architecture** — there is no `--platform` without BuildKit — so on
+Apple silicon (whose default Colima VM is arm64) start a second, x86_64 profile
+and point the targets at it:
+
 ```bash
+# once: an amd64 daemon on the Mac (QEMU; buildx is not involved)
+colima start --profile amd64 --arch x86_64 --cpu 4 --memory 6
+
 # once per workstation: a personal access token with package write scope
 # (with 2FA, or OAuth, the account password is refused: use the token)
-echo "$FORGEJO_TOKEN" | docker login forgejo.example.com -u testuser --password-stdin
+echo "$FORGEJO_TOKEN" | docker --context colima-amd64 login forgejo.example.com -u testuser --password-stdin
 
 # from the repository root; the version tag is yours to choose
-make docker
-docker tag fronius-monitoring:local forgejo.example.com/testuser/fronius-monitoring:0.1.0
-docker push forgejo.example.com/testuser/fronius-monitoring:0.1.0
+DOCKER_BUILDKIT=0 make docker-push \
+  DOCKER="docker --context colima-amd64" \
+  REGISTRY=forgejo.example.com/testuser TAG=0.1.0
 ```
 
-The same in one step, `REGISTRY` being `host/owner`:
+`DOCKER_BUILDKIT=0` forces the classic builder; drop it if the engine's BuildKit
+works and only the `buildx` plugin is missing.
 
-```bash
-make docker-push REGISTRY=forgejo.example.com/testuser TAG=0.1.0
-```
+`make docker-push` builds, tags and pushes in one go, and every `docker` command
+in the target goes through `DOCKER`, so the image is amd64. To split it, the
+same variable applies to `make docker`, then `docker tag`/`docker push`.
 
 Notes:
 
@@ -48,12 +57,9 @@ Notes:
   *Packages*. To show it on a repository's tab, either name the image after the
   repository or add `LABEL org.opencontainers.image.source=<repository URL>` to
   the image.
-- The image has the architecture of the machine that built it. Cross-building
-  needs a builder with the BuildKit API; where that is unavailable, build on a
-  machine of the NAS's architecture instead (§ C, the NAS itself included).
-  `buildx` may be missing while the classic builder still works: the same
-  Dockerfile builds with `DOCKER_BUILDKIT=0` — it uses only features both
-  builders share — and `make docker` honours the variable too.
+- Cross-building needs the BuildKit API. Without it (classic builder), build on a
+  daemon of the target architecture — the x86_64 Colima profile above, an Intel
+  Mac, or an ARM profile for an ARM NAS.
 - A registry served over plain HTTP is refused by the daemon unless it is listed
   in `insecure-registries`; HTTPS on the forge is the better answer.
 - The image does not carry `docker-compose.yml` or `.env`; those stay on the NAS
@@ -106,26 +112,23 @@ through the NAS's DNS, a name works too; `host.docker.internal` reaches the NAS
 host on Docker Desktop, not on Linux.
 
 With the registry route, pull the image first — a private package needs the
-login here too:
+login here too — and tell compose which image to use from `.env`:
 
 ```bash
 docker login forgejo.example.com -u testuser
 docker pull forgejo.example.com/testuser/fronius-monitoring:0.1.0
+echo 'FRONIUS_IMAGE=forgejo.example.com/testuser/fronius-monitoring:0.1.0' >> .env
 ```
 
-The shipped compose file refers to the local name `fronius-monitoring:local`, and
-the demo profile uses that name twice more. The smallest change is therefore a
-retag; otherwise replace the three `image:` references with the registry
-reference and drop `build:` from the `froniusd` service.
-
-```bash
-docker tag forgejo.example.com/testuser/fronius-monitoring:0.1.0 fronius-monitoring:local
-```
+`FRONIUS_IMAGE` is interpolated into all three services, so the app and demo
+profiles use it alike, and the `build:` sections stay available for development.
+The NAS must not build: start with `--no-build`, which makes a missing or
+misspelled image fail loudly instead of starting a build there.
 
 Then, in that directory:
 
 ```bash
-docker compose --profile app up -d
+docker compose --profile app up -d --no-build
 docker compose ps
 ```
 
