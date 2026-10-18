@@ -615,6 +615,14 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Changed
 
+- 2026-10-17 — **The repository no longer names the reference installation.**
+  The NAS and Forgejo examples use `forgejo.example.com` and `testuser`; the
+  inverter address in the docs, the tests and the two tracked probe surveys is
+  the RFC 5737 documentation address `192.0.2.10` (gateway `192.0.2.1`); NAS
+  paths are `/srv/fronius` rather than a vendor-specific volume. Behaviour is
+  unchanged — only the literal values in examples and fixtures moved to their
+  documentation equivalents.
+
 - 2026-10-17 — **The device clock read is verified on hardware; the service state
   is not.** The consented probe on the reference installation (`1.19.7-1`) read
   `/commands/GetUTCTime`: `200`, 51 bytes,

@@ -21,8 +21,7 @@ BuildKit API (a Colima install without the `buildx` plugin, for example).
 
 Forgejo serves an OCI registry on the forge's own host, and an image is named
 `{host}/{owner}/{image}:{tag}` — the owner being a user or an organization. With
-the reference installation's forge at `forgejo.example.com` and the
-owner `testuser`:
+a forge at `forgejo.example.com` and the owner `testuser`:
 
 The image must match the NAS's architecture. The **classic builder builds for the
 daemon's architecture** — there is no `--platform` without BuildKit — so on
