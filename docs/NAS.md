@@ -11,7 +11,51 @@ Tested on a development machine, not on a NAS: treat this as guidance, and the
 ## 1. Get the image onto the NAS
 
 Building on a NAS needs Go and Node, which most do not ship. Build on a
-workstation and move the image:
+workstation, then either push it to the Forgejo container registry (recommended:
+the NAS pulls it with one command and every version stays addressable) or move
+it as a tarball (the offline fallback).
+
+### A. Through the Forgejo container registry (recommended)
+
+Forgejo serves an OCI registry on the forge's own host, and an image is named
+`{host}/{owner}/{image}:{tag}` — the owner being a user or an organization. With
+the reference installation's forge at `forgejo.example.com` and the
+owner `testuser`:
+
+```bash
+# once per workstation: a personal access token with package write scope
+# (with 2FA, or OAuth, the account password is refused: use the token)
+echo "$FORGEJO_TOKEN" | docker login forgejo.example.com -u testuser --password-stdin
+
+# from the repository root; the version tag is yours to choose
+make docker
+docker tag fronius-monitoring:local forgejo.example.com/testuser/fronius-monitoring:0.1.0
+docker push forgejo.example.com/testuser/fronius-monitoring:0.1.0
+```
+
+The same in one step, `REGISTRY` being `host/owner`:
+
+```bash
+make docker-push REGISTRY=forgejo.example.com/testuser TAG=0.1.0
+```
+
+Notes:
+
+- Image names must be **lowercase**; the registry treats tags case-insensitively.
+- The package is created by the first push and appears under the owner's
+  *Packages*. To show it on a repository's tab, either name the image after the
+  repository or add `LABEL org.opencontainers.image.source=<repository URL>` to
+  the image.
+- The image has the architecture of the machine that built it. Nothing in it
+  uses CGO, so a NAS of another architecture takes a cross-build:
+  `docker buildx build --platform linux/amd64 --push -t <host>/<owner>/fronius-monitoring:<tag> .`
+  (use `linux/arm64` for an ARM NAS).
+- A registry served over plain HTTP is refused by the daemon unless it is listed
+  in `insecure-registries`; HTTPS on the forge is the better answer.
+- The image does not carry `docker-compose.yml` or `.env`; those stay on the NAS
+  (§ 2), as does the login for a private package.
+
+### B. As a tarball (offline fallback)
 
 ```bash
 # workstation, from the repository root
@@ -37,6 +81,23 @@ FRONIUS_TZ=Europe/Brussels                  # the installation's zone
 `127.0.0.1` would be the container itself. If the inverter's hostname resolves
 through the NAS's DNS, a name works too; `host.docker.internal` reaches the NAS
 host on Docker Desktop, not on Linux.
+
+With the registry route, pull the image first — a private package needs the
+login here too:
+
+```bash
+docker login forgejo.example.com -u testuser
+docker pull forgejo.example.com/testuser/fronius-monitoring:0.1.0
+```
+
+The shipped compose file refers to the local name `fronius-monitoring:local`, and
+the demo profile uses that name twice more. The smallest change is therefore a
+retag; otherwise replace the three `image:` references with the registry
+reference and drop `build:` from the `froniusd` service.
+
+```bash
+docker tag forgejo.example.com/testuser/fronius-monitoring:0.1.0 fronius-monitoring:local
+```
 
 Then, in that directory:
 

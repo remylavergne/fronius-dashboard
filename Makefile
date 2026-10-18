@@ -2,8 +2,10 @@ SHELL := /bin/bash
 GO ?= go
 PNPM ?= pnpm
 WEB := apps/web
+REGISTRY ?=
+TAG ?= latest
 
-.PHONY: help build api-types test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-device dev-web seed backup restore clean
+.PHONY: help build api-types test test-go test-web test-perf lint lint-go lint-web fmt dev-sim dev-api dev-device dev-web seed backup restore clean docker docker-push
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -16,6 +18,13 @@ build: ## Build the frontend, then the backend with it embedded (static, CGO off
 
 docker: ## Build the container image (VERSION from git, else dev)
 	docker build --build-arg VERSION=$$(git rev-parse --short HEAD 2>/dev/null || echo dev) -t fronius-monitoring:local .
+
+docker-push: registry-check docker ## Tag and push the image (REGISTRY=host/owner TAG=version)
+	docker tag fronius-monitoring:local $(REGISTRY)/fronius-monitoring:$(TAG)
+	docker push $(REGISTRY)/fronius-monitoring:$(TAG)
+
+registry-check:
+	@test -n "$(REGISTRY)" || { echo "usage: make docker-push REGISTRY=<host>/<owner> [TAG=<version>]"; exit 1; }
 
 api-types: ## Regenerate the frontend API types from api/openapi.json
 	$(PNPM) --dir $(WEB) generate:api
