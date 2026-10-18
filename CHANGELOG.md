@@ -625,6 +625,14 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Changed
 
+- 2026-10-18 — **The example environment no longer suggests the simulator
+  address.** `FRONIUS_SOLARAPI_URL` is commented out: unset, the daemon falls
+  back to the simulator for development, while the container image refuses to
+  start without it. A NAS deployment can therefore no longer copy `.env.example`
+  and silently poll `127.0.0.1:8081` inside its own container — the symptom being
+  every capability "not determined" with `connection refused`. The runbook gains
+  that diagnosis.
+
 - 2026-10-17 — **The repository no longer names the reference installation.**
   The NAS and Forgejo examples use `forgejo.example.com` and `testuser`; the
   inverter address in the docs, the tests and the two tracked probe surveys is
