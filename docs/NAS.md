@@ -131,6 +131,85 @@ docker compose --profile app up -d --no-build
 docker compose ps
 ```
 
+### A compose for a shared external network
+
+A NAS that already runs a shared Docker network — Homepage, a reverse proxy, the
+other containers — does not need the development file: the service, its volume
+and that network are enough. This is a complete, self-contained deployment
+(`compose.yml` in the deployment directory, image from the registry route of § 1):
+
+```yaml
+name: fronius-monitoring
+
+services:
+  froniusd:
+    image: ${FRONIUS_IMAGE:-fronius-monitoring:local}
+    container_name: fronius-monitoring
+    restart: unless-stopped
+    networks:
+      - homelab
+    ports:
+      # host:container. 8085 only because 8080 is already taken on this host;
+      # the container always listens on 8080.
+      - "8085:8080"
+    volumes:
+      - fronius-data:/data
+    environment:
+      FRONIUS_SOLARAPI_URL: ${FRONIUS_SOLARAPI_URL:-}
+      FRONIUS_TZ: ${FRONIUS_TZ:-Europe/Brussels}
+      FRONIUS_DEVICE_USER: ${FRONIUS_DEVICE_USER:-}
+      FRONIUS_DEVICE_PASSWORD: ${FRONIUS_DEVICE_PASSWORD:-}
+      FRONIUS_POLL_INTERVAL: ${FRONIUS_POLL_INTERVAL:-5s}
+      FRONIUS_POLL_JITTER: ${FRONIUS_POLL_JITTER:-500ms}
+      FRONIUS_HTTP_TIMEOUT: ${FRONIUS_HTTP_TIMEOUT:-5s}
+      FRONIUS_STALE_AFTER: ${FRONIUS_STALE_AFTER:-30s}
+      FRONIUS_DETECT_INTERVAL: ${FRONIUS_DETECT_INTERVAL:-60s}
+      FRONIUS_LOG_LEVEL: ${FRONIUS_LOG_LEVEL:-info}
+      FRONIUS_LOG_FORMAT: ${FRONIUS_LOG_FORMAT:-text}
+      FRONIUS_RETENTION_DAYS: ${FRONIUS_RETENTION_DAYS:-0}
+    stop_grace_period: 20s
+
+volumes:
+  fronius-data:
+
+networks:
+  homelab:
+    external: true
+```
+
+Three points specific to this shape:
+
+- `container_name` is what makes `http://fronius-monitoring:8080` resolvable
+  from another container on the same network (Homepage's widget). The trade-off:
+  only one stack per host can use that name.
+- **Port**: inside the shared network the container listens on **8080**; the
+  published **8085** is only for clients outside Docker (a browser, a widget's
+  `href` pointing at the host). Homepage's server-side `url` uses 8080.
+- **Exposure**: the published port answers on every interface, and the API has no
+  authentication (ADR 0005). Bind it to the NAS's LAN address
+  (`"192.168.1.50:8085:8080"`) or do not publish it at all and keep the
+  container on the shared network.
+
+### What compose must pass explicitly
+
+Compose interpolates `.env` only for variables its own file names. A variable in
+`.env` that the service's `environment:` does not list never reaches the
+container, and the image default applies — which is how a
+`FRONIUS_HTTP_TIMEOUT` set in `.env` can be silently ignored (observed on a NAS
+deployment, where the 5 s default expired before the inverter answered). The
+block above names every knob; what each one changes:
+
+| Variable | Default | On a NAS |
+|---|---|---|
+| `FRONIUS_SOLARAPI_URL` | `http://127.0.0.1:8081` | inside a container, loopback is the container: set the inverter's LAN address, or the service polls itself |
+| `FRONIUS_HTTP_TIMEOUT` | `5s` | a NAS-to-inverter path (especially Wi-Fi) can exceed it; the observed case needed **20s** |
+| `FRONIUS_POLL_INTERVAL` / `FRONIUS_POLL_JITTER` | `5s` / `500ms` | measurement cadence and its spread |
+| `FRONIUS_STALE_AFTER` | `30s` | when the interface declares the last sample stale |
+| `FRONIUS_DETECT_INTERVAL` | `60s` | identity, meter, battery and event reads |
+| `FRONIUS_LOG_LEVEL` / `FRONIUS_LOG_FORMAT` | `info` / `text` | container logs |
+| `FRONIUS_RETENTION_DAYS` | `0` (unlimited) | bounds the database |
+| `FRONIUS_DEVICE_USER` / `FRONIUS_DEVICE_PASSWORD` (or `_FILE`) | unset | internal paths only; unset keeps them `unknown` while the Solar API works |
+
 ## 3. Where the data lives — and where it must not
 
 Keep the database on a **local volume** (`fronius-data` in the compose file) or
