@@ -184,6 +184,8 @@ Use both: the console for configuration, this for the record.
 - [Sources](docs/SOURCES.md) · [Unknowns](docs/UNKNOWNS.md) · [Endpoints](docs/ENDPOINTS.md)
   — provenance, open questions, and the endpoint matrix.
 - [Development](docs/DEVELOPMENT.md) — building, testing, capturing the screenshots.
+- [Integrations](docs/INTEGRATIONS.md) — feeding the data to a third-party
+  dashboard (gethomepage/homepage widgets in `contrib/homepage/`).
 
 ## License
 

@@ -1,0 +1,38 @@
+# Information widget for gethomepage/homepage (top bar of the dashboard).
+#
+# Append this item to config/widgets.yaml (the list shown next to CPU/RAM).
+# Verified against GET /api/v1/live of froniusd (the envelope below the root:
+# data.*, meta.*). Field values are read server-side by Homepage — no CORS,
+# no credential reaches the browser.
+#
+# Pick ONE url for your deployment:
+#   - Homepage on the NAS host network (typical Synology install):
+#       http://127.0.0.1:8080/api/v1/live
+#   - Homepage added to the compose project network of fronius
+#       (networks: fronius-monitoring_default, external: true):
+#       http://froniusd:8080/api/v1/live
+# Keep froniusd published on 127.0.0.1 only (docker-compose.yml); do not
+# widen the published port for the widget — both urls stay local.
+- customapi:
+    url: http://127.0.0.1:8080/api/v1/live
+    icon: mdi-solar-power
+    label: Fronius
+    href: http://127.0.0.1:8080
+    refreshInterval: 10000
+    mappings:
+      - field: data.power_pv_w
+        label: PV
+        format: number
+        suffix: " W"
+      - field: data.energy_day_wh
+        label: Today
+        format: float
+        scale: 0.001
+        suffix: " kWh"
+      # Firmware without the day counter (docs/UNKNOWNS.md #13): data.energy_day_wh
+      # is null and the line below shows nothing; switch to the derived value:
+      # - field: data.energy_derived.day_wh
+      #   label: Today
+      #   format: float
+      #   scale: 0.001
+      #   suffix: " kWh"

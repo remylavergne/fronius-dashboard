@@ -9,6 +9,17 @@ project adheres to [semantic versioning](https://semver.org/lang/fr/).
 
 ### Added
 
+- 2026-10-18 — **Homepage dashboard widgets (`contrib/homepage/`).** Two
+  ready-to-use configurations for [gethomepage/homepage](https://gethomepage.dev),
+  both driving `/api/v1/live` through the stock `customapi` widget — the data is
+  fetched by the Homepage server itself: no fork, no custom widget code, no new
+  endpoint, no secret in the browser. `info-widget.yaml` shows PV power and the
+  day energy in the top bar; `service-widget.yaml` decorates the service card
+  with the state, PV power, day/year energies, the last sample and the
+  freshness; the Smart-Meter-only consumption lines stay commented out per the
+  consumption rule. Checked: both files parse as YAML and every mapped field
+  resolves against the live JSON captured from the simulator. Installation and
+  the two network variants are in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 - 2026-10-18 — **An "Energy since monitoring" KPI.** `/api/v1/live` gains
   `since_wh` in `energy_derived`: the difference between the current total and
   the **earliest stored sample** carrying one, with `since_baseline_utc` naming

@@ -1146,3 +1146,11 @@
   missing, one unauthenticated attempt was deliberately **not** made: on a device
   that counts failed authentications, that request would have been worse than
   useless.
+
+- 2026-10-18 — Contribution: `contrib/homepage/` — two `customapi` widget
+  configurations for gethomepage/homepage (info bar + service card) driving
+  `GET /api/v1/live`; Homepage fetches server-side, no fork, no new endpoint.
+  `docs/INTEGRATIONS.md` documents the two URL variants (host network vs the
+  compose network) and the null-field cases. Checks: YAML parse + every mapped
+  field resolved against a simulator-captured live response. Rendering on a
+  real Homepage instance remains to be seen on the NAS.
