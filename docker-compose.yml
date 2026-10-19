@@ -42,6 +42,14 @@ services:
       #   - device_user
       #   - device_password
       FRONIUS_POLL_INTERVAL: ${FRONIUS_POLL_INTERVAL:-5s}
+      # Compose only passes variables it names: without these lines a value in
+      # `.env` is silently ignored and the image defaults apply.
+      FRONIUS_POLL_JITTER: ${FRONIUS_POLL_JITTER:-500ms}
+      FRONIUS_HTTP_TIMEOUT: ${FRONIUS_HTTP_TIMEOUT:-5s}
+      FRONIUS_STALE_AFTER: ${FRONIUS_STALE_AFTER:-30s}
+      FRONIUS_DETECT_INTERVAL: ${FRONIUS_DETECT_INTERVAL:-60s}
+      FRONIUS_LOG_LEVEL: ${FRONIUS_LOG_LEVEL:-info}
+      FRONIUS_LOG_FORMAT: ${FRONIUS_LOG_FORMAT:-text}
       FRONIUS_RETENTION_DAYS: ${FRONIUS_RETENTION_DAYS:-0}
     stop_grace_period: 20s
 
